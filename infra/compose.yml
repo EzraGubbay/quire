@@ -36,7 +36,9 @@ services:
       - "127.0.0.1:3000:3000"
 
   cloudflared:
+    # Enabled by COMPOSE_PROFILES=tunnel in .env once CF_TUNNEL_TOKEN is set.
     image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
