@@ -4,7 +4,8 @@ import { AppBar, type AppBarTab, Icon } from '@ezragubbay/folio';
 import { Settings } from 'lucide-react';
 import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { CommandPalette } from '@/components/palette/command-palette';
 import { useTheme } from './providers';
 
 export const PROJECT_TABS = [
@@ -26,6 +27,17 @@ export interface AppShellProps {
 
 export function AppShell({ project, children }: AppShellProps) {
   const { theme, toggle } = useTheme();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const pathname = usePathname();
   const router = useRouter();
   const tabs: AppBarTab[] = project
@@ -49,7 +61,16 @@ export function AppShell({ project, children }: AppShellProps) {
         tabs={tabs}
         activeTab={activeTab}
         onTabSelect={(id: string) => project && router.push(`/p/${project.slug}/${id}`)}
-        search={project ? { 'aria-label': 'Search this project' } : false}
+        search={
+          project
+            ? {
+                'aria-label': 'Search this project',
+                readOnly: true,
+                onFocus: () => setPaletteOpen(true),
+                onClick: () => setPaletteOpen(true),
+              }
+            : false
+        }
         theme={theme}
         onToggleTheme={toggle}
         user="E"
@@ -65,6 +86,7 @@ export function AppShell({ project, children }: AppShellProps) {
         }
       />
       <main className="quire-main">{children}</main>
+      <CommandPalette slug={project?.slug} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

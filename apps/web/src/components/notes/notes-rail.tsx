@@ -11,9 +11,19 @@ import type { Note } from '@/db/schema';
 import { fuzzyScore } from '@/lib/fuzzy';
 import s from './notes.module.css';
 
-export function NotesRail({ slug, notes, activeSlug }: { slug: string; notes: Note[]; activeSlug?: string }) {
+export function NotesRail({
+  slug,
+  notes,
+  activeSlug,
+  openNew = false,
+}: {
+  slug: string;
+  notes: Note[];
+  activeSlug?: string;
+  openNew?: boolean;
+}) {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openNew);
   const [state, action, pending] = useActionState<ActionState, FormData>(createNoteAction, {});
   const visible = useMemo(() => {
     if (!query.trim()) return notes;

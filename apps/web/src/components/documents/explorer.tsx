@@ -26,14 +26,16 @@ export interface ExplorerProps {
   documents: Document[];
   /** Currently open document, if any; the rail highlights its folder. */
   activeDocumentId?: string;
+  /** Open the add-document dialog on mount (from the command palette). */
+  openAdd?: boolean;
 }
 
-export function Explorer({ slug, folders, documents, activeDocumentId }: ExplorerProps) {
+export function Explorer({ slug, folders, documents, activeDocumentId, openAdd = false }: ExplorerProps) {
   const router = useRouter();
   const [folderId, setFolderId] = useState<string | null | 'all'>('all');
   const [filter, setFilter] = useState<Filter>('all');
   const [kind, setKind] = useState<'all' | DocumentKind>('all');
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(openAdd);
   const [folderOpen, setFolderOpen] = useState(false);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [, startTransition] = useTransition();

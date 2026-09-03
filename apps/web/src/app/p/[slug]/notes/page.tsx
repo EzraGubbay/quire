@@ -6,14 +6,21 @@ import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
 
-export default async function NotesPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function NotesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ new?: string }>;
+}) {
   const { slug } = await params;
+  const { new: openNew } = await searchParams;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const notes = await listNotes(project.id);
   return (
     <div className={s.layout}>
-      <NotesRail slug={slug} notes={notes} />
+      <NotesRail slug={slug} notes={notes} openNew={openNew === '1'} />
       <div className={s.main}>
         <div className={s.empty}>
           <h2
