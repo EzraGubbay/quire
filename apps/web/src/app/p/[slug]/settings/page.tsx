@@ -21,6 +21,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
         macros={own}
         inherited={global.filter((g) => !own.some((o) => o.name === g.name))}
       />
+      <ReindexPanel slug={slug} />
     </div>
   );
 }

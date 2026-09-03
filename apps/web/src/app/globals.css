@@ -40,3 +40,12 @@ body {
 a {
   color: var(--eg-accent-text);
 }
+
+/* App-bar search: the design system sizes it for a short placeholder; give it room. */
+.folio header label:has(> input[type="search"]) {
+  min-width: 340px;
+}
+.folio header label:has(> input[type="search"]) > input {
+  flex: 1;
+  min-width: 0;
+}

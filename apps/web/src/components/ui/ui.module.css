@@ -89,3 +89,47 @@
   gap: 8px;
   margin-top: 8px;
 }
+.skelWrap {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+.skelWrap[data-rail="true"] {
+  grid-template-columns: 280px 1fr;
+}
+.skelRail {
+  border-right: 1px solid var(--eg-rule);
+  background: var(--eg-surface-2);
+}
+.skelMain {
+  padding: 32px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  width: min(1100px, 100%);
+  margin: 0 auto;
+}
+.skelTitle,
+.skelLine {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--eg-surface-2) 25%, var(--eg-rule) 50%, var(--eg-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.skelTitle {
+  height: 26px;
+  width: 30%;
+  margin-bottom: 8px;
+}
+.skelTitleText {
+  margin: 0 0 8px;
+  font: 600 22px / 1.2 var(--eg-font-heading);
+  color: var(--eg-text);
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}

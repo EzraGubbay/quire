@@ -1,7 +1,7 @@
 'use client';
 
 import { AppBar, type AppBarTab, Icon } from '@ezragubbay/folio';
-import { MessageSquare, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -47,6 +47,11 @@ export function AppShell({ project, children }: AppShellProps) {
   const activeTab = project
     ? PROJECT_TABS.find((t) => pathname.startsWith(`/p/${project.slug}/${t.id}`))?.id
     : undefined;
+  // Warm the router cache for every tab so the first click does not wait on the network for the shell.
+  useEffect(() => {
+    if (!project) return;
+    for (const t of PROJECT_TABS) router.prefetch(`/p/${project.slug}/${t.id}`);
+  }, [project, router]);
   // The design system's AppBar renders tabs as plain anchors; route them through the client router so tab
   // changes keep the shell mounted (no full reload, no pre-hydration clicks).
   const onNavClick = (e: React.MouseEvent) => {
@@ -66,6 +71,7 @@ export function AppShell({ project, children }: AppShellProps) {
           project
             ? {
                 'aria-label': 'Search this project',
+                placeholder: 'Search this project',
                 readOnly: true,
                 onFocus: () => setPaletteOpen(true),
                 onClick: () => setPaletteOpen(true),

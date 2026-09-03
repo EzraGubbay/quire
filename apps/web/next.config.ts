@@ -15,7 +15,12 @@ const nextConfig: NextConfig = {
       '../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/package.json',
     ],
   },
-  experimental: { serverActions: { bodySizeLimit: '100mb' } },
+  experimental: {
+    serverActions: { bodySizeLimit: '100mb' },
+    // Keep visited dynamic pages in the client router cache briefly: tab switching back is instant.
+    // Mutations call revalidatePath/router.refresh, which invalidate it.
+    staleTimes: { dynamic: 30, static: 180 },
+  },
 };
 
 export default nextConfig;
