@@ -13,9 +13,9 @@
 
 ## First deployment, in order
 
-1. `ssh -t researchpi 'sudo bash -s' < infra/pi/bootstrap.sh` (asks for your sudo password), then reconnect.
+1. `scp infra/pi/*.sh researchpi:~/` then `ssh -t researchpi 'sudo ./bootstrap.sh'` (asks for your sudo password; piping the script over stdin would stop sudo from prompting), then reconnect.
 2. Follow `cloudflared/README.md`; fill `/srv/quire/.env` from `.env.example`.
-3. `scp infra/compose.yml infra/backup/* researchpi:/srv/quire/` is done by the deploy workflow, but for the very first run: `RUNNER_TOKEN=$(gh api -X POST repos/ezragubbay/quire/actions/runners/registration-token -q .token) ssh researchpi 'RUNNER_TOKEN='"$RUNNER_TOKEN"' bash -s' < infra/pi/install-runner.sh`.
+3. Register the runner: `ssh -t researchpi "RUNNER_TOKEN=$(gh api -X POST repos/EzraGubbay/quire/actions/runners/registration-token -q .token) ./install-runner.sh"` (sudo prompts once for the service install).
 4. Push to `main`. The `deploy` workflow builds the image, and the runner on the Pi pulls it, runs migrations, and starts the stack.
 
 ## Day-to-day

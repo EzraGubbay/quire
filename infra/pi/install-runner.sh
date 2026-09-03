@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install the GitHub Actions self-hosted runner as a systemd service on the Pi.
-# Run as the deploy user (not root):   ssh researchpi 'bash -s' < infra/pi/install-runner.sh
+# Run as the deploy user (not root), after scp:   ssh -t researchpi 'RUNNER_TOKEN=<token> ./install-runner.sh'
 # Needs a registration token: gh api -X POST repos/ezragubbay/quire/actions/runners/registration-token -q .token
 set -euo pipefail
 : "${RUNNER_TOKEN:?export RUNNER_TOKEN=<registration token> first}"

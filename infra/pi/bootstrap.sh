@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time setup of a fresh Raspberry Pi OS Lite (Trixie, arm64) as the Quire host.
-# Run from the laptop:   ssh -t researchpi 'sudo bash -s' < infra/pi/bootstrap.sh
+# Run from the laptop:   scp infra/pi/*.sh researchpi:~/ && ssh -t researchpi 'sudo ./bootstrap.sh'
 set -euo pipefail
 DEPLOY_USER=${DEPLOY_USER:-ezragubbay}
 
