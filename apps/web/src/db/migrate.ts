@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { db, sqlClient } from './client';
+import { db, getSql } from './client';
 
 /** The drizzle folder lives next to the app source in dev/CI and under apps/web in the standalone image. */
 export function migrationsFolder(): string {
@@ -24,7 +24,7 @@ if (process.argv[1]?.endsWith('migrate.ts')) {
   runMigrations()
     .then(() => {
       console.log('[db] migrations applied');
-      return sqlClient.end();
+      return getSql().end();
     })
     .catch((err) => {
       console.error('[db] migration failed', err);
