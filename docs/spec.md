@@ -91,7 +91,7 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 5. GitHub Actions `ci.yml` + `deploy.yml`; self-hosted runner registered on the Pi; GHCR image; first deploy of the hello shell; nightly backup container to B2.
 
 ### Phase 1 — Projects and Documents
-Projects CRUD + home + switcher. Documents tab: folder tree, tags, status filter; Add-document dialog (upload, URL, arXiv, DOI) with metadata extraction and a background job queue (pg-boss) for download, text extraction (`pdfjs` text per page), thumbnails; PDF viewer with text layer; Markdown document render + separate edit page; annotations panel (types, quick-add, anchored + general, hover/scroll-to, expand, filters, fuzzy search); Overview tab (counts, recent documents, open questions/todos from annotations).
+Projects CRUD + home + switcher. Documents tab: folder tree, tags, status filter; Add-document dialog (upload, URL, arXiv, DOI) with metadata extraction; download and text extraction (`pdfjs` text per page) run synchronously inside the request (a few seconds for a typical paper). A job queue (pg-boss) is deferred to Phase 4, where embeddings need it; PDF viewer with text layer; Markdown document render + separate edit page; annotations panel (types, quick-add, anchored + general, hover/scroll-to, expand, filters, fuzzy search); Overview tab (counts, recent documents, open questions/todos from annotations).
 
 ### Phase 2 — Notes, math, graph
 Notes tab: list + search, Read/Edit modes, CodeMirror editor with wiki-link and macro autocomplete, live preview; wiki-link resolution and backlinks via `links`; macros (global + project) in settings; graph page + overview widget with d3-force + Folio `NoteGraph`; promote note → document; ⌘K command palette over everything.

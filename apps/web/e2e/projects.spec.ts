@@ -9,9 +9,16 @@ test('create a project and walk its tabs', async ({ page }) => {
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page).toHaveURL(/\/p\/e2e-project-\d+\/overview$/);
   await expect(page.getByRole('heading', { name })).toBeVisible();
-  for (const tab of ['Documents', 'Notes', 'Sources', 'Experiments', 'Chat']) {
+  const headings: Record<string, string> = {
+    Documents: 'All documents',
+    Notes: 'Notes',
+    Sources: 'Sources',
+    Experiments: 'Experiments',
+    Chat: 'Chat',
+  };
+  for (const [tab, heading] of Object.entries(headings)) {
     await page.getByRole('link', { name: tab }).click();
-    await expect(page.getByRole('heading', { name: tab })).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
   }
   await page.goto('/');
   await expect(page.getByRole('link', { name })).toBeVisible();

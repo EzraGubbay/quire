@@ -15,6 +15,13 @@
       "when": 1788459976675,
       "tag": "0001_nappy_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788462626989,
+      "tag": "0002_lucky_barracuda",
+      "breakpoints": true
     }
   ]
 }

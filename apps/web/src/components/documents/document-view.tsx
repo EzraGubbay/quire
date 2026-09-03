@@ -12,6 +12,7 @@ import {
   updateAnnotationAction,
 } from '@/app/actions/annotations';
 import { deleteDocumentAction, updateDocumentAction } from '@/app/actions/documents';
+import { followWikiLinkAction } from '@/app/actions/notes';
 import type { Annotation, Document } from '@/db/schema';
 import a11y from './annotations.module.css';
 import { AnnotationsPanel } from './annotations-panel';
@@ -208,6 +209,7 @@ export function DocumentView({
               highlights={mdHighlights}
               activeHighlightId={activeId}
               onSelection={setSelection}
+              onWikiLink={(name) => start(() => followWikiLinkAction(slug, name))}
             />
           ) : (
             <AttachPdf slug={slug} document={doc} />

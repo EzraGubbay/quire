@@ -32,8 +32,16 @@ export function AppShell({ project, children }: AppShellProps) {
   const activeTab = project
     ? PROJECT_TABS.find((t) => pathname.startsWith(`/p/${project.slug}/${t.id}`))?.id
     : undefined;
+  // The design system's AppBar renders tabs as plain anchors; route them through the client router so tab
+  // changes keep the shell mounted (no full reload, no pre-hydration clicks).
+  const onNavClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('nav[aria-label="Sections"] a[href]');
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    router.push(a.getAttribute('href') ?? '/');
+  };
   return (
-    <>
+    <div onClickCapture={onNavClick} style={{ display: 'contents' }}>
       <AppBar
         project={project?.name}
         tabs={tabs}
@@ -45,6 +53,6 @@ export function AppShell({ project, children }: AppShellProps) {
         user="E"
       />
       <main className="quire-main">{children}</main>
-    </>
+    </div>
   );
 }

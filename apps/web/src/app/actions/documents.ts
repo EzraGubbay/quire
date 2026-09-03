@@ -17,6 +17,7 @@ import {
   updateDocument,
 } from '@/lib/documents';
 import { downloadPdf, type PaperMeta, parseReference, resolveReference } from '@/lib/ingest';
+import { syncLinks } from '@/lib/notes';
 import { getProjectBySlug } from '@/lib/projects';
 
 export interface ActionState {
@@ -157,6 +158,8 @@ export async function updateDocumentAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
   await updateDocument(project.id, documentId, parsed.data);
+  if (parsed.data.markdownBody !== undefined)
+    await syncLinks(project.id, 'document', documentId, parsed.data.markdownBody);
   revalidatePath(`/p/${slug}/documents/${documentId}`);
   return { ok: true };
 }

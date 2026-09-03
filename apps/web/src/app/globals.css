@@ -35,3 +35,8 @@ body {
   --folio-hl-idea: var(--folio-hl-method);
   --folio-hl-idea-text: var(--folio-hl-method-text);
 }
+
+/* Links default to the register's accent; components override as needed. */
+a {
+  color: var(--eg-accent-text);
+}
