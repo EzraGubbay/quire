@@ -1,4 +1,4 @@
-import { slugify } from '@quire/shared';
+import { slugify } from './entities';
 
 describe('slugify', () => {
   it('lowercases and hyphenates', () => {
