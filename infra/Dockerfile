@@ -23,7 +23,8 @@ RUN cd /repo/node_modules && tar chf /tmp/canvas.tar $(ls -d .pnpm/@napi-rs+canv
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
-  && groupadd -g 1001 quire && useradd -u 1001 -g quire -m quire
+  && groupadd -g 1001 quire && useradd -u 1001 -g quire -m quire \
+  && mkdir -p /data/files && chown quire:quire /data/files
 WORKDIR /app
 COPY --from=build --chown=quire:quire /repo/apps/web/.next/standalone ./
 COPY --from=build --chown=quire:quire /repo/apps/web/.next/static ./apps/web/.next/static
