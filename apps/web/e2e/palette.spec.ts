@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('command palette: ⌘K opens, searches notes, runs commands', async ({ page }) => {
-  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.setViewportSize({ width: 1500, height: 900 });
   await page.goto('/');
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Name').fill(`Palette ${Date.now()}`);
