@@ -46,5 +46,10 @@ test.describe('documents', () => {
     await page.getByLabel('Title').fill('Reading notes');
     await page.getByRole('button', { name: 'Create document' }).click();
     await expect(page.getByRole('heading', { name: 'Reading notes' })).toBeVisible();
+
+    // Overview reflects the two documents.
+    await page.getByRole('link', { name: 'Overview' }).click();
+    await expect(page.locator('dd').first()).toHaveText('2');
+    await expect(page.getByRole('link', { name: 'Reading notes' })).toBeVisible();
   });
 });

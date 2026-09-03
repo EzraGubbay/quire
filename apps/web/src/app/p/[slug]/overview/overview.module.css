@@ -32,3 +32,28 @@
   margin: 0;
   color: var(--eg-muted);
 }
+.stats {
+  display: flex;
+  gap: 28px;
+  margin: 12px 0 0;
+}
+.stats div {
+  display: grid;
+  gap: 2px;
+}
+.stats dt {
+  font: 500 11px / 1 var(--eg-font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eg-muted);
+}
+.stats dd {
+  margin: 0;
+  font: 500 22px / 1.1 var(--eg-font-mono);
+  color: var(--eg-text);
+}
+.more {
+  font: 500 12px / 1 var(--eg-font-ui);
+  color: var(--eg-accent-text);
+  text-decoration: none;
+}
