@@ -51,7 +51,11 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 ### AI
 - Provider: **OpenAI API**, user's key. **GPT-5.6 Sol** for heavy questions, **GPT-5.6 Terra** for lighter operations (query rewriting, summaries, discovery ranking). OpenAI embeddings into pgvector.
 - Provider adapter with per-task model assignment in settings (answer / light / embeddings). OpenAI-compatible adapter first; an Anthropic adapter and a local Ollama endpoint (laptop over Tailscale) are later options behind the same interface.
-- Cost bounding: every call logged (model, tokens, dollars) in Postgres; hard monthly cap in settings; spend view in settings; refuse calls past the cap.
+- Cost bounding, decided 2026-09-03:
+  - Two caps. OpenAI-side hard monthly budget **$30** with an email alert at $20 (the backstop). App-side cap **$25/month** in settings, so the app always refuses first and you learn about it in the app, not from a provider error.
+  - Ledger: every call records task, model, input/output/cached tokens and cost (from a price table in code) in `ai_usage`. Pre-flight estimate from the prompt size; a call that would cross the cap is refused before it is sent.
+  - In-app signalling: a persistent banner on every AI surface at 80% ("$20 of $25 used this month") and at 100% ("Monthly AI budget reached. Resets 1 Oct. Raise it in Settings."); chat input, Ask, and Discovery are disabled with that message rather than failing silently. Settings shows month-to-date spend, per-task breakdown, and a per-day sparkline.
+  - Provider errors: a 429 with `insufficient_quota` (OpenAI's own budget hit) sets a `provider_blocked` flag with the message and time; the same banner shows "OpenAI is refusing requests: budget exceeded on OpenAI's side" with a Retry button, and the flag clears automatically on the 1st. A 429 `rate_limit_exceeded` is transient: SDK retries with backoff, then a toast "Rate limited, try again in a minute", no lockout. Other 4xx/5xx show the error inline on the message.
 - Surfaces: **Chat tab** (saved threads per project, streaming, citations to documents/notes/sources), **Ask slide-over** from anywhere including "Ask about this document" (the mock's AskPanel), **Source Discovery**: from a query, search the web + arXiv + Semantic Scholar, rank, show candidates with reasons, add to project in one click (NotebookLM-style).
 - Retrieval: chunked embeddings over documents (PDF text), notes, annotations, sources; pgvector + Postgres full-text, hybrid ranking.
 
