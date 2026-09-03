@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { DocumentView } from '@/components/documents/document-view';
 import { listAnnotations } from '@/lib/annotations';
-import { getDocument, getDocumentPages } from '@/lib/documents';
+import { getDocument } from '@/lib/documents';
 import { renderMarkdown } from '@/lib/markdown';
 import { getProjectBySlug } from '@/lib/projects';
 
@@ -13,10 +13,9 @@ export default async function DocumentPage({ params }: { params: Promise<{ slug:
   if (!project) notFound();
   const doc = await getDocument(project.id, docId);
   if (!doc) notFound();
-  const [pages, annotations, html] = await Promise.all([
-    doc.kind === 'pdf' ? getDocumentPages(doc.id) : Promise.resolve([]),
+  const [annotations, html] = await Promise.all([
     listAnnotations(project.id, doc.id),
     doc.kind === 'markdown' ? renderMarkdown(doc.markdownBody ?? '') : Promise.resolve(''),
   ]);
-  return <DocumentView slug={slug} document={doc} pages={pages} annotations={annotations} html={html} />;
+  return <DocumentView slug={slug} document={doc} annotations={annotations} html={html} />;
 }

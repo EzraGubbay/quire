@@ -1,9 +1,9 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { annotations, documentPages, documents, notes } from '@/db/schema';
+import { annotations, documentPages, documents, notes, sources } from '@/db/schema';
 
 export interface SearchHit {
-  kind: 'document' | 'note' | 'annotation';
+  kind: 'document' | 'note' | 'annotation' | 'source';
   id: string;
   title: string;
   snippet: string;
@@ -21,7 +21,7 @@ export async function searchProject(
   const q = query.trim();
   if (!q) return [];
   const pattern = `%${q.replace(/[%_]/g, (c) => `\\${c}`)}%`;
-  const [docs, pages, ns, anns] = await Promise.all([
+  const [docs, pages, ns, anns, srcs] = await Promise.all([
     db
       .select({
         id: documents.id,
@@ -80,6 +80,27 @@ export async function searchProject(
       )
       .orderBy(desc(annotations.updatedAt))
       .limit(limit),
+    db
+      .select({
+        id: sources.id,
+        title: sources.title,
+        description: sources.description,
+        url: sources.url,
+        type: sources.type,
+      })
+      .from(sources)
+      .where(
+        and(
+          eq(sources.projectId, projectId),
+          or(
+            ilike(sources.title, pattern),
+            ilike(sources.description, pattern),
+            ilike(sources.snapshotText, pattern),
+          ),
+        ),
+      )
+      .orderBy(desc(sources.updatedAt))
+      .limit(limit),
   ]);
   const seenDocs = new Set<string>();
   const hits: SearchHit[] = [];
@@ -125,6 +146,15 @@ export async function searchProject(
       meta: [a.type, a.pageNo ? `p.${a.pageNo}` : null].filter(Boolean).join(' · '),
     });
   }
+  for (const x of srcs)
+    hits.push({
+      kind: 'source',
+      id: x.id,
+      title: x.title,
+      snippet: excerpt(x.description || x.url || '', q),
+      href: `/p/${slug}/sources`,
+      meta: x.type,
+    });
   return hits.slice(0, limit);
 }
 

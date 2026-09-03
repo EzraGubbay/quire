@@ -26,13 +26,11 @@ const PANEL_KEY = 'quire.annotations.open';
 export function DocumentView({
   slug,
   document: doc,
-  pages,
   annotations: initial,
   html,
 }: {
   slug: string;
   document: Document;
-  pages: { pageNo: number; text: string }[];
   annotations: Annotation[];
   html: string;
 }) {

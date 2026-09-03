@@ -1,7 +1,7 @@
 import type { AnnotationType, EntityKind } from '@quire/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { annotations, documents, links, notes } from '@/db/schema';
+import { annotations, documents, links, notes, sources } from '@/db/schema';
 
 export interface GraphNodeData {
   id: string;
@@ -23,7 +23,7 @@ export interface GraphData {
 
 /** Notes, documents, sources (later), and Idea/Insight annotations, with wiki edges and annotation→document edges. */
 export async function getGraph(projectId: string, slug: string): Promise<GraphData> {
-  const [ns, ds, ideas, ls] = await Promise.all([
+  const [ns, ds, ideas, ls, ss] = await Promise.all([
     db
       .select({ id: notes.id, title: notes.title, slug: notes.slug })
       .from(notes)
@@ -52,6 +52,8 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
       })
       .from(links)
       .where(and(eq(links.projectId, projectId), sql`${links.unresolved} is null`)),
+    db.select({ id: sources.id, title: sources.title }).from(sources).where(eq(sources.projectId, projectId)),
+    db.select({ id: sources.id, title: sources.title }).from(sources).where(eq(sources.projectId, projectId)),
   ]);
   const docHue = new Map<string, AnnotationType>();
   const hueCounts = await db
@@ -81,6 +83,13 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
       label: d.title,
       hue: docHue.get(d.id) ?? ('note' as const),
       href: `/p/${slug}/documents/${d.id}`,
+    })),
+    ...ss.map((x) => ({
+      id: x.id,
+      kind: 'source' as const,
+      label: x.title,
+      hue: 'note' as const,
+      href: `/p/${slug}/sources`,
     })),
     ...ideas.map((a) => ({
       id: a.id,

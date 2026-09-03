@@ -19,6 +19,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Python client tests
+        working-directory: clients/python
+        run: pip install -q pytest && python -m pytest -q tests
   e2e:
     name: Build and e2e
     runs-on: ubuntu-latest

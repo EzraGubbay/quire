@@ -49,7 +49,7 @@ export function GraphView({
   legend?: boolean;
 }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<Set<string>>(new Set(['document', 'note', 'annotation']));
+  const [filter, setFilter] = useState<Set<string>>(new Set(['document', 'note', 'source', 'annotation']));
   const filtered = useMemo(() => {
     const nodes = data.nodes.filter((n) => filter.has(n.kind));
     const ids = new Set(nodes.map((n) => n.id));
@@ -117,6 +117,7 @@ export function GraphView({
             [
               ['document', 'Documents'],
               ['note', 'Notes'],
+              ['source', 'Sources'],
               ['annotation', 'Ideas & insights'],
             ] as const
           ).map(([k, label]) => (

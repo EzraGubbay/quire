@@ -1,7 +1,7 @@
 import { type EntityKind, slugify } from '@quire/shared';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { documents, type Link, links, type Note, notes } from '@/db/schema';
+import { documents, type Link, links, type Note, notes, sources } from '@/db/schema';
 import { extractWikiLinks } from './markdown';
 
 export async function listNotes(projectId: string): Promise<Note[]> {
@@ -48,6 +48,12 @@ export async function resolveTarget(projectId: string, name: string): Promise<Ta
     .where(and(eq(documents.projectId, projectId), ilike(documents.title, clean)))
     .limit(1);
   if (doc) return { kind: 'document', ...doc };
+  const [src] = await db
+    .select({ id: sources.id, title: sources.title })
+    .from(sources)
+    .where(and(eq(sources.projectId, projectId), ilike(sources.title, clean)))
+    .limit(1);
+  if (src) return { kind: 'source', ...src };
   return undefined;
 }
 
@@ -206,11 +212,14 @@ export async function unresolvedFrom(projectId: string, kind: EntityKind, id: st
 
 /** Titles of everything a wiki link can point at, for editor autocomplete. */
 export async function linkTargets(projectId: string): Promise<string[]> {
-  const [ns, ds] = await Promise.all([
+  const [ns, ds, ss] = await Promise.all([
     db.select({ t: notes.title }).from(notes).where(eq(notes.projectId, projectId)),
     db.select({ t: documents.title }).from(documents).where(eq(documents.projectId, projectId)),
+    db.select({ t: sources.title }).from(sources).where(eq(sources.projectId, projectId)),
   ]);
-  return [...new Set([...ns.map((r) => r.t), ...ds.map((r) => r.t)])].sort((a, b) => a.localeCompare(b));
+  return [...new Set([...ns.map((r) => r.t), ...ds.map((r) => r.t), ...ss.map((r) => r.t)])].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 export type { Link };

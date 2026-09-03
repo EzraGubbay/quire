@@ -5,6 +5,8 @@ import {
   LINK_KINDS,
   PROJECT_STATUSES,
   READING_STATUSES,
+  RUN_STATUSES,
+  SOURCE_TYPES,
 } from '@quire/shared';
 import { relations } from 'drizzle-orm';
 import {
@@ -27,6 +29,8 @@ export const readingStatus = pgEnum('reading_status', READING_STATUSES);
 export const annotationType = pgEnum('annotation_type', ANNOTATION_TYPES);
 export const entityKind = pgEnum('entity_kind', ENTITY_KINDS);
 export const linkKind = pgEnum('link_kind', LINK_KINDS);
+export const sourceType = pgEnum('source_type', SOURCE_TYPES);
+export const runStatus = pgEnum('run_status', RUN_STATUSES);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -171,6 +175,118 @@ export const links = pgTable(
   ],
 );
 
+export const sources = pgTable(
+  'sources',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    type: sourceType('type').notNull().default('web'),
+    url: text('url'),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    tags: text('tags').array().notNull().default([]),
+    /** Page text captured at add time, for search and AI retrieval. */
+    snapshotText: text('snapshot_text'),
+    snapshotAt: timestamp('snapshot_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index('sources_project_idx').on(t.projectId)],
+);
+
+export const experiments = pgTable(
+  'experiments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('experiments_project_name').on(t.projectId, t.name)],
+);
+
+export const runs = pgTable(
+  'runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    experimentId: uuid('experiment_id')
+      .notNull()
+      .references(() => experiments.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    status: runStatus('status').notNull().default('queued'),
+    params: jsonb('params').notNull().default({}),
+    /** Latest value per metric key, kept in sync with run_metrics for cheap listing. */
+    summary: jsonb('summary').notNull().default({}),
+    notes: text('notes').notNull().default(''),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index('runs_experiment_idx').on(t.experimentId)],
+);
+
+export const runMetrics = pgTable(
+  'run_metrics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    step: integer('step').notNull().default(0),
+    value: real('value').notNull(),
+    ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('run_metrics_run_key_idx').on(t.runId, t.key, t.step)],
+);
+
+export const runLogs = pgTable(
+  'run_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    level: text('level').notNull().default('info'),
+    message: text('message').notNull(),
+    ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('run_logs_run_idx').on(t.runId, t.ts)],
+);
+
+export const runArtifacts = pgTable(
+  'run_artifacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    filePath: text('file_path').notNull(),
+    size: integer('size').notNull().default(0),
+    contentType: text('content_type').notNull().default('application/octet-stream'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('run_artifacts_run_idx').on(t.runId)],
+);
+
+export const observations = pgTable(
+  'observations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    ...timestamps,
+  },
+  (t) => [index('observations_run_idx').on(t.runId)],
+);
+
 /** TeX macros: rows with a null project are global; project rows override by name. */
 export const macros = pgTable(
   'macros',
@@ -224,4 +340,11 @@ export type Annotation = typeof annotations.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type Link = typeof links.$inferSelect;
 export type Macro = typeof macros.$inferSelect;
+export type Source = typeof sources.$inferSelect;
+export type Experiment = typeof experiments.$inferSelect;
+export type Run = typeof runs.$inferSelect;
+export type RunMetric = typeof runMetrics.$inferSelect;
+export type RunLog = typeof runLogs.$inferSelect;
+export type RunArtifact = typeof runArtifacts.$inferSelect;
+export type Observation = typeof observations.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;

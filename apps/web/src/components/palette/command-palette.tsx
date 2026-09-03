@@ -1,7 +1,7 @@
 'use client';
 
 import { Icon } from '@ezragubbay/folio';
-import { FileText, MessageSquare, Plus, Search, StickyNote, Waypoints } from 'lucide-react';
+import { FileText, Link2, MessageSquare, Plus, Search, StickyNote, Waypoints } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { searchAction } from '@/app/actions/search';
@@ -45,6 +45,8 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
         { id: 'overview', label: 'Overview', icon: Waypoints, run: () => go(`/p/${slug}/overview`) },
         { id: 'documents', label: 'Documents', icon: FileText, run: () => go(`/p/${slug}/documents`) },
         { id: 'notes', label: 'Notes', icon: StickyNote, run: () => go(`/p/${slug}/notes`) },
+        { id: 'sources', label: 'Sources', icon: Link2, run: () => go(`/p/${slug}/sources`) },
+        { id: 'experiments', label: 'Experiments', icon: Waypoints, run: () => go(`/p/${slug}/experiments`) },
         { id: 'graph', label: 'Graph', icon: Waypoints, run: () => go(`/p/${slug}/notes/graph`) },
         { id: 'chat', label: 'Chat', icon: MessageSquare, run: () => go(`/p/${slug}/chat`) },
         {
@@ -83,7 +85,17 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
       run: () => go(h.href),
       render: () => (
         <>
-          <Icon icon={h.kind === 'document' ? FileText : h.kind === 'note' ? StickyNote : MessageSquare} />
+          <Icon
+            icon={
+              h.kind === 'document'
+                ? FileText
+                : h.kind === 'note'
+                  ? StickyNote
+                  : h.kind === 'source'
+                    ? Link2
+                    : MessageSquare
+            }
+          />
           <span className={s.text}>
             <span className={s.label}>{h.title}</span>
             {h.snippet && <span className={s.snippet}>{h.snippet}</span>}

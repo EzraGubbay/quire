@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quire-client"
+version = "0.1.0"
+description = "Report experiment runs, metrics, logs, and artifacts to a Quire research project."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Ezra Gubbay" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/EzraGubbay/quire"
+
+[tool.hatch.build.targets.wheel]
+packages = ["quire"]

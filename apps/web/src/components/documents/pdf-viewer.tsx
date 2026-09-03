@@ -113,13 +113,13 @@ export function PdfViewer({
   useEffect(() => {
     const el = viewerRef.current;
     if (!el || pages.length === 0) return;
-    const fit = () => {
+    const fitWidth = () => {
       const maxW = Math.max(...pages.map((p) => p.w));
       const available = el.clientWidth - 48;
       setScale(Math.min(2, Math.max(0.5, available / maxW)));
     };
-    fit();
-    const ro = new ResizeObserver(fit);
+    fitWidth();
+    const ro = new ResizeObserver(fitWidth);
     ro.observe(el);
     return () => ro.disconnect();
   }, [pages]);

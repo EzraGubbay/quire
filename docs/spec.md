@@ -81,6 +81,13 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 
 `projects`, `folders`(project, parent, name, order), `documents`(project, folder, kind pdf|markdown, title, authors[], year, abstract, source_url, arxiv_id, doi, file_path, markdown_body, reading_status, last_page, progress, tags[]), `document_pages`(document, page_no, text) for PDF text, `annotations`(project, document nullable for unanchored, type note|insight|idea|question|todo, body, quote, anchor jsonb, page_no, orphaned bool), `notes`(project, title/slug, body), `links`(from_kind, from_id, to_kind, to_id, kind wiki|mention|belongs|suggested) as the single edge table for the graph and backlinks, `sources`(project, type, url, title, description, tags[], snapshot_text), `experiments`, `runs`(experiment, name, status, params jsonb, started, finished), `run_metrics`(run, key, step, value, ts), `run_artifacts`, `run_logs`, `observations`(run, body), `chat_threads`, `chat_messages`(role, content, citations jsonb, model, usage), `embeddings`(owner_kind, owner_id, chunk_no, text, vector(1536)), `ai_usage`(ts, task, model, in_tokens, out_tokens, cost_usd), `macros`(project nullable, name, definition), `settings` (singleton: models per task, monthly cap, macros global).
 
+## Progress (updated 2026-09-03)
+
+- Phase 0 done: live at quire.ezragubbay.com, GitHub login, CI + deploy via the Pi runner, nightly B2 backups.
+- Phase 1 done: projects, folders, PDF upload/URL/arXiv/DOI import, pdf.js viewer with reading position, Markdown documents with editor, annotations (five types, panel, popover, filters, search) on PDFs and Markdown, Overview.
+- Phase 2 done: notes with read/edit modes, wiki links and backlinks, dangling-link creation, promote to document, graph (d3-force + Folio NoteGraph), math macros (global + project) with settings pages, ⌘K palette.
+- Phase 3 in progress: sources, experiments, Python client.
+
 ## Phases (each ends deployed and usable)
 
 ### Phase 0 — Foundations (first)
