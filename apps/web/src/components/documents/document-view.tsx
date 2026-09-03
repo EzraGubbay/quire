@@ -1,11 +1,11 @@
 'use client';
 
 import { Button, Icon, PaperHeader, Prose } from '@ezragubbay/folio';
-import type { AnnotationType, PdfAnchor } from '@quire/shared';
-import { ArrowLeft, MessageSquarePlus, Trash2 } from 'lucide-react';
+import type { Anchor, AnnotationType, MarkdownAnchor, PdfAnchor } from '@quire/shared';
+import { ArrowLeft, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useOptimistic, useRef, useState, useTransition } from 'react';
+import { useCallback, useMemo, useOptimistic, useRef, useState, useTransition } from 'react';
 import {
   createAnnotationAction,
   deleteAnnotationAction,
@@ -16,6 +16,7 @@ import type { Annotation, Document } from '@/db/schema';
 import a11y from './annotations.module.css';
 import { AnnotationsPanel } from './annotations-panel';
 import s from './document-view.module.css';
+import { type MarkdownSelection, MarkdownView, type MarkdownViewHandle } from './markdown-view';
 import { type PdfSelection, PdfViewer, type PdfViewerHandle } from './pdf-viewer';
 
 const PANEL_KEY = 'quire.annotations.open';
@@ -25,15 +26,18 @@ export function DocumentView({
   document: doc,
   pages,
   annotations: initial,
+  html,
 }: {
   slug: string;
   document: Document;
   pages: { pageNo: number; text: string }[];
   annotations: Annotation[];
+  html: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const viewer = useRef<PdfViewerHandle>(null);
+  const mdView = useRef<MarkdownViewHandle>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef({ page: doc.lastPage, progress: doc.progress });
   const [collapsed, setCollapsed] = useState(() => {
@@ -43,7 +47,7 @@ export function DocumentView({
       return false;
     }
   });
-  const [selection, setSelection] = useState<PdfSelection | null>(null);
+  const [selection, setSelection] = useState<PdfSelection | MarkdownSelection | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [annotations, mutate] = useOptimistic(
@@ -95,7 +99,7 @@ export function DocumentView({
     [slug, doc.id, doc.readingStatus],
   );
 
-  const addAnnotation = (anchor: PdfAnchor | null) => {
+  const addAnnotation = (anchor: Anchor | null) => {
     setSelection(null);
     window.getSelection()?.removeAllRanges();
     setCollapsed(false);
@@ -126,9 +130,20 @@ export function DocumentView({
       router.refresh();
     });
 
-  const highlights = annotations
-    .filter((x) => x.anchor && (x.anchor as PdfAnchor).kind === 'pdf')
-    .map((x) => ({ id: x.id, type: x.type, anchor: x.anchor as PdfAnchor }));
+  const pdfHighlights = useMemo(
+    () =>
+      annotations
+        .filter((x) => x.anchor && (x.anchor as Anchor).kind === 'pdf')
+        .map((x) => ({ id: x.id, type: x.type, anchor: x.anchor as PdfAnchor })),
+    [annotations],
+  );
+  const mdHighlights = useMemo(
+    () =>
+      annotations
+        .filter((x) => x.anchor && (x.anchor as Anchor).kind === 'markdown')
+        .map((x) => ({ id: x.id, type: x.type, anchor: x.anchor as MarkdownAnchor })),
+    [annotations],
+  );
 
   return (
     <div className={s.wrap}>
@@ -150,6 +165,15 @@ export function DocumentView({
               {st}
             </button>
           ))}
+          {doc.kind === 'markdown' && (
+            <NextLink
+              href={`/p/${slug}/documents/${doc.id}/edit`}
+              className={s.chip}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Icon icon={Pencil} /> Edit
+            </NextLink>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -171,9 +195,17 @@ export function DocumentView({
               ref={viewer}
               fileUrl={`/api/projects/${slug}/documents/${doc.id}/file`}
               initialPage={doc.lastPage}
-              highlights={highlights}
+              highlights={pdfHighlights}
               activeHighlightId={activeId}
               onProgress={onProgress}
+              onSelection={setSelection}
+            />
+          ) : doc.kind === 'markdown' ? (
+            <MarkdownView
+              ref={mdView}
+              html={html}
+              highlights={mdHighlights}
+              activeHighlightId={activeId}
               onSelection={setSelection}
             />
           ) : (
@@ -189,18 +221,14 @@ export function DocumentView({
                   ].filter((m): m is string => Boolean(m))}
                 />
                 {doc.abstract && <p className={s.abstract}>{doc.abstract}</p>}
-                {doc.kind === 'markdown' ? (
-                  <pre className={s.md}>{doc.markdownBody}</pre>
-                ) : (
-                  <div className={s.pages}>
-                    {pages.map((p) => (
-                      <section key={p.pageNo} className={s.page} id={`page-${p.pageNo}`}>
-                        <div className={s.pageNo}>p. {p.pageNo}</div>
-                        <p>{p.text}</p>
-                      </section>
-                    ))}
-                  </div>
-                )}
+                <div className={s.pages}>
+                  {pages.map((p) => (
+                    <section key={p.pageNo} className={s.page} id={`page-${p.pageNo}`}>
+                      <div className={s.pageNo}>p. {p.pageNo}</div>
+                      <p>{p.text}</p>
+                    </section>
+                  ))}
+                </div>
               </Prose>
             </div>
           )}
@@ -227,8 +255,9 @@ export function DocumentView({
           activeId={activeId}
           onHover={setActiveId}
           onScrollTo={(x) => {
-            const anchor = x.anchor as PdfAnchor | null;
+            const anchor = x.anchor as Anchor | null;
             if (anchor?.kind === 'pdf') viewer.current?.scrollToAnchor(anchor);
+            if (anchor?.kind === 'markdown') mdView.current?.scrollToAnchor(anchor);
           }}
           onAddGeneral={() => addAnnotation(null)}
           onChangeType={changeType}

@@ -1,0 +1,9 @@
+.host {
+  height: 100%;
+  min-height: 0;
+  background: var(--eg-bg);
+  border-right: 1px solid var(--eg-rule);
+}
+.host :global(.cm-editor) {
+  height: 100%;
+}

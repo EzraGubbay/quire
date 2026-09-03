@@ -1,0 +1,21 @@
+/* Annotation highlights on rendered Markdown, painted with the CSS Custom Highlight API. */
+::highlight(quire-note) {
+  background-color: var(--folio-hl-note);
+}
+::highlight(quire-insight) {
+  background-color: var(--folio-hl-insight);
+}
+::highlight(quire-idea) {
+  background-color: var(--folio-hl-idea);
+}
+::highlight(quire-question) {
+  background-color: var(--folio-hl-question);
+}
+::highlight(quire-todo) {
+  background-color: var(--folio-hl-todo);
+}
+::highlight(quire-active) {
+  background-color: var(--eg-accent-soft);
+  text-decoration: underline;
+  text-decoration-color: var(--eg-accent);
+}

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import '@ezragubbay/folio/fonts.css';
 import '@ezragubbay/folio/styles.css';
 import './globals.css';
+import './highlights.css';
 import { Providers } from '@/components/providers';
 
 export const metadata: Metadata = {

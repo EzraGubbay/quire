@@ -24,3 +24,14 @@ body {
   flex-direction: column;
   min-height: 0;
 }
+
+/* Quire annotation types. The design package ships claim/method/result/question/todo; until it ships
+   note/insight/idea (see docs/design-requests.md) alias the missing three onto existing hues. */
+.folio {
+  --folio-hl-note: var(--folio-hl-claim);
+  --folio-hl-note-text: var(--folio-hl-claim-text);
+  --folio-hl-insight: var(--folio-hl-result);
+  --folio-hl-insight-text: var(--folio-hl-result-text);
+  --folio-hl-idea: var(--folio-hl-method);
+  --folio-hl-idea-text: var(--folio-hl-method-text);
+}
