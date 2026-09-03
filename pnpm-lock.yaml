@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@ezragubbay/core': file:./vendor/ezragubbay-core-0.1.0.tgz
-
 importers:
 
   .:
@@ -42,11 +39,11 @@ importers:
         specifier: ^6.43.11
         version: 6.43.11
       '@ezragubbay/core':
-        specifier: file:../../vendor/ezragubbay-core-0.1.0.tgz
-        version: file:vendor/ezragubbay-core-0.1.0.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.1.0
+        version: 0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@ezragubbay/folio':
-        specifier: file:../../vendor/ezragubbay-folio-0.1.0.tgz
-        version: file:vendor/ezragubbay-folio-0.1.0.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^0.1.0
+        version: 0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@napi-rs/canvas':
         specifier: ^1.0.8
         version: 1.0.8
@@ -865,16 +862,14 @@ packages:
       '@noble/hashes':
         optional: true
 
-  '@ezragubbay/core@file:vendor/ezragubbay-core-0.1.0.tgz':
-    resolution: {integrity: sha512-jyX8KOpHBBNdeLsPAqz5JMKtn1RcZHKnZ0FTyx09NiwB8snIPfmSZHJazzWcvNdIWu7WG+UPCnKHGROjme0/fA==, tarball: file:vendor/ezragubbay-core-0.1.0.tgz}
-    version: 0.1.0
+  '@ezragubbay/core@0.1.0':
+    resolution: {integrity: sha512-jyX8KOpHBBNdeLsPAqz5JMKtn1RcZHKnZ0FTyx09NiwB8snIPfmSZHJazzWcvNdIWu7WG+UPCnKHGROjme0/fA==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@ezragubbay/folio@file:vendor/ezragubbay-folio-0.1.0.tgz':
-    resolution: {integrity: sha512-EM7s0ysMmFzMDPpqV+o4MoNRS8rSZ3b3/lGiZV5PDslggGcsEMvMqC50GBKcYo8tIvcRwvHU/a0XTPkPPo/JDA==, tarball: file:vendor/ezragubbay-folio-0.1.0.tgz}
-    version: 0.1.0
+  '@ezragubbay/folio@0.1.0':
+    resolution: {integrity: sha512-EM7s0ysMmFzMDPpqV+o4MoNRS8rSZ3b3/lGiZV5PDslggGcsEMvMqC50GBKcYo8tIvcRwvHU/a0XTPkPPo/JDA==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -3221,15 +3216,15 @@ snapshots:
 
   '@exodus/bytes@1.15.1': {}
 
-  '@ezragubbay/core@file:vendor/ezragubbay-core-0.1.0.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@ezragubbay/core@0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       lucide-react: 1.40.0(react@19.2.8)
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@ezragubbay/folio@file:vendor/ezragubbay-folio-0.1.0.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@ezragubbay/folio@0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@ezragubbay/core': file:vendor/ezragubbay-core-0.1.0.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@ezragubbay/core': 0.1.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       better-react-mathjax: 3.0.2(react@19.2.8)
       lucide-react: 1.40.0(react@19.2.8)
       react: 19.2.8

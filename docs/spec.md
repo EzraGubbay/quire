@@ -67,7 +67,7 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 - Free everywhere except OpenAI usage.
 
 ### Stack
-- **Next.js 16** (App Router, route handlers, Turbopack, `proxy.ts` for auth), React 19, TypeScript. `@ezragubbay/folio` + `@ezragubbay/core` from **npm** once published from `~/.design`. Until then the built packages are vendored as tarballs in `vendor/` (Turbopack cannot resolve symlinks outside the repo, so `pnpm link` does not work); see `vendor/README.md`.
+- **Next.js 16** (App Router, route handlers, Turbopack, `proxy.ts` for auth), React 19, TypeScript. `@ezragubbay/folio` + `@ezragubbay/core` from **npm** (published 2026-09-04; Turbopack cannot resolve symlinks outside the repo, so `pnpm link` is not an option for local iteration, bump versions instead).
 - Drizzle ORM + drizzle-kit migrations, Postgres 17 + pgvector. Zod for validation. Serwist for the PWA. `pdfjs-dist` for the viewer. CodeMirror 6 (`@codemirror/lang-markdown`). `d3-force` for graph layout. `unified`/`remark` + `remark-math` + wiki-link plugin for Markdown rendering. OpenAI SDK. Vitest, Testing Library, Playwright. Biome for lint/format.
 - Repo: `ezragubbay/quire`, public, MIT. Layout:
   - `apps/web` — Next.js app
