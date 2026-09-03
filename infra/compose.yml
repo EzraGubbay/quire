@@ -26,9 +26,13 @@ services:
     environment:
       DATABASE_URL: postgres://quire:${POSTGRES_PASSWORD}@db:5432/quire
       FILES_DIR: /data/files
-      AUTH_MODE: cloudflare
-      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN}
-      CF_ACCESS_AUD: ${CF_ACCESS_AUD}
+      AUTH_MODE: ${AUTH_MODE:-github}
+      AUTH_URL: ${AUTH_URL:-https://quire.ezragubbay.com}
+      AUTH_SECRET: ${AUTH_SECRET:?set in .env}
+      AUTH_GITHUB_ID: ${AUTH_GITHUB_ID:-}
+      AUTH_GITHUB_SECRET: ${AUTH_GITHUB_SECRET:-}
+      ALLOWED_GITHUB_LOGIN: ${ALLOWED_GITHUB_LOGIN:?set in .env}
+      QUIRE_API_KEY: ${QUIRE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     volumes:
       - files:/data/files
@@ -47,8 +51,7 @@ services:
       - app
 
   backup:
-    build: ./backup
-    image: quire-backup:local
+    image: ${QUIRE_BACKUP_IMAGE:-ghcr.io/ezragubbay/quire-backup:latest}
     restart: unless-stopped
     depends_on:
       db:

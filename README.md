@@ -36,7 +36,7 @@ pnpm dev
 
 ## Deployment
 
-Self-hosted on a Raspberry Pi behind a Cloudflare Tunnel, with login by Cloudflare Access. Pushes to `main` build an arm64 image to GHCR and a self-hosted runner on the Pi deploys it. See [`infra/README.md`](infra/README.md).
+Self-hosted on a Raspberry Pi behind a Cloudflare Tunnel, with GitHub login via NextAuth. Pushes to `main` build an arm64 image to GHCR and a self-hosted runner on the Pi deploys it. See [`infra/README.md`](infra/README.md).
 
 ## Licence
 

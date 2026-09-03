@@ -57,7 +57,7 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 
 ### Hosting, auth, ops
 - **New Raspberry Pi** at 10.0.0.36 (Trixie, headless). Docker Compose: `app` (Next.js), `db` (`pgvector/pgvector:pg17`), `runner` (GitHub Actions self-hosted runner), `cloudflared`, `backup` (cron). Volumes: `pgdata`, `files` (PDFs, artifacts).
-- Public via **Cloudflare Tunnel** on the existing zone `ezragubbay.com` → **quire.ezragubbay.com**. Login via **Cloudflare Access** (email OTP/Google), app trusts the `Cf-Access-Jwt-Assertion` header (verified against Cloudflare's JWKS). Service token for the Python client and CI health checks.
+- Public via **Cloudflare Tunnel** (`quire-pi`, token read from the CLI with the account's origin cert) on the existing zone `ezragubbay.com` → **quire.ezragubbay.com**. Login via **NextAuth (Auth.js v5) with a GitHub OAuth app**, restricted to one GitHub login; JWT sessions, no adapter. Cloudflare Access was dropped on 2026-09-03 because enabling it asked for a payment method. `/api/*` also accepts `Authorization: Bearer $QUIRE_API_KEY` for the Python client and CI checks.
 - **CI/CD**: GitHub Actions. On PR/push: lint, typecheck, unit tests, Playwright e2e against a Postgres service, build. On `main`: build multi-arch image (arm64) → GHCR → deploy job on the Pi's self-hosted runner: pull, migrate, `compose up`, health check, rollback on failure.
 - **Backups**: nightly `pg_dump` + `rclone sync` of `files` to Backblaze B2 (10GB free); restore script; weekly restore test in CI is out of scope.
 - Free everywhere except OpenAI usage.

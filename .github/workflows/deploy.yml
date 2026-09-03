@@ -30,6 +30,7 @@ jobs:
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quire"
           echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "backup=${image}-backup" >> "$GITHUB_OUTPUT"
           echo "tag=${image}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
@@ -42,6 +43,17 @@ jobs:
             ${{ steps.meta.outputs.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push backup image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/backup
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.backup }}:${{ github.sha }}
+            ${{ steps.meta.outputs.backup }}:latest
+          cache-from: type=gha,scope=backup
+          cache-to: type=gha,mode=max,scope=backup
   deploy:
     name: Deploy on the Pi
     needs: image
@@ -49,11 +61,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Sync compose files
-        run: |
-          install -d /srv/quire/backup
-          cp infra/compose.yml /srv/quire/compose.yml
-          cp infra/backup/* /srv/quire/backup/
+      - name: Sync compose file
+        run: cp infra/compose.yml /srv/quire/compose.yml
       - name: Pull, migrate, restart
         working-directory: /srv/quire
         env:
@@ -66,11 +75,9 @@ jobs:
           echo "${prev:-}" > .previous_image
           sed -i "s#^QUIRE_IMAGE=.*#QUIRE_IMAGE=${TAG}#" .env
           grep -q '^QUIRE_IMAGE=' .env || echo "QUIRE_IMAGE=${TAG}" >> .env
-          docker compose pull app
+          docker compose pull app backup
           docker compose up -d db
           docker compose up -d --remove-orphans
-          docker compose build backup >/dev/null
-          docker compose up -d backup
       - name: Health check
         working-directory: /srv/quire
         run: |
