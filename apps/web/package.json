@@ -29,6 +29,7 @@
     "better-react-mathjax": "^3.0.2",
     "codemirror": "^6.0.2",
     "drizzle-orm": "^0.45.0",
+    "fast-xml-parser": "^5.11.1",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "next-auth": "5.0.0-beta.32",

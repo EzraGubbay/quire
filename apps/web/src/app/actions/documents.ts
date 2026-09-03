@@ -3,9 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import type { Document } from '@/db/schema';
 import {
+  attachPdf,
   createFolder,
   createMarkdownDocument,
+  createPaperStub,
   createPdfDocument,
   deleteDocument,
   deleteFolder,
@@ -13,6 +16,7 @@ import {
   renameFolder,
   updateDocument,
 } from '@/lib/documents';
+import { downloadPdf, type PaperMeta, parseReference, resolveReference } from '@/lib/ingest';
 import { getProjectBySlug } from '@/lib/projects';
 
 export interface ActionState {
@@ -153,6 +157,71 @@ export async function updateDocumentAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
   await updateDocument(project.id, documentId, parsed.data);
+  revalidatePath(`/p/${slug}/documents/${documentId}`);
+  return { ok: true };
+}
+
+const importSchema = z.object({
+  slug: z.string().min(1),
+  reference: z.string().trim().min(1).max(2000),
+  folderId: optionalUuid,
+});
+
+/** Paste an arXiv id/URL, a DOI, or a direct PDF link: resolves metadata, downloads the PDF when one is known. */
+export async function importReferenceAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = importSchema.safeParse({
+    slug: formData.get('slug'),
+    reference: formData.get('reference'),
+    folderId: formData.get('folderId') ?? '',
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  const { slug, reference, folderId } = parsed.data;
+  const ref = parseReference(reference);
+  if (!ref) return { error: 'That does not look like an arXiv id, a DOI, or a link.' };
+  const project = await projectOr404(slug);
+  let meta: PaperMeta;
+  try {
+    meta = await resolveReference(ref);
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+  const base = {
+    folderId,
+    sourceUrl: meta.sourceUrl ?? null,
+    arxivId: meta.arxivId ?? null,
+    doi: meta.doi ?? null,
+    meta: { title: meta.title, authors: meta.authors, year: meta.year, abstract: meta.abstract },
+  };
+  let doc: Document;
+  if (meta.pdfUrl) {
+    try {
+      const { data, fileName } = await downloadPdf(meta.pdfUrl);
+      doc = await createPdfDocument(project.id, { ...base, fileName, data });
+    } catch (err) {
+      if (ref.kind === 'url') return { error: (err as Error).message };
+      // Metadata is still worth keeping; the PDF can be attached by hand.
+      doc = await createPaperStub(project.id, base);
+    }
+  } else {
+    doc = await createPaperStub(project.id, base);
+  }
+  revalidatePath(`/p/${slug}/documents`);
+  redirect(`/p/${slug}/documents/${doc.id}`);
+}
+
+/** Upload a PDF into a paper record that has metadata but no file yet. */
+export async function attachPdfAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const slug = String(formData.get('slug') ?? '');
+  const documentId = String(formData.get('documentId') ?? '');
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { error: 'Choose a PDF file.' };
+  if (file.size > MAX_PDF_BYTES) return { error: 'PDF is larger than 80 MB.' };
+  const project = await projectOr404(slug);
+  try {
+    await attachPdf(project.id, documentId, new Uint8Array(await file.arrayBuffer()));
+  } catch (err) {
+    return { error: `Could not read that PDF: ${(err as Error).message}` };
+  }
   revalidatePath(`/p/${slug}/documents/${documentId}`);
   return { ok: true };
 }

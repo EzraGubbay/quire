@@ -76,3 +76,14 @@
   font: 500 14px / 1.2 var(--eg-font-prose);
   color: var(--eg-text);
 }
+.attach {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px dashed var(--eg-rule);
+  border-radius: var(--eg-radius-card);
+  display: grid;
+  gap: 10px;
+}
+.attach input[type="file"] {
+  display: none;
+}

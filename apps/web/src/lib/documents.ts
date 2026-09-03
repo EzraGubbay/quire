@@ -122,6 +122,48 @@ export async function createPdfDocument(projectId: string, upload: PdfUpload): P
   return { ...row, filePath: rel };
 }
 
+/** A paper we know about (metadata from arXiv/Crossref) whose PDF is not available yet. */
+export async function createPaperStub(
+  projectId: string,
+  input: Pick<PdfUpload, 'folderId' | 'sourceUrl' | 'arxivId' | 'doi' | 'meta'>,
+): Promise<Document> {
+  const [row] = await db
+    .insert(documents)
+    .values({
+      projectId,
+      folderId: input.folderId ?? null,
+      kind: 'pdf',
+      title: input.meta?.title ?? input.doi ?? input.arxivId ?? 'Untitled paper',
+      authors: input.meta?.authors ?? [],
+      year: input.meta?.year ?? null,
+      abstract: input.meta?.abstract ?? '',
+      sourceUrl: input.sourceUrl ?? null,
+      arxivId: input.arxivId ?? null,
+      doi: input.doi ?? null,
+    })
+    .returning();
+  if (!row) throw new Error('insert returned no row');
+  return row;
+}
+
+/** Stores a PDF for an existing stub and extracts its text. Keeps the metadata already on the row. */
+export async function attachPdf(projectId: string, id: string, data: Uint8Array): Promise<void> {
+  const doc = await getDocument(projectId, id);
+  if (!doc || doc.kind !== 'pdf') throw new Error('document not found');
+  const extracted = await extractPdf(data);
+  const rel = await storeFile(projectId, id, 'pdf', data);
+  await db.delete(documentPages).where(eq(documentPages.documentId, id));
+  if (extracted.pages.length > 0) {
+    await db
+      .insert(documentPages)
+      .values(extracted.pages.map((text, i) => ({ documentId: id, pageNo: i + 1, text })));
+  }
+  await db
+    .update(documents)
+    .set({ filePath: rel, fileSize: data.byteLength, pageCount: extracted.pageCount, updatedAt: new Date() })
+    .where(eq(documents.id, id));
+}
+
 export async function createMarkdownDocument(
   projectId: string,
   title: string,

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Icon, PaperHeader, Prose } from '@ezragubbay/folio';
+import { Button, Icon } from '@ezragubbay/folio';
 import type { Anchor, AnnotationType, MarkdownAnchor, PdfAnchor } from '@quire/shared';
 import { ArrowLeft, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
@@ -15,6 +15,7 @@ import { deleteDocumentAction, updateDocumentAction } from '@/app/actions/docume
 import type { Annotation, Document } from '@/db/schema';
 import a11y from './annotations.module.css';
 import { AnnotationsPanel } from './annotations-panel';
+import { AttachPdf } from './attach-pdf';
 import s from './document-view.module.css';
 import { type MarkdownSelection, MarkdownView, type MarkdownViewHandle } from './markdown-view';
 import { type PdfSelection, PdfViewer, type PdfViewerHandle } from './pdf-viewer';
@@ -209,28 +210,7 @@ export function DocumentView({
               onSelection={setSelection}
             />
           ) : (
-            <div className={s.paper}>
-              <Prose>
-                <PaperHeader
-                  title={doc.title}
-                  authors={doc.authors.join(', ') || undefined}
-                  meta={[
-                    doc.arxivId ? `arXiv:${doc.arxivId}` : null,
-                    doc.doi ? `doi:${doc.doi}` : null,
-                    doc.year ? String(doc.year) : null,
-                  ].filter((m): m is string => Boolean(m))}
-                />
-                {doc.abstract && <p className={s.abstract}>{doc.abstract}</p>}
-                <div className={s.pages}>
-                  {pages.map((p) => (
-                    <section key={p.pageNo} className={s.page} id={`page-${p.pageNo}`}>
-                      <div className={s.pageNo}>p. {p.pageNo}</div>
-                      <p>{p.text}</p>
-                    </section>
-                  ))}
-                </div>
-              </Prose>
-            </div>
+            <AttachPdf slug={slug} document={doc} />
           )}
           {selection && (
             <div

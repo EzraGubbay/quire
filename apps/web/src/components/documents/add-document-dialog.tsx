@@ -2,13 +2,19 @@
 
 import { Button } from '@ezragubbay/folio';
 import { useActionState, useRef, useState } from 'react';
-import { type ActionState, createMarkdownAction, uploadPdfAction } from '@/app/actions/documents';
+import {
+  type ActionState,
+  createMarkdownAction,
+  importReferenceAction,
+  uploadPdfAction,
+} from '@/app/actions/documents';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
 import type { Folder } from '@/db/schema';
+import { parseReference } from '@/lib/ingest';
 import s from './documents.module.css';
 
-type Mode = 'upload' | 'markdown';
+type Mode = 'upload' | 'reference' | 'markdown';
 
 export function AddDocumentDialog({
   slug,
@@ -30,6 +36,7 @@ export function AddDocumentDialog({
         {(
           [
             ['upload', 'Upload PDF'],
+            ['reference', 'arXiv / DOI / link'],
             ['markdown', 'New Markdown'],
           ] as const
         ).map(([m, label]) => (
@@ -48,6 +55,8 @@ export function AddDocumentDialog({
       </div>
       {mode === 'upload' ? (
         <UploadForm slug={slug} folders={folders} defaultFolderId={defaultFolderId} onCancel={onClose} />
+      ) : mode === 'reference' ? (
+        <ReferenceForm slug={slug} folders={folders} defaultFolderId={defaultFolderId} onCancel={onClose} />
       ) : (
         <MarkdownForm slug={slug} folders={folders} defaultFolderId={defaultFolderId} onCancel={onClose} />
       )}
@@ -175,6 +184,55 @@ function MarkdownForm({
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
           Create document
+        </Button>
+      </DialogActions>
+    </form>
+  );
+}
+
+function ReferenceForm({
+  slug,
+  folders,
+  defaultFolderId,
+  onCancel,
+}: {
+  slug: string;
+  folders: Folder[];
+  defaultFolderId: string | null;
+  onCancel: () => void;
+}) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(importReferenceAction, {});
+  const [value, setValue] = useState('');
+  const ref = parseReference(value);
+  const hint = !value.trim()
+    ? 'An arXiv id or URL, a DOI, or a direct link to a PDF.'
+    : ref?.kind === 'arxiv'
+      ? `arXiv ${ref.id}: metadata and PDF from arxiv.org`
+      : ref?.kind === 'doi'
+        ? `DOI ${ref.doi}: metadata from Crossref, PDF if openly available`
+        : ref?.kind === 'url'
+          ? 'Direct link: the PDF is downloaded and read'
+          : 'Not recognised yet';
+  return (
+    <form action={action} className={s.form}>
+      <input type="hidden" name="slug" value={slug} />
+      <Field label="Reference" hint={hint} error={state.error}>
+        <Input
+          name="reference"
+          required
+          autoFocus
+          placeholder="2609.01234 · https://arxiv.org/abs/… · 10.1000/xyz · https://…/paper.pdf"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      </Field>
+      <FolderSelect folders={folders} defaultFolderId={defaultFolderId} />
+      <DialogActions>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" disabled={pending || !ref}>
+          {pending ? 'Fetching…' : 'Add'}
         </Button>
       </DialogActions>
     </form>
