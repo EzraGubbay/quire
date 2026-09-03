@@ -33,7 +33,8 @@ test('a global macro defined in settings typesets in a note', async ({ page }) =
 
   // Delete the two macros again to keep the global set clean.
   await page.goto('/settings');
-  await page.getByRole('button', { name: `Delete macro ${name}two` }).click();
-  await page.getByRole('button', { name: `Delete macro ${name}` }).click();
+  await page.getByRole('button', { name: `Delete macro ${name}two`, exact: true }).click();
+  await expect(page.getByRole('button', { name: `Delete macro ${name}two`, exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: `Delete macro ${name}`, exact: true }).click();
   await expect(page.locator('code', { hasText: `\\${name}` })).toHaveCount(0);
 });
