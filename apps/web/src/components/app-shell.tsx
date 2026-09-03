@@ -47,11 +47,12 @@ export function AppShell({ project, children }: AppShellProps) {
   const activeTab = project
     ? PROJECT_TABS.find((t) => pathname.startsWith(`/p/${project.slug}/${t.id}`))?.id
     : undefined;
-  // Warm the router cache for every tab so the first click does not wait on the network for the shell.
+  // Warm the router cache for every tab once per project so the first click does not wait on the network.
+  const slug = project?.slug;
   useEffect(() => {
-    if (!project) return;
-    for (const t of PROJECT_TABS) router.prefetch(`/p/${project.slug}/${t.id}`);
-  }, [project, router]);
+    if (!slug) return;
+    for (const t of PROJECT_TABS) router.prefetch(`/p/${slug}/${t.id}`);
+  }, [slug, router]);
   // The design system's AppBar renders tabs as plain anchors; route them through the client router so tab
   // changes keep the shell mounted (no full reload, no pre-hydration clicks).
   const onNavClick = (e: React.MouseEvent) => {
