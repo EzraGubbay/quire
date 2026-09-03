@@ -1,0 +1,73 @@
+.viewer {
+  position: relative;
+  overflow: auto;
+  background: var(--eg-surface-2);
+  padding: 24px 0 120px;
+  flex: 1;
+  min-height: 0;
+}
+.pages {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+}
+.page {
+  position: relative;
+  background: white;
+  box-shadow:
+    0 1px 2px rgba(20, 16, 12, 0.12),
+    0 8px 24px rgba(20, 16, 12, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.page canvas {
+  display: block;
+}
+.pageNo {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font: 500 10px / 1 var(--eg-font-mono);
+  color: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 3;
+}
+.highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: multiply;
+}
+.hl {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--hl, var(--folio-hl-claim));
+  opacity: 0.55;
+}
+.hl[data-active="true"] {
+  opacity: 0.9;
+  outline: 1.5px solid var(--hl-text, var(--eg-accent));
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 500 12px / 1 var(--eg-font-mono);
+  color: var(--eg-text-2);
+}
+.toolbar input {
+  width: 48px;
+  text-align: center;
+  font: inherit;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-control);
+  padding: 4px;
+  background: var(--eg-bg);
+  color: var(--eg-text);
+}
+.loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--eg-muted);
+}

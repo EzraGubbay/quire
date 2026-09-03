@@ -18,8 +18,8 @@ test.describe('documents', () => {
     await page.getByLabel('PDF file').setInputFiles(fixture);
     await page.getByRole('button', { name: 'Add PDF' }).click();
     await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
-    await expect(page.getByRole('heading', { name: /Quire fixture/ })).toBeVisible();
-    await expect(page.locator('#page-2')).toContainText('Second page of the fixture document');
+    await expect(page.locator('[class*="barTitle"]')).toContainText('Quire fixture');
+    await expect(page.locator('[data-page="2"] .textLayer span').first()).toHaveText(/Second page/);
 
     // Reading status
     await page.getByRole('button', { name: 'reading', exact: true }).click();
