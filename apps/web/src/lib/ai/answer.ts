@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { documents } from '@/db/schema';
 import type { Citation } from '../chat';
-import { retrieve } from './index';
+import { indexedCounts, retrieve } from './index';
 import { assertBudget, BudgetError, estimateTokens, markProviderBlocked, recordUsage } from './ledger';
 import { type ChatMessageIn, chatStream, ProviderError } from './provider';
 import { costFor, getAiSettings } from './settings';
@@ -29,8 +29,16 @@ export interface AnswerResult {
   costUsd: number;
 }
 
-const SYSTEM = (projectName: string, scope: string | null) =>
-  `You are Quire, a research assistant inside the project “${projectName}”. Answer from the numbered context below when it is relevant, citing passages inline as [n]. Say clearly when the context does not cover the question, then answer from general knowledge and mark that. Use Markdown; write math in TeX between $ or $$. Be precise and concise; prefer exact quantities and names.${scope ? ` The user is asking about the document “${scope}”; keep to it unless they broaden the question.` : ''}`;
+const KIND_LABEL: Record<string, string> = {
+  document: 'Document',
+  note: 'Note',
+  source: 'Source',
+  annotation: 'Annotation',
+  run: 'Run',
+};
+
+const SYSTEM = (projectName: string, scope: string | null, counts: string) =>
+  `You are Quire, a research assistant inside the user's research project “${projectName}”. The numbered context below is drawn from the user's own material in this project: their notes, the documents (papers and write-ups) they added, their annotations, and their sources. Each passage is labelled with its kind and title. Treat notes and annotations as the user's own thinking and refer to them as such. Answer from the context when it is relevant, citing passages inline as [n]. When the context does not cover the question, say so plainly, then answer from general knowledge and mark it as such. Use Markdown; write math in TeX between $ or $$. Be precise and concise.${scope ? ` The user is asking about the document “${scope}”; keep to it unless they broaden the question.` : ''}${counts ? ` Indexed in this project: ${counts}.` : ''}`;
 
 export async function answer(input: AnswerInput): Promise<AnswerResult> {
   const s = await getAiSettings();
@@ -56,12 +64,16 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
     pageNo: c.pageNo,
   }));
   const context = chunks
-    .map((c, i) => `[${i + 1}] ${c.title}${c.pageNo ? ` (p.${c.pageNo})` : ''}\n${c.text}`)
+    .map(
+      (c, i) =>
+        `[${i + 1}] ${KIND_LABEL[c.kind] ?? c.kind}: ${c.title}${c.pageNo ? ` (p.${c.pageNo})` : ''}\n${c.text}`,
+    )
     .join('\n\n');
+  const counts = await indexedCounts(input.projectId);
   const messages: ChatMessageIn[] = [
     {
       role: 'system',
-      content: `${SYSTEM(input.projectName, scopeTitle)}\n\nContext:\n${context || '(nothing indexed matches; say so)'}`,
+      content: `${SYSTEM(input.projectName, scopeTitle, counts)}\n\nContext:\n${context || '(nothing indexed matches this question; say so)'}`,
     },
     ...input.history.slice(-12),
     { role: 'user', content: input.question },

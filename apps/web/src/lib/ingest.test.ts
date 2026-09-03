@@ -1,4 +1,4 @@
-import { downloadPdf, fetchArxivMeta, parseReference } from './ingest';
+import { downloadPdf, fetchArxivMeta, findPdfUrl, parseReference } from './ingest';
 
 describe('parseReference', () => {
   it('recognises arXiv ids and URLs', () => {
@@ -48,13 +48,54 @@ describe('downloadPdf', () => {
         status: 200,
         headers: { 'content-type': 'text/html' },
       })) as typeof fetch;
-    await expect(downloadPdf('https://x.test/p', html)).rejects.toThrow(/did not return a PDF/);
+    await expect(downloadPdf('https://x.test/p', html)).rejects.toThrow(/does not link to a PDF/);
   });
   it('accepts PDF bytes and derives a file name', async () => {
     const pdf = (async () =>
       new Response(new TextEncoder().encode('%PDF-1.4 fake'), { status: 200 })) as typeof fetch;
     const out = await downloadPdf('https://x.test/papers/routing.pdf', pdf);
     expect(out.fileName).toBe('routing.pdf');
+    expect(out.data.byteLength).toBeGreaterThan(0);
+  });
+});
+
+describe('findPdfUrl', () => {
+  it('prefers citation_pdf_url, then alternate links, then download anchors', () => {
+    const base = 'https://ojs.aaai.org/index.php/AAAI/article/view/11188/11047';
+    expect(
+      findPdfUrl(
+        '<meta name="citation_pdf_url" content="https://ojs.aaai.org/index.php/AAAI/article/download/11188/11047">',
+        base,
+      ),
+    ).toBe('https://ojs.aaai.org/index.php/AAAI/article/download/11188/11047');
+    expect(findPdfUrl('<link rel="alternate" type="application/pdf" href="/files/paper.pdf">', base)).toBe(
+      'https://ojs.aaai.org/files/paper.pdf',
+    );
+    expect(
+      findPdfUrl(
+        '<a class="obj_galley_link pdf" href="/index.php/AAAI/article/download/11188/11047">PDF</a>',
+        base,
+      ),
+    ).toBe('https://ojs.aaai.org/index.php/AAAI/article/download/11188/11047');
+    expect(findPdfUrl('<a href="/about">About</a>', base)).toBeNull();
+  });
+  it('downloadPdf follows a landing page to its PDF', async () => {
+    const calls: string[] = [];
+    const f = (async (u: string | URL | Request) => {
+      const url = String(u);
+      calls.push(url);
+      if (url.endsWith('/view/1'))
+        return new Response(
+          '<html><meta name="citation_pdf_url" content="https://x.test/download/1"></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      return new Response(new TextEncoder().encode('%PDF-1.4 fake'), {
+        status: 200,
+        headers: { 'content-type': 'application/pdf' },
+      });
+    }) as typeof fetch;
+    const out = await downloadPdf('https://x.test/view/1', f);
+    expect(calls).toEqual(['https://x.test/view/1', 'https://x.test/download/1']);
     expect(out.data.byteLength).toBeGreaterThan(0);
   });
 });

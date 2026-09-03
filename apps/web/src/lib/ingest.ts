@@ -112,7 +112,9 @@ export async function fetchDoiMeta(doi: string, fetchImpl: typeof fetch = fetch)
     doi,
     arxivId: arxivMatch?.[1] ?? null,
     sourceUrl: m.URL ?? `https://doi.org/${doi}`,
-    pdfUrl: arxivMatch?.[1] ? `https://arxiv.org/pdf/${arxivMatch[1]}` : pdfLink,
+    pdfUrl: arxivMatch?.[1]
+      ? `https://arxiv.org/pdf/${arxivMatch[1]}`
+      : (pdfLink ?? m.URL ?? `https://doi.org/${doi}`),
   };
 }
 
@@ -136,13 +138,57 @@ function stripJats(s: string): string {
 
 const MAX_PDF = 80 * 1024 * 1024;
 
-/** Downloads a PDF, following redirects, rejecting non-PDF responses and anything over 80 MB. */
+/** Finds the PDF a landing page points at: Highwire/Google Scholar meta tags, alternate links, or an obvious download link. */
+export function findPdfUrl(html: string, baseUrl: string): string | null {
+  const abs = (href: string) => {
+    try {
+      return new URL(href.replace(/&amp;/g, '&'), baseUrl).toString();
+    } catch {
+      return null;
+    }
+  };
+  const meta =
+    html.match(
+      /<meta[^>]+name=["'](?:citation_pdf_url|dc\.identifier\.pdf)["'][^>]+content=["']([^"']+)["']/i,
+    ) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']citation_pdf_url["']/i);
+  if (meta?.[1]) return abs(meta[1]);
+  const alt =
+    html.match(/<link[^>]+type=["']application\/pdf["'][^>]+href=["']([^"']+)["']/i) ??
+    html.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/pdf["']/i);
+  if (alt?.[1]) return abs(alt[1]);
+  const anchors = [...html.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]{0,120}?)<\/a>/gi)];
+  const scored = anchors
+    .map((m) => ({
+      href: m[1] ?? '',
+      text: (m[2] ?? '')
+        .replace(/<[^>]+>/g, '')
+        .trim()
+        .toLowerCase(),
+    }))
+    .map((a) => ({
+      ...a,
+      score:
+        (/\.pdf(\?|$)/i.test(a.href) ? 3 : 0) +
+        (/\/download\//i.test(a.href) ? 2 : 0) +
+        (/\bpdf\b/.test(a.text) ? 2 : 0) +
+        (/download/.test(a.text) ? 1 : 0),
+    }))
+    .filter((a) => a.score >= 2)
+    .sort((a, b) => b.score - a.score);
+  return scored[0] ? abs(scored[0].href) : null;
+}
+
+/**
+ * Downloads a PDF, following redirects, rejecting anything over 80 MB. When the URL returns an HTML page
+ * (a publisher landing page, an OJS "view" page), looks for the PDF it links to and fetches that instead.
+ */
 export async function downloadPdf(
   url: string,
   fetchImpl: typeof fetch = fetch,
+  hop = 0,
 ): Promise<{ data: Uint8Array; fileName: string }> {
   const res = await fetchImpl(url, {
-    headers: { 'user-agent': UA, accept: 'application/pdf,*/*' },
+    headers: { 'user-agent': UA, accept: 'application/pdf,text/html;q=0.9,*/*;q=0.8' },
     redirect: 'follow',
     signal: AbortSignal.timeout(60000),
   });
@@ -154,6 +200,14 @@ export async function downloadPdf(
   const head = new TextDecoder().decode(buf.slice(0, 5));
   if (!head.startsWith('%PDF')) {
     const type = res.headers.get('content-type') ?? 'unknown';
+    if (/html/i.test(type) && hop === 0) {
+      const html = new TextDecoder().decode(buf.slice(0, 2_000_000));
+      const pdfUrl = findPdfUrl(html, res.url || url);
+      if (pdfUrl && pdfUrl !== url) return downloadPdf(pdfUrl, fetchImpl, 1);
+      throw new Error(
+        'That page does not link to a PDF that Quire can find. Download it yourself and upload it, or paste the direct PDF link.',
+      );
+    }
     throw new Error(
       `That link did not return a PDF (${type}). Paste a direct PDF link, an arXiv id, or a DOI.`,
     );

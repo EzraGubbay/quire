@@ -251,3 +251,22 @@ export async function retrieve(
     return { ...r, score: Number(r.score), title: t.title, href: t.href };
   });
 }
+
+/** "3 documents, 2 notes, 5 annotations, 1 source" for the system prompt, so the model knows what exists. */
+export async function indexedCounts(projectId: string): Promise<string> {
+  const rows = await db
+    .select({ kind: embeddings.ownerKind, n: sql<number>`count(distinct ${embeddings.ownerId})::int` })
+    .from(embeddings)
+    .where(eq(embeddings.projectId, projectId))
+    .groupBy(embeddings.ownerKind);
+  const label: Record<string, [string, string]> = {
+    document: ['document', 'documents'],
+    note: ['note', 'notes'],
+    annotation: ['annotation', 'annotations'],
+    source: ['source', 'sources'],
+  };
+  return rows
+    .filter((r) => r.n > 0)
+    .map((r) => `${r.n} ${r.n === 1 ? (label[r.kind]?.[0] ?? r.kind) : (label[r.kind]?.[1] ?? r.kind)}`)
+    .join(', ');
+}
