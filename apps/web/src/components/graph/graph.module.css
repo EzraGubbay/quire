@@ -1,0 +1,33 @@
+.wrap {
+  display: grid;
+  gap: 10px;
+}
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter {
+  font: 500 12px / 1 var(--eg-font-ui);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--eg-rule);
+  background: var(--eg-bg);
+  color: var(--eg-text-2);
+  cursor: pointer;
+}
+.filter[data-active="true"] {
+  background: var(--eg-accent-soft);
+  border-color: var(--eg-accent);
+  color: var(--eg-accent-text);
+}
+.count {
+  margin-left: auto;
+  font: 400 12px / 1 var(--eg-font-mono);
+  color: var(--eg-muted);
+}
+.empty {
+  margin: 0;
+  color: var(--eg-muted);
+}

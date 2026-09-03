@@ -31,6 +31,13 @@ test('notes: create, edit with a wiki link, follow it to create the target, see 
   await page.waitForURL(/\/notes\/elbo-tightness$/);
   await expect(page.getByRole('link', { name: 'Routing entropy' }).first()).toBeVisible();
 
+  // Graph shows both notes and their link.
+  await page.getByRole('link', { name: 'Graph' }).click();
+  await page.waitForURL(/\/notes\/graph$/);
+  await expect(page.getByText(/2 nodes · 1 links/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Routing entropy/ })).toBeVisible();
+  await page.goBack();
+
   // Search in the rail.
   await page.getByLabel('Search notes').fill('routing');
   await expect(page.locator('[class*="itemTitle"]')).toHaveCount(1);

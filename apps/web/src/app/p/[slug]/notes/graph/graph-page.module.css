@@ -1,0 +1,10 @@
+.wrap {
+  width: min(1140px, 100% - 48px);
+  margin: 24px auto;
+  display: grid;
+  gap: 12px;
+}
+.title {
+  margin: 0;
+  font: 600 22px / 1.2 var(--eg-font-heading);
+}

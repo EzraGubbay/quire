@@ -3,6 +3,8 @@ import { ANNOTATION_TYPE_LABEL } from '@quire/shared';
 import { FileText, FolderOpen } from 'lucide-react';
 import NextLink from 'next/link';
 import { notFound } from 'next/navigation';
+import { GraphView } from '@/components/graph/graph-view';
+import { getGraph } from '@/lib/graph';
 import { getOverview } from '@/lib/overview';
 import { getProjectBySlug } from '@/lib/projects';
 import s from './overview.module.css';
@@ -23,7 +25,7 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
-  const o = await getOverview(project.id);
+  const [o, graph] = await Promise.all([getOverview(project.id), getGraph(project.id, slug)]);
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -103,8 +105,16 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
         <Card title="Experiments" action={<span />}>
           <p className={s.muted}>Runs reported by the Python client arrive in Phase 3.</p>
         </Card>
-        <Card title="Note graph" action={<span />}>
-          <p className={s.muted}>Notes, documents, sources, and ideas, linked. Phase 2.</p>
+        <Card
+          title="Note graph"
+          action={
+            <NextLink href={`/p/${slug}/notes/graph`} className={s.more}>
+              Open
+            </NextLink>
+          }
+          className={s.wide}
+        >
+          <GraphView data={graph} width={640} height={320} legend={false} />
         </Card>
       </div>
     </div>

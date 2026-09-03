@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { Plus } from 'lucide-react';
+import { Plus, Waypoints } from 'lucide-react';
 import NextLink from 'next/link';
 import { useActionState, useMemo, useState } from 'react';
 import { type ActionState, createNoteAction } from '@/app/actions/notes';
@@ -30,13 +30,18 @@ export function NotesRail({ slug, notes, activeSlug }: { slug: string; notes: No
     <aside className={s.rail} aria-label="Notes">
       <div className={s.railHead}>
         <h2 className={s.railTitle}>Notes · {notes.length}</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="New note"
-          icon={<Icon icon={Plus} />}
-          onClick={() => setOpen(true)}
-        />
+        <div style={{ display: 'flex', gap: 2 }}>
+          <NextLink href={`/p/${slug}/notes/graph`} aria-label="Graph" title="Graph" className={s.iconLink}>
+            <Icon icon={Waypoints} />
+          </NextLink>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="New note"
+            icon={<Icon icon={Plus} />}
+            onClick={() => setOpen(true)}
+          />
+        </div>
       </div>
       <input
         className={s.search}
