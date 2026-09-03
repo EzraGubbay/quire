@@ -1,10 +1,14 @@
-import { EmptyState } from '@/components/ui/empty-state';
+import { notFound } from 'next/navigation';
+import { Explorer } from '@/components/documents/explorer';
+import { listDocuments, listFolders } from '@/lib/documents';
+import { getProjectBySlug } from '@/lib/projects';
 
-export default function DocumentsPage() {
-  return (
-    <EmptyState title="Documents">
-      PDFs you upload or fetch from arXiv, a URL, or a DOI, plus Markdown documents you write. One viewer, one
-      annotation panel.
-    </EmptyState>
-  );
+export const dynamic = 'force-dynamic';
+
+export default async function DocumentsPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const project = await getProjectBySlug(slug);
+  if (!project) notFound();
+  const [folders, documents] = await Promise.all([listFolders(project.id), listDocuments(project.id)]);
+  return <Explorer slug={slug} folders={folders} documents={documents} />;
 }

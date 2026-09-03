@@ -17,11 +17,13 @@
   "dependencies": {
     "@ezragubbay/core": "file:../../vendor/ezragubbay-core-0.1.0.tgz",
     "@ezragubbay/folio": "file:../../vendor/ezragubbay-folio-0.1.0.tgz",
+    "@napi-rs/canvas": "^1.0.8",
     "@quire/shared": "workspace:*",
     "drizzle-orm": "^0.45.0",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "next-auth": "5.0.0-beta.32",
+    "pdfjs-dist": "^5.7.284",
     "postgres": "^3.4.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
