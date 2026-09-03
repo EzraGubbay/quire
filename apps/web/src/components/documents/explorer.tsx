@@ -2,7 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { DocumentKind, ReadingStatus } from '@quire/shared';
-import { FileText, FolderIcon, FolderOpen, FolderPlus, Inbox, Plus, Trash2 } from 'lucide-react';
+import { FileText, FolderIcon, FolderOpen, FolderPlus, Inbox, Plus, Sparkles, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
@@ -143,9 +143,18 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
                 ? 'Unfiled'
                 : (folders.find((f) => f.id === folderId)?.name ?? 'Folder')}
           </h1>
-          <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setAddOpen(true)}>
-            Add document
-          </Button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <NextLink
+              href={`/p/${slug}/discover`}
+              className={s.chip}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Icon icon={Sparkles} /> Discover
+            </NextLink>
+            <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setAddOpen(true)}>
+              Add document
+            </Button>
+          </div>
         </div>
         <div className={s.filters}>
           {(['all', 'unread', 'reading', 'done'] as const).map((f) => (

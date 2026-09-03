@@ -49,3 +49,46 @@ a {
   flex: 1;
   min-width: 0;
 }
+
+/* iPad and narrower: rails stack above content; panels take the full width. */
+@media (max-width: 1024px) {
+  .folio header label:has(> input[type="search"]) {
+    min-width: 200px;
+  }
+}
+@media (max-width: 900px) {
+  [class*="documents-module"][class*="layout"],
+  [class*="notes-module"][class*="layout"],
+  [class*="chat-module"][class*="layout"] {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr;
+  }
+  [class*="documents-module"][class*="rail"],
+  [class*="notes-module"][class*="rail"],
+  [class*="chat-module"][class*="rail"] {
+    max-height: 32vh;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--eg-rule);
+  }
+  [class*="annotations-module"][class*="panel"]:not([data-collapsed="true"]) {
+    width: min(360px, 88vw) !important;
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 5;
+    box-shadow: -12px 0 30px rgba(20, 16, 12, 0.18);
+  }
+  [class*="notes-module"][class*="read"] {
+    grid-template-columns: 1fr !important;
+  }
+  [class*="notes-module"][class*="aside"] {
+    border-left: 0 !important;
+    border-top: 1px solid var(--eg-rule);
+  }
+  [class*="document-editor-module"][class*="split"],
+  [class*="notes-module"][class*="split"] {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr 1fr;
+  }
+}

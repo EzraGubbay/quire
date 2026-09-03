@@ -6,12 +6,16 @@ import './globals.css';
 import './highlights.css';
 import { Providers } from '@/components/providers';
 import { MacroDefs } from '@/components/settings/macro-defs';
+import { SwRegister } from '@/components/sw-register';
 import { mergedMacros, newcommandBlock } from '@/lib/macros';
 
 export const metadata: Metadata = {
   title: { default: 'Quire', template: '%s · Quire' },
   description: 'A personal research project manager.',
   applicationName: 'Quire',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Quire' },
+  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
 };
 
 export const viewport: Viewport = {
@@ -31,6 +35,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <Providers>
           <MacroDefs block={block} />
           {children}
+          <SwRegister />
         </Providers>
       </body>
     </html>

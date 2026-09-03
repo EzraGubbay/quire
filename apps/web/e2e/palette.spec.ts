@@ -9,9 +9,12 @@ test('command palette: ⌘K opens, searches notes, runs commands', async ({ page
   await page.waitForURL(/\/overview$/);
 
   // New note via the palette command.
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
   const input = page.getByRole('dialog', { name: 'Command palette' }).getByRole('textbox');
-  await expect(input).toBeFocused();
+  // Right after a redirect the shell may not have attached its key handler yet; retry the shortcut.
+  await expect(async () => {
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
+    await expect(input).toBeFocused({ timeout: 700 });
+  }).toPass({ timeout: 10_000 });
   await input.fill('new note');
   await page.keyboard.press('Enter');
   await page.waitForURL(/\/notes\?new=1$/);

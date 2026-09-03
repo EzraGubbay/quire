@@ -3,7 +3,15 @@ import { AUTH_MODE, auth, githubConfigured } from '@/auth';
 
 // Reachable without a session: health (probed over localhost by the deploy job), the auth routes
 // themselves, the PWA manifest and icons.
-const PUBLIC_PREFIXES = ['/api/health', '/api/auth/', '/manifest.webmanifest', '/icons/'];
+const PUBLIC_PREFIXES = [
+  '/api/health',
+  '/api/auth/',
+  '/manifest.webmanifest',
+  '/icons/',
+  '/sw.js',
+  '/offline',
+  '/pdf.worker.min.mjs',
+];
 
 function bearerOk(req: NextRequest): boolean {
   const key = process.env.QUIRE_API_KEY;

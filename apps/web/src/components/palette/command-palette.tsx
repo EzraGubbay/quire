@@ -50,6 +50,13 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
         { id: 'graph', label: 'Graph', icon: Waypoints, run: () => go(`/p/${slug}/notes/graph`) },
         { id: 'chat', label: 'Chat', icon: MessageSquare, run: () => go(`/p/${slug}/chat`) },
         {
+          id: 'discover',
+          label: 'Discover sources',
+          hint: 'AI search',
+          icon: Search,
+          run: () => go(`/p/${slug}/discover`),
+        },
+        {
           id: 'new-note',
           label: 'New note',
           hint: 'Notes tab',

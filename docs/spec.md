@@ -86,7 +86,9 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 - Phase 0 done: live at quire.ezragubbay.com, GitHub login, CI + deploy via the Pi runner, nightly B2 backups.
 - Phase 1 done: projects, folders, PDF upload/URL/arXiv/DOI import, pdf.js viewer with reading position, Markdown documents with editor, annotations (five types, panel, popover, filters, search) on PDFs and Markdown, Overview.
 - Phase 2 done: notes with read/edit modes, wiki links and backlinks, dangling-link creation, promote to document, graph (d3-force + Folio NoteGraph), math macros (global + project) with settings pages, ⌘K palette.
-- Phase 3 in progress: sources, experiments, Python client.
+- Phase 3 done: sources with page snapshots, experiments/runs with metrics, logs, artifacts, observations, REST API, `quire-client` on PyPI (publish pending).
+- Phase 4 done: OpenAI provider adapter (any OpenAI-compatible base URL), embeddings into pgvector on every save, cited streaming chat, Ask slide-over and Ask-about-document, discovery over arXiv + Semantic Scholar with light-model ranking, spend ledger with monthly cap, banners, provider-block handling, settings with prices and connection test. `AI_MOCK=1` runs everything without a key (used in CI).
+- Phase 5 next: PWA manifest and service worker, iPad layout pass.
 
 ## Phases (each ends deployed and usable)
 
