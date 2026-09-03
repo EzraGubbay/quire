@@ -34,7 +34,7 @@ export function AppShell({ project, children }: AppShellProps) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((o) => !o);
-      }
+      } else if (e.key === 'Escape') setPaletteOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

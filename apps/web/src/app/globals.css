@@ -41,9 +41,23 @@ a {
   color: var(--eg-accent-text);
 }
 
-/* App-bar search: the design system sizes it for a short placeholder; give it room. */
+/* App-bar search: the design system sizes it for a short placeholder; give it room at wide widths and
+   hide it below laptop-wide, where it would overlap the tabs (⌘K still opens search). */
 .folio header label:has(> input[type="search"]) {
-  min-width: 340px;
+  width: clamp(200px, 20vw, 340px);
+  min-width: 0;
+}
+.folio header > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+}
+.folio header > div:last-child {
+  flex-shrink: 0;
+}
+@media (max-width: 1400px) {
+  .folio header label:has(> input[type="search"]) {
+    display: none;
+  }
 }
 .folio header label:has(> input[type="search"]) > input {
   flex: 1;
@@ -51,11 +65,6 @@ a {
 }
 
 /* iPad and narrower: rails stack above content; panels take the full width. */
-@media (max-width: 1024px) {
-  .folio header label:has(> input[type="search"]) {
-    min-width: 200px;
-  }
-}
 @media (max-width: 900px) {
   [class*="documents-module"][class*="layout"],
   [class*="notes-module"][class*="layout"],
