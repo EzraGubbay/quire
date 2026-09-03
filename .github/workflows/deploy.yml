@@ -1,0 +1,85 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    name: Build and push image
+    # Flip the repository variable DEPLOY_ENABLED to 'true' once the self-hosted runner is registered on the Pi.
+    if: vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: echo "tag=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quire:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/quire:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  deploy:
+    name: Deploy on the Pi
+    needs: image
+    runs-on: [self-hosted, researchpi]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync compose files
+        run: |
+          install -d /srv/quire/backup
+          cp infra/compose.yml /srv/quire/compose.yml
+          cp infra/backup/* /srv/quire/backup/
+      - name: Pull, migrate, restart
+        working-directory: /srv/quire
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -f .env || { echo "/srv/quire/.env missing (see infra/.env.example)"; exit 1; }
+          prev=$(grep -E '^QUIRE_IMAGE=' .env | cut -d= -f2- || true)
+          echo "$TAG" > .previous_image_candidate
+          echo "${prev:-}" > .previous_image
+          sed -i "s#^QUIRE_IMAGE=.*#QUIRE_IMAGE=${TAG}#" .env
+          grep -q '^QUIRE_IMAGE=' .env || echo "QUIRE_IMAGE=${TAG}" >> .env
+          docker compose pull app
+          docker compose up -d db
+          docker compose up -d --remove-orphans
+          docker compose build backup >/dev/null
+          docker compose up -d backup
+      - name: Health check
+        working-directory: /srv/quire
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then echo healthy; exit 0; fi
+            sleep 3
+          done
+          echo "app unhealthy, rolling back"
+          prev=$(cat .previous_image)
+          if [[ -n "$prev" ]]; then sed -i "s#^QUIRE_IMAGE=.*#QUIRE_IMAGE=${prev}#" .env; docker compose up -d app; fi
+          docker compose logs --tail 100 app
+          exit 1
+      - name: Prune old images
+        run: docker image prune -af --filter "until=168h" >/dev/null || true

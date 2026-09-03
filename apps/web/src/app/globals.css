@@ -1,0 +1,26 @@
+/* App-level glue only. Colours and type come from @ezragubbay/folio tokens (--eg-*, --folio-*). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--eg-surface);
+  color: var(--eg-text);
+}
+.folio {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.quire-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

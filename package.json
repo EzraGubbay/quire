@@ -1,0 +1,29 @@
+{
+  "name": "quire",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Quire: a personal research project manager on the Folio design register",
+  "packageManager": "pnpm@10.18.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "db:generate": "pnpm --filter web db:generate",
+    "db:migrate": "pnpm --filter web db:migrate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@ezragubbay/core": "file:./vendor/ezragubbay-core-0.1.0.tgz"
+    }
+  }
+}
