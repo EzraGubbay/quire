@@ -1,4 +1,3 @@
-import { after } from 'next/server';
 import { z } from 'zod';
 import { answer, BudgetError, ProviderError } from '@/lib/ai/answer';
 import { aiConfigured } from '@/lib/ai/provider';
@@ -27,7 +26,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
     .filter((m) => !m.error)
     .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
   const userMsg = await addMessage(threadId, { role: 'user', content: question });
-  if (history.length === 0) after(() => renameThread(threadId, question.slice(0, 80)));
+  if (history.length === 0) await renameThread(threadId, question.slice(0, 80));
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
