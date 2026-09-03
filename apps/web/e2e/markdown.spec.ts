@@ -31,7 +31,7 @@ test('write a Markdown document with math and a wiki link, then annotate it', as
   await page.waitForURL(/\/documents\/[0-9a-f-]{36}$/);
   await expect(page.getByRole('heading', { name: 'Routing summary' })).toBeVisible();
   await expect(page.locator('a[data-wikilink="ELBO tightness"]')).toBeVisible();
-  await expect(page.locator('mjx-container').first()).toBeVisible();
+  await expect(page.locator('[class*="markdown-view"] mjx-container').first()).toBeVisible();
 
   // Annotate a selection in the rendered text.
   const para = page.getByText('The bound is tight when', { exact: false });

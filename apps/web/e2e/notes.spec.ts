@@ -19,7 +19,7 @@ test('notes: create, edit with a wiki link, follow it to create the target, see 
   await page.keyboard.type('Entropy of the router posterior; relates to [[ELBO tightness]] and $H(q)$.');
   await page.getByRole('button', { name: 'Done' }).click();
   await page.waitForURL(/\/notes\/routing-entropy$/);
-  await expect(page.locator('mjx-container').first()).toBeVisible();
+  await expect(page.locator('[class*="markdown-view"] mjx-container').first()).toBeVisible();
   await expect(page.getByText('Unresolved links')).toBeVisible();
 
   // Following the dangling link creates the note and opens it in edit mode.
