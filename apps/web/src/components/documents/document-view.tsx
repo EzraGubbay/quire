@@ -2,7 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { Anchor, AnnotationType, MarkdownAnchor, PdfAnchor } from '@quire/shared';
-import { ArrowLeft, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, MessageSquare, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useOptimistic, useRef, useState, useTransition } from 'react';
@@ -165,6 +165,19 @@ export function DocumentView({
               {st}
             </button>
           ))}
+          <button
+            type="button"
+            className={s.chip}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="Ask the AI about this document"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('quire:ask', { detail: { documentId: doc.id, documentTitle: doc.title } }),
+              )
+            }
+          >
+            <Icon icon={MessageSquare} /> Ask
+          </button>
           {doc.kind === 'markdown' && (
             <NextLink
               href={`/p/${slug}/documents/${doc.id}/edit`}

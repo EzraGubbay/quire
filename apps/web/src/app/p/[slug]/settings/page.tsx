@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { MacrosPanel } from '@/components/settings/macros-panel';
+import { ReindexPanel } from '@/components/settings/reindex-panel';
 import s from '@/components/settings/settings.module.css';
 import { listMacros } from '@/lib/macros';
 import { getProjectBySlug } from '@/lib/projects';

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { z } from 'zod';
+import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { createMarkdownDocument } from '@/lib/documents';
 import { createNote, deleteNote, getNote, resolveTarget, syncLinks, updateNote } from '@/lib/notes';
 import { getProjectBySlug } from '@/lib/projects';
@@ -25,6 +27,7 @@ export async function createNoteAction(_prev: ActionState, formData: FormData): 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(parsed.data.slug);
   const note = await createNote(project.id, parsed.data.title);
+  after(() => indexOwner(project.id, 'note', note.id).catch(() => {}));
   revalidatePath(`/p/${parsed.data.slug}/notes`);
   redirect(`/p/${parsed.data.slug}/notes/${note.slug}?edit=1`);
 }
@@ -45,6 +48,7 @@ export async function updateNoteAction(
   const project = await projectOr404(slug);
   const row = await updateNote(project.id, id, parsed.data);
   if (!row) return { error: 'Note not found' };
+  after(() => indexOwner(project.id, 'note', id).catch(() => {}));
   revalidatePath(`/p/${slug}/notes`);
   revalidatePath(`/p/${slug}/notes/${row.slug}`);
   return { ok: true, noteSlug: row.slug };
@@ -53,6 +57,7 @@ export async function updateNoteAction(
 export async function deleteNoteAction(slug: string, id: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteNote(project.id, id);
+  await removeOwner(project.id, 'note', id);
   revalidatePath(`/p/${slug}/notes`);
   redirect(`/p/${slug}/notes`);
 }
@@ -79,6 +84,8 @@ export async function promoteNoteAction(slug: string, id: string): Promise<void>
   const doc = await createMarkdownDocument(project.id, note.title, note.body, null);
   await syncLinks(project.id, 'document', doc.id, note.body);
   await deleteNote(project.id, id);
+  await removeOwner(project.id, 'note', id);
+  after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
   revalidatePath(`/p/${slug}/notes`);
   revalidatePath(`/p/${slug}/documents`);
   redirect(`/p/${slug}/documents/${doc.id}`);

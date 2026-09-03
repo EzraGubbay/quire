@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { z } from 'zod';
 import type { Document } from '@/db/schema';
+import { indexOwner, removeOwner } from '@/lib/ai/index';
 import {
   attachPdf,
   createFolder,
@@ -59,6 +61,7 @@ export async function uploadPdfAction(_prev: ActionState, formData: FormData): P
   } catch (err) {
     return { error: `Could not read that PDF: ${(err as Error).message}` };
   }
+  after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
   revalidatePath(`/p/${slug}/documents`);
   redirect(`/p/${slug}/documents/${doc.id}`);
 }
@@ -83,6 +86,7 @@ export async function createMarkdownAction(_prev: ActionState, formData: FormDat
     `# ${parsed.data.title}\n\n`,
     parsed.data.folderId,
   );
+  after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
   revalidatePath(`/p/${parsed.data.slug}/documents`);
   redirect(`/p/${parsed.data.slug}/documents/${doc.id}`);
 }
@@ -133,6 +137,7 @@ export async function moveDocumentAction(
 export async function deleteDocumentAction(slug: string, documentId: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteDocument(project.id, documentId);
+  await removeOwner(project.id, 'document', documentId);
   revalidatePath(`/p/${slug}/documents`);
   redirect(`/p/${slug}/documents`);
 }
@@ -158,8 +163,10 @@ export async function updateDocumentAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
   await updateDocument(project.id, documentId, parsed.data);
-  if (parsed.data.markdownBody !== undefined)
+  if (parsed.data.markdownBody !== undefined) {
     await syncLinks(project.id, 'document', documentId, parsed.data.markdownBody);
+    after(() => indexOwner(project.id, 'document', documentId).catch(() => {}));
+  }
   revalidatePath(`/p/${slug}/documents/${documentId}`);
   return { ok: true };
 }
@@ -208,6 +215,7 @@ export async function importReferenceAction(_prev: ActionState, formData: FormDa
   } else {
     doc = await createPaperStub(project.id, base);
   }
+  after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
   revalidatePath(`/p/${slug}/documents`);
   redirect(`/p/${slug}/documents/${doc.id}`);
 }
@@ -222,6 +230,7 @@ export async function attachPdfAction(_prev: ActionState, formData: FormData): P
   const project = await projectOr404(slug);
   try {
     await attachPdf(project.id, documentId, new Uint8Array(await file.arrayBuffer()));
+    after(() => indexOwner(project.id, 'document', documentId).catch(() => {}));
   } catch (err) {
     return { error: `Could not read that PDF: ${(err as Error).message}` };
   }

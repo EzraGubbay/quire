@@ -21,6 +21,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  vector,
 } from 'drizzle-orm/pg-core';
 
 export const projectStatus = pgEnum('project_status', PROJECT_STATUSES);
@@ -287,6 +288,85 @@ export const observations = pgTable(
   (t) => [index('observations_run_idx').on(t.runId)],
 );
 
+/** Text chunks with embeddings for retrieval. owner_kind/owner_id point at the document, note, annotation, or source. */
+export const embeddings = pgTable(
+  'embeddings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    ownerKind: entityKind('owner_kind').notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    chunkNo: integer('chunk_no').notNull().default(0),
+    /** Page number for document chunks, when known. */
+    pageNo: integer('page_no'),
+    text: text('text').notNull(),
+    embedding: vector('embedding', { dimensions: 1536 }).notNull(),
+    model: text('model').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('embeddings_owner_idx').on(t.projectId, t.ownerKind, t.ownerId),
+    index('embeddings_vec_idx').using('hnsw', t.embedding.op('vector_cosine_ops')),
+  ],
+);
+
+export const chatThreads = pgTable(
+  'chat_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('New chat'),
+    /** Optional scope: restrict retrieval to one document. */
+    documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [index('chat_threads_project_idx').on(t.projectId, t.updatedAt)],
+);
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    threadId: uuid('thread_id')
+      .notNull()
+      .references(() => chatThreads.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    /** [{n, kind, id, title, href, pageNo}] for the [n] markers in content. */
+    citations: jsonb('citations').notNull().default([]),
+    model: text('model'),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    costUsd: real('cost_usd'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('chat_messages_thread_idx').on(t.threadId, t.createdAt)],
+);
+
+/** Every model call, for the monthly cap and the spend view. */
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    task: text('task').notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    cachedTokens: integer('cached_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    costUsd: real('cost_usd').notNull().default(0),
+    ok: boolean('ok').notNull().default(true),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ai_usage_created_idx').on(t.createdAt)],
+);
+
 /** TeX macros: rows with a null project are global; project rows override by name. */
 export const macros = pgTable(
   'macros',
@@ -347,4 +427,8 @@ export type RunMetric = typeof runMetrics.$inferSelect;
 export type RunLog = typeof runLogs.$inferSelect;
 export type RunArtifact = typeof runArtifacts.$inferSelect;
 export type Observation = typeof observations.$inferSelect;
+export type Embedding = typeof embeddings.$inferSelect;
+export type ChatThread = typeof chatThreads.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type AiUsage = typeof aiUsage.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;

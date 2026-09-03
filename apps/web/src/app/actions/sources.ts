@@ -2,7 +2,9 @@
 
 import { SOURCE_TYPES } from '@quire/shared';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { z } from 'zod';
+import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { getProjectBySlug } from '@/lib/projects';
 import { createSource, deleteSource, snapshotUrl, updateSource } from '@/lib/sources';
 
@@ -79,8 +81,11 @@ export async function saveSourceAction(_prev: ActionState, formData: FormData): 
     tags: parsed.data.tags,
     ...(snapshotText !== undefined ? { snapshotText } : {}),
   };
+  let sourceId = id;
   if (id) await updateSource(project.id, id, input);
-  else await createSource(project.id, input);
+  else sourceId = (await createSource(project.id, input)).id;
+  const sid = sourceId;
+  if (sid) after(() => indexOwner(project.id, 'source', sid).catch(() => {}));
   revalidatePath(`/p/${slug}/sources`);
   return { ok: true };
 }
@@ -88,5 +93,6 @@ export async function saveSourceAction(_prev: ActionState, formData: FormData): 
 export async function deleteSourceAction(slug: string, id: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteSource(project.id, id);
+  await removeOwner(project.id, 'source', id);
   revalidatePath(`/p/${slug}/sources`);
 }

@@ -38,6 +38,7 @@ jobs:
       DATABASE_URL: postgres://quire:quire@localhost:5432/quire
       FILES_DIR: ${{ github.workspace }}/data/files
       AUTH_MODE: none
+      AI_MOCK: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
