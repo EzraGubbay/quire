@@ -232,7 +232,7 @@ export function PdfViewer({
   if (error) return <div className={s.loading}>Could not load the PDF: {error}</div>;
 
   return (
-    <div className={s.viewer} ref={viewerRef}>
+    <div className={s.viewer} ref={viewerRef} data-testid="pdf-viewer">
       {pages.length === 0 ? (
         <div className={s.loading}>Loading PDF…</div>
       ) : (

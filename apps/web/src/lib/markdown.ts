@@ -73,9 +73,23 @@ const processor = unified()
   .use(rehypeMathDelimiters)
   .use(rehypeStringify);
 
+/** LaTeX-style delimiters `\\[…\\]` and `\\(…\\)` become `$$…$$` and `$…$`; Markdown would otherwise eat the backslashes. */
+export function normalizeMathDelimiters(md: string): string {
+  const parts = md.split(/(```[\s\S]*?```|`[^`\n]*`)/);
+  return parts
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part
+            .replace(/\\\[([\s\S]*?)\\\]/g, (_, t) => `$$${t}$$`)
+            .replace(/\\\(([\s\S]*?)\\\)/g, (_, t) => `$${t}$`),
+    )
+    .join('');
+}
+
 /** Markdown → HTML. Math stays as TeX inside `.math` spans/divs for MathJax to typeset in the browser. */
 export async function renderMarkdown(md: string): Promise<string> {
-  const file = await processor.process(md);
+  const file = await processor.process(normalizeMathDelimiters(md));
   return String(file);
 }
 

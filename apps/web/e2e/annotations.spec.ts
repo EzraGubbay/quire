@@ -56,6 +56,16 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await expect(page.getByTestId('annotation-card')).toHaveCount(1);
   await expect(page.getByTestId('annotation-card').first()).toContainText('baseline');
 
+  // The window itself never scrolls; the viewer is the scroll container, and scroll-to-passage moves it.
+  const viewer = page.getByTestId('pdf-viewer');
+  await viewer.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await viewer.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  await page.getByLabel('Search annotations').fill('');
+  await page.getByTestId('annotation-card').first().hover();
+  await page.getByRole('button', { name: 'Scroll to this passage' }).click();
+  await expect.poll(() => viewer.evaluate((el) => el.scrollTop)).toBeLessThan(100);
+
   // Collapse and restore the panel.
   await page.getByRole('button', { name: 'Hide annotations' }).click();
   await expect(page.getByRole('button', { name: 'Show annotations' })).toBeVisible();
