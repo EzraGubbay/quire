@@ -1,0 +1,62 @@
+.wrap {
+  width: min(900px, 100% - 48px);
+  margin: 32px auto;
+  display: grid;
+  gap: 32px;
+}
+.title {
+  margin: 0;
+  font: 600 26px / 1.15 var(--eg-font-heading);
+}
+.section {
+  display: grid;
+  gap: 12px;
+}
+.h2 {
+  margin: 0;
+  font: 600 18px / 1.2 var(--eg-font-heading);
+}
+.help {
+  margin: 0;
+  color: var(--eg-text-2);
+  font: 400 13px / 1.5 var(--eg-font-ui);
+}
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font: 400 13px / 1.4 var(--eg-font-ui);
+}
+.table th {
+  text-align: left;
+  font: 600 11px / 1 var(--eg-font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eg-muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--eg-rule);
+}
+.table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--eg-rule);
+  vertical-align: middle;
+}
+.table code {
+  font-family: var(--eg-font-mono);
+  font-size: 12.5px;
+}
+.iconBtn {
+  border: 0;
+  background: none;
+  color: var(--eg-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.iconBtn:hover {
+  color: var(--eg-text);
+  background: var(--eg-surface-2);
+}
+.form {
+  display: grid;
+  gap: 10px;
+}

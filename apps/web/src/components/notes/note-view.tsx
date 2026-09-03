@@ -26,6 +26,7 @@ export function NoteView({
   unresolved,
   linkTargets,
   editing,
+  macros,
 }: {
   slug: string;
   note: Note;
@@ -34,12 +35,13 @@ export function NoteView({
   unresolved: string[];
   linkTargets: string[];
   editing: boolean;
+  macros: string[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const follow = useCallback((name: string) => start(() => followWikiLinkAction(slug, name)), [slug]);
 
-  if (editing) return <NoteEditor slug={slug} note={note} linkTargets={linkTargets} />;
+  if (editing) return <NoteEditor slug={slug} note={note} linkTargets={linkTargets} macros={macros} />;
 
   return (
     <div className={s.main}>
@@ -116,7 +118,17 @@ export function NoteView({
   );
 }
 
-function NoteEditor({ slug, note, linkTargets }: { slug: string; note: Note; linkTargets: string[] }) {
+function NoteEditor({
+  slug,
+  note,
+  linkTargets,
+  macros,
+}: {
+  slug: string;
+  note: Note;
+  linkTargets: string[];
+  macros: string[];
+}) {
   const router = useRouter();
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
@@ -190,6 +202,7 @@ function NoteEditor({ slug, note, linkTargets }: { slug: string; note: Note; lin
             setDirty(true);
           }}
           linkTargets={linkTargets}
+          macros={macros}
           onSave={() => save(false)}
           autoFocus
         />

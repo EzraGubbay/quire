@@ -5,6 +5,8 @@ import '@ezragubbay/folio/styles.css';
 import './globals.css';
 import './highlights.css';
 import { Providers } from '@/components/providers';
+import { MacroDefs } from '@/components/settings/macro-defs';
+import { mergedMacros, newcommandBlock } from '@/lib/macros';
 
 export const metadata: Metadata = {
   title: { default: 'Quire', template: '%s · Quire' },
@@ -21,11 +23,15 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const block = newcommandBlock(await mergedMacros(null).catch(() => []));
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <MacroDefs block={block} />
+          {children}
+        </Providers>
       </body>
     </html>
   );

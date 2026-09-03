@@ -16,10 +16,12 @@ export function DocumentEditor({
   slug,
   document: doc,
   linkTargets,
+  macros,
 }: {
   slug: string;
   document: Document;
   linkTargets: string[];
+  macros: string[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(doc.title);
@@ -102,6 +104,7 @@ export function DocumentEditor({
             setDirty(true);
           }}
           linkTargets={linkTargets}
+          macros={macros}
           onSave={save}
           autoFocus
         />

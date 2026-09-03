@@ -1,6 +1,8 @@
 'use client';
 
-import { AppBar, type AppBarTab } from '@ezragubbay/folio';
+import { AppBar, type AppBarTab, Icon } from '@ezragubbay/folio';
+import { Settings } from 'lucide-react';
+import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useTheme } from './providers';
@@ -51,6 +53,16 @@ export function AppShell({ project, children }: AppShellProps) {
         theme={theme}
         onToggleTheme={toggle}
         user="E"
+        actions={
+          <NextLink
+            href={project ? `/p/${project.slug}/settings` : '/settings'}
+            aria-label="Settings"
+            title="Settings"
+            style={{ display: 'inline-flex', padding: 6, color: 'var(--eg-text-2)' }}
+          >
+            <Icon icon={Settings} />
+          </NextLink>
+        }
       />
       <main className="quire-main">{children}</main>
     </div>
