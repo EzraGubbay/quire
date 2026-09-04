@@ -225,6 +225,7 @@ export function DocumentView({
               onSelection={canAnnotate ? setSelection : undefined}
               maxPixelRatio={platform === 'phone' ? 1.5 : 2}
               renderWindow={lite ? 1 : 2}
+              textLayer={canAnnotate}
             />
           ) : doc.kind === 'markdown' ? (
             <MarkdownView

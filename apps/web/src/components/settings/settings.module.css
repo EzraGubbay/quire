@@ -198,3 +198,29 @@
 .level[data-level="off"] {
   color: var(--eg-muted);
 }
+.logBox {
+  font: 400 11.5px / 1.5 var(--eg-font-mono);
+  background: var(--eg-surface-2);
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-card);
+  padding: 10px 12px;
+  max-height: 480px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.logLine[data-level="error"] {
+  color: var(--eg-accent-text);
+}
+.logLine[data-level="warn"] {
+  color: var(--folio-hl-todo-text);
+}
+.logLine[data-level="debug"] {
+  color: var(--eg-text-2);
+}
+.logTs {
+  color: var(--eg-muted);
+}
+.logData {
+  color: var(--eg-muted);
+}

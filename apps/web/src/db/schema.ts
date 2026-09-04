@@ -367,6 +367,30 @@ export const aiUsage = pgTable(
   (t) => [index('ai_usage_created_idx').on(t.createdAt)],
 );
 
+/** Client-side debug log (debug mode only): errors, console warnings, viewer events, heartbeats. */
+export const clientLogs = pgTable(
+  'client_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** One id per page load, so a crash can be traced to its last entries. */
+    session: text('session').notNull(),
+    level: text('level').notNull().default('info'),
+    source: text('source').notNull().default('app'),
+    message: text('message').notNull(),
+    data: jsonb('data'),
+    url: text('url'),
+    userAgent: text('user_agent'),
+    platform: text('platform'),
+    /** Client clock, so ordering survives batching. */
+    clientTs: timestamp('client_ts', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('client_logs_created_idx').on(t.createdAt),
+    index('client_logs_session_idx').on(t.session, t.clientTs),
+  ],
+);
+
 /** TeX macros: rows with a null project are global; project rows override by name. */
 export const macros = pgTable(
   'macros',
@@ -431,4 +455,5 @@ export type Embedding = typeof embeddings.$inferSelect;
 export type ChatThread = typeof chatThreads.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type AiUsage = typeof aiUsage.$inferSelect;
+export type ClientLog = typeof clientLogs.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;

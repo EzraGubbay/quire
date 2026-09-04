@@ -5,10 +5,12 @@ import '@ezragubbay/folio/styles.css';
 import './globals.css';
 import './highlights.css';
 import { headers } from 'next/headers';
+import { DebugInit } from '@/components/debug-init';
 import { PlatformProvider } from '@/components/platform';
 import { Providers } from '@/components/providers';
 import { MacroDefs } from '@/components/settings/macro-defs';
 import { SwRegister } from '@/components/sw-register';
+import { getDebugSetting } from '@/lib/debug';
 import { featureMatrix } from '@/lib/features';
 import { mergedMacros, newcommandBlock } from '@/lib/macros';
 import { platformFromHeaders } from '@/lib/platform';
@@ -33,12 +35,13 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [block, themeSetting, platform] = await Promise.all([
+  const [block, themeSetting, platform, debug] = await Promise.all([
     mergedMacros(null)
       .then(newcommandBlock)
       .catch(() => ''),
     getThemeSetting().catch(() => 'system' as const),
     headers().then(platformFromHeaders),
+    getDebugSetting().catch(() => false),
   ]);
   return (
     <html lang="en" suppressHydrationWarning>
@@ -48,6 +51,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <MacroDefs block={block} />
             {children}
             <SwRegister />
+            <DebugInit enabled={debug} />
           </Providers>
         </PlatformProvider>
       </body>

@@ -3,6 +3,7 @@
 import type { AnnotationType, PdfAnchor } from '@quire/shared';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { deviceInfo, isDebug, log, setCrashMark } from '@/lib/debug-client';
 import s from './pdf-viewer.module.css';
 
 type Pdfjs = typeof import('pdfjs-dist');
@@ -38,6 +39,8 @@ export interface PdfViewerProps {
   maxPixelRatio?: number;
   /** Pages beyond viewport ± this many are released (canvas freed) until they come back. */
   renderWindow?: number;
+  /** Build the selectable text layer (off in lite mode: fewer DOM nodes, less memory). */
+  textLayer?: boolean;
   ref?: React.Ref<PdfViewerHandle>;
 }
 
@@ -70,6 +73,7 @@ export function PdfViewer({
   onSelection,
   maxPixelRatio = 2,
   renderWindow = 1,
+  textLayer = true,
   ref,
 }: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -89,7 +93,13 @@ export function PdfViewer({
     (async () => {
       try {
         const lib = await loadPdfjs();
+        log('info', 'viewer', 'loading document', { fileUrl, ...deviceInfo() });
+        const t0 = performance.now();
         const d = await lib.getDocument({ url: fileUrl }).promise;
+        log('info', 'viewer', 'document loaded', {
+          pages: d.numPages,
+          ms: Math.round(performance.now() - t0),
+        });
         if (cancelled) {
           d.destroy();
           return;
@@ -106,6 +116,7 @@ export function PdfViewer({
         setDoc(d);
         setPages(list);
       } catch (err) {
+        log('error', 'viewer', 'document load failed', err);
         if (!cancelled) setError((err as Error).message);
       }
     })();
@@ -154,7 +165,25 @@ export function PdfViewer({
 
   useEffect(() => {
     if (pages.length > 0) onProgress?.(current, pages.length);
-  }, [current, pages.length, onProgress]);
+    if (pages.length > 0 && isDebug()) {
+      const live = liveCanvasBytes();
+      log('debug', 'viewer', 'current page', {
+        page: current,
+        of: pages.length,
+        scale: Number(scale.toFixed(3)),
+        liveCanvasMB: Number((live / 1048576).toFixed(1)),
+        renderedPages: document.querySelectorAll('[data-rendered="true"]').length,
+      });
+      setCrashMark({
+        fileUrl,
+        page: current,
+        of: pages.length,
+        scale: Number(scale.toFixed(3)),
+        liveCanvasMB: Number((live / 1048576).toFixed(1)),
+      });
+    }
+  }, [current, pages.length, onProgress, scale, fileUrl]);
+  useEffect(() => () => setCrashMark(null), []);
 
   const scrollToPage = useCallback((page: number) => {
     pageEls.current.get(page)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -256,6 +285,7 @@ export function PdfViewer({
               current={current}
               renderWindow={renderWindow}
               scrollRoot={viewerRef.current}
+              textLayer={textLayer}
               register={(el) => {
                 if (el) pageEls.current.set(p.no, el);
                 else pageEls.current.delete(p.no);
@@ -317,6 +347,7 @@ function Page({
   current,
   renderWindow,
   scrollRoot,
+  textLayer,
 }: {
   state: PageState;
   scale: number;
@@ -329,6 +360,7 @@ function Page({
   current: number;
   renderWindow: number;
   scrollRoot: HTMLElement | null;
+  textLayer: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -355,6 +387,11 @@ function Page({
     const layer = layerRef.current;
     if (!canvas || !layer) return;
     if (!shouldRender) {
+      if (canvas.width > 0)
+        log('debug', 'viewer', 'release page', {
+          page: state.no,
+          liveCanvasMB: mb(liveCanvasBytes() - canvas.width * canvas.height * 4),
+        });
       canvas.width = 0;
       canvas.height = 0;
       canvas.style.width = '';
@@ -372,6 +409,16 @@ function Page({
     canvas.height = Math.floor(viewport.height * dpr);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
+    log('debug', 'viewer', 'render page', {
+      page: state.no,
+      css: `${Math.round(viewport.width)}x${Math.round(viewport.height)}`,
+      canvas: `${canvas.width}x${canvas.height}`,
+      dpr: Number(dpr.toFixed(2)),
+      canvasMB: mb(canvas.width * canvas.height * 4),
+      liveCanvasMB: mb(liveCanvasBytes()),
+      textLayer,
+    });
+    const t0 = performance.now();
     const renderTask = state.page.render({
       canvas,
       viewport,
@@ -380,19 +427,26 @@ function Page({
     layer.replaceChildren();
     layer.style.setProperty('--scale-factor', String(scale));
     layer.style.setProperty('--total-scale-factor', String(scale));
-    const textLayer = new pdfjs.TextLayer({
-      textContentSource: state.page.streamTextContent(),
-      container: layer,
-      viewport,
-    });
-    renderTask.promise.catch(() => {});
-    textLayer.render().catch(() => {});
+    const text = textLayer
+      ? new pdfjs.TextLayer({ textContentSource: state.page.streamTextContent(), container: layer, viewport })
+      : null;
+    renderTask.promise.then(
+      () =>
+        log('debug', 'viewer', 'page rendered', { page: state.no, ms: Math.round(performance.now() - t0) }),
+      (err: unknown) => {
+        if ((err as { name?: string })?.name !== 'RenderingCancelledException')
+          log('error', 'viewer', 'page render failed', { page: state.no, err });
+      },
+    );
+    text
+      ?.render()
+      .catch((err: unknown) => log('warn', 'viewer', 'text layer failed', { page: state.no, err }));
     return () => {
       renderTask.cancel();
-      textLayer.cancel();
+      text?.cancel();
       void doc;
     };
-  }, [shouldRender, scale, state.page, pdfjs, doc, maxPixelRatio]);
+  }, [shouldRender, scale, state.page, pdfjs, doc, maxPixelRatio, textLayer]);
 
   return (
     <div
@@ -433,4 +487,13 @@ function Page({
       <span className={s.pageNo}>{state.no}</span>
     </div>
   );
+}
+
+const mb = (bytes: number) => Number((bytes / 1048576).toFixed(1));
+
+/** Sum of allocated canvas bytes in the viewer (width × height × 4), the number Safari's cap is about. */
+function liveCanvasBytes(): number {
+  let total = 0;
+  for (const c of document.querySelectorAll('canvas')) total += c.width * c.height * 4;
+  return total;
 }

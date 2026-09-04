@@ -1,6 +1,7 @@
 import NextLink from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { AiPanel } from '@/components/settings/ai-panel';
+import { DebugPanel } from '@/components/settings/debug-panel';
 import { FeaturesPanel } from '@/components/settings/features-panel';
 import { MacrosPanel } from '@/components/settings/macros-panel';
 import s from '@/components/settings/settings.module.css';
@@ -9,20 +10,25 @@ import { ThemePanel } from '@/components/settings/theme-panel';
 import { spendSummary } from '@/lib/ai/ledger';
 import { aiConfigured } from '@/lib/ai/provider';
 import { getAiSettings } from '@/lib/ai/settings';
+import { getDebugSetting, listClientLogs, listSessions } from '@/lib/debug';
 import { listMacros } from '@/lib/macros';
 import { currentFeature } from '@/lib/platform-server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const [macros, ai, summary, full, flags] = await Promise.all([
+  const [macros, ai, summary, full, flags, debug] = await Promise.all([
     listMacros(null),
     getAiSettings(),
     spendSummary(),
     currentFeature('settings.full'),
     currentFeature('settings.flags'),
+    getDebugSetting(),
   ]);
   const lite = full.level === 'lite';
+  const [sessions, logs] = lite
+    ? [[], []]
+    : await Promise.all([listSessions(), listClientLogs({ limit: 500 })]);
   return (
     <AppShell>
       <div className={s.wrap}>
@@ -37,6 +43,7 @@ export default async function SettingsPage() {
           <AiPanel settings={ai} summary={summary} configured={aiConfigured()} />
         )}
         {!lite && <MacrosPanel scope="global" macros={macros} />}
+        <DebugPanel serverOn={debug} sessions={sessions} logs={logs} full={!lite} />
         {flags.level === 'on' && <FeaturesPanel />}
         {lite && (
           <p className={s.help}>AI models, prices, and math macros are edited on an iPad or laptop.</p>
