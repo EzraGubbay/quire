@@ -1,3 +1,4 @@
+import NextLink from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { AiPanel } from '@/components/settings/ai-panel';
 import { MacrosPanel } from '@/components/settings/macros-panel';
@@ -14,6 +15,9 @@ export default async function SettingsPage() {
   return (
     <AppShell>
       <div className={s.wrap}>
+        <NextLink href="/" className={s.crumb}>
+          ← Projects
+        </NextLink>
         <h1 className={s.title}>Settings</h1>
         <AiPanel settings={ai} summary={summary} configured={aiConfigured()} />
         <MacrosPanel scope="global" macros={macros} />

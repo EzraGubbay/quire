@@ -56,6 +56,11 @@ export function AppShell({ project, children }: AppShellProps) {
   // The design system's AppBar renders tabs as plain anchors; route them through the client router so tab
   // changes keep the shell mounted (no full reload, no pre-hydration clicks).
   const onNavClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.eg-mark')) {
+      e.preventDefault();
+      router.push('/');
+      return;
+    }
     const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('nav[aria-label="Sections"] a[href]');
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     e.preventDefault();

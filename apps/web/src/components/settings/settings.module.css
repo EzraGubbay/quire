@@ -154,3 +154,10 @@
   text-decoration: underline;
   padding: 0;
 }
+
+.crumb {
+  font: 500 13px / 1 var(--eg-font-ui);
+  color: var(--eg-text-2);
+  text-decoration: none;
+  margin-bottom: -20px;
+}

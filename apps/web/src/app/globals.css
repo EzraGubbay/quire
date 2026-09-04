@@ -25,7 +25,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Quire annotation types. The design package ships claim/method/result/question/todo; until it ships
@@ -102,5 +103,101 @@ a {
   [class*="notes-module"][class*="split"] {
     grid-template-columns: 1fr !important;
     grid-template-rows: 1fr 1fr;
+  }
+}
+
+/* Mark → home; the design system renders it as a static span. */
+.folio header .eg-mark {
+  cursor: pointer;
+}
+
+/* Phones: the header wraps, tabs get their own scrollable row, layouts go single-column. */
+@media (max-width: 640px) {
+  .folio header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 6px 10px;
+  }
+  /* Flatten the left group so mark, crumb, icons and tabs are all header rows: mark + crumb + icons first, tabs second. */
+  .folio header > div:first-child {
+    display: contents;
+  }
+  .folio header > div:first-child > div {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .folio header nav[aria-label="Sections"] {
+    flex-basis: 100%;
+    order: 3;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+  .folio header nav[aria-label="Sections"]::-webkit-scrollbar {
+    display: none;
+  }
+  .folio header > div:last-child {
+    gap: 6px;
+    order: 2;
+    margin-left: auto;
+  }
+  [class*="overview-module"][class*="wrap"],
+  [class*="settings-module"][class*="wrap"],
+  [class*="sources-module"][class*="wrap"],
+  [class*="experiments-module"][class*="wrap"],
+  [class*="discover-module"][class*="wrap"],
+  [class*="graph-page-module"][class*="wrap"],
+  [class*="home-module"][class*="wrap"] {
+    width: calc(100% - 24px) !important;
+    margin: 16px auto !important;
+  }
+  [class*="settings-module"][class*="row"],
+  [class*="settings-module"][class*="row3"],
+  [class*="settings-module"][class*="spendCols"],
+  [class*="sources-module"][class*="row"],
+  [class*="overview-module"][class*="grid"] {
+    grid-template-columns: 1fr !important;
+  }
+  [class*="settings-module"][class*="table"] {
+    display: block;
+    overflow-x: auto;
+  }
+  [class*="overview-module"][class*="stats"] {
+    flex-wrap: wrap;
+    gap: 16px 24px;
+  }
+  [class*="document-view-module"][class*="bar"],
+  [class*="notes-module"][class*="bar"],
+  [class*="chat-module"][class*="bar"],
+  [class*="document-editor-module"][class*="bar"] {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
+  [class*="document-view-module"][class*="barTitle"] {
+    flex-basis: 100%;
+    order: -1;
+    white-space: normal;
+  }
+  [class*="document-view-module"][class*="barRight"] {
+    flex-wrap: wrap;
+  }
+  [class*="pdf-viewer-module"][class*="viewer"] {
+    padding: 12px 0 120px;
+  }
+  [class*="annotations-module"][class*="panel"]:not([data-collapsed="true"]) {
+    width: 100vw !important;
+  }
+  [class*="experiments-module"][class*="table"],
+  [class*="sources-module"][class*="grid"] {
+    display: block;
+    overflow-x: auto;
+  }
+  [class*="chat-module"][class*="msg"] {
+    max-width: 100%;
   }
 }

@@ -1,3 +1,4 @@
+import NextLink from 'next/link';
 import { notFound } from 'next/navigation';
 import { MacrosPanel } from '@/components/settings/macros-panel';
 import { ReindexPanel } from '@/components/settings/reindex-panel';
@@ -14,6 +15,9 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
   const [own, global] = await Promise.all([listMacros(project.id), listMacros(null)]);
   return (
     <div className={s.wrap}>
+      <NextLink href={`/p/${slug}/overview`} className={s.crumb}>
+        ← {project.name}
+      </NextLink>
       <h1 className={s.title}>{project.name} · settings</h1>
       <MacrosPanel
         scope="project"

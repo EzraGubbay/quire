@@ -42,7 +42,10 @@ export function DocumentView({
   const lastSaved = useRef({ page: doc.lastPage, progress: doc.progress });
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return window.localStorage.getItem(PANEL_KEY) === '0';
+      const stored = window.localStorage.getItem(PANEL_KEY);
+      if (stored === '0') return true;
+      if (stored === '1') return false;
+      return window.innerWidth < 900;
     } catch {
       return false;
     }
