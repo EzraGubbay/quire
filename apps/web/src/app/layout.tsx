@@ -4,10 +4,15 @@ import '@ezragubbay/folio/fonts.css';
 import '@ezragubbay/folio/styles.css';
 import './globals.css';
 import './highlights.css';
+import { headers } from 'next/headers';
+import { PlatformProvider } from '@/components/platform';
 import { Providers } from '@/components/providers';
 import { MacroDefs } from '@/components/settings/macro-defs';
 import { SwRegister } from '@/components/sw-register';
+import { featureMatrix } from '@/lib/features';
 import { mergedMacros, newcommandBlock } from '@/lib/macros';
+import { platformFromHeaders } from '@/lib/platform';
+import { getThemeSetting } from '@/lib/theme';
 
 export const metadata: Metadata = {
   title: { default: 'Quire', template: '%s · Quire' },
@@ -28,15 +33,23 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const block = newcommandBlock(await mergedMacros(null).catch(() => []));
+  const [block, themeSetting, platform] = await Promise.all([
+    mergedMacros(null)
+      .then(newcommandBlock)
+      .catch(() => ''),
+    getThemeSetting().catch(() => 'system' as const),
+    headers().then(platformFromHeaders),
+  ]);
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>
-          <MacroDefs block={block} />
-          {children}
-          <SwRegister />
-        </Providers>
+        <PlatformProvider initial={platform} matrix={featureMatrix()}>
+          <Providers themeSetting={themeSetting}>
+            <MacroDefs block={block} />
+            {children}
+            <SwRegister />
+          </Providers>
+        </PlatformProvider>
       </body>
     </html>
   );

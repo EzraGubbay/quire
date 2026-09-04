@@ -3,6 +3,7 @@ import { DocumentView } from '@/components/documents/document-view';
 import { listAnnotations } from '@/lib/annotations';
 import { getDocument } from '@/lib/documents';
 import { renderMarkdown } from '@/lib/markdown';
+import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
@@ -17,5 +18,19 @@ export default async function DocumentPage({ params }: { params: Promise<{ slug:
     listAnnotations(project.id, doc.id),
     doc.kind === 'markdown' ? renderMarkdown(doc.markdownBody ?? '') : Promise.resolve(''),
   ]);
-  return <DocumentView slug={slug} document={doc} annotations={annotations} html={html} />;
+  const [viewer, annotate] = await Promise.all([
+    currentFeature('documents.viewer'),
+    currentFeature('documents.annotate'),
+  ]);
+  return (
+    <DocumentView
+      slug={slug}
+      document={doc}
+      annotations={annotations}
+      html={html}
+      canAnnotate={annotate.level !== 'off'}
+      lite={viewer.level === 'lite'}
+      platform={viewer.platform}
+    />
+  );
 }

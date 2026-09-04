@@ -177,3 +177,15 @@
   background: var(--eg-bg);
   color: var(--eg-text);
 }
+
+.liteEditor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  resize: none;
+  padding: 16px;
+  font: 400 15px / 1.55 var(--eg-font-prose);
+  color: var(--eg-text);
+  background: var(--eg-bg);
+}

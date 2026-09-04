@@ -28,11 +28,19 @@ export function DocumentView({
   document: doc,
   annotations: initial,
   html,
+  canAnnotate = true,
+  lite = false,
+  platform = 'desktop',
 }: {
   slug: string;
   document: Document;
   annotations: Annotation[];
   html: string;
+  /** Text-selection annotations (feature documents.annotate). */
+  canAnnotate?: boolean;
+  /** Memory-safe rendering and a simplified panel (feature documents.viewer = lite). */
+  lite?: boolean;
+  platform?: 'phone' | 'tablet' | 'desktop';
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -214,7 +222,9 @@ export function DocumentView({
               highlights={pdfHighlights}
               activeHighlightId={activeId}
               onProgress={onProgress}
-              onSelection={setSelection}
+              onSelection={canAnnotate ? setSelection : undefined}
+              maxPixelRatio={platform === 'phone' ? 1.5 : 2}
+              renderWindow={lite ? 1 : 2}
             />
           ) : doc.kind === 'markdown' ? (
             <MarkdownView
@@ -222,13 +232,13 @@ export function DocumentView({
               html={html}
               highlights={mdHighlights}
               activeHighlightId={activeId}
-              onSelection={setSelection}
+              onSelection={canAnnotate ? setSelection : undefined}
               onWikiLink={(name) => start(() => followWikiLinkAction(slug, name))}
             />
           ) : (
             <AttachPdf slug={slug} document={doc} />
           )}
-          {selection && (
+          {selection && canAnnotate && (
             <div
               className={a11y.popover}
               style={{ top: selection.box.top, left: selection.box.left + selection.box.width / 2 }}

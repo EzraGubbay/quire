@@ -14,10 +14,12 @@ export function ExperimentsList({
   slug,
   experiments,
   apiHint,
+  readOnly = false,
 }: {
   slug: string;
   experiments: ExperimentWithCounts[];
   apiHint: string;
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<ActionState, FormData>(createExperimentAction, {});
@@ -25,9 +27,11 @@ export function ExperimentsList({
     <div className={s.wrap}>
       <div className={s.head}>
         <h1 className={s.title}>Experiments</h1>
-        <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
-          New experiment
-        </Button>
+        {!readOnly && (
+          <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
+            New experiment
+          </Button>
+        )}
       </div>
       {experiments.length === 0 ? (
         <>

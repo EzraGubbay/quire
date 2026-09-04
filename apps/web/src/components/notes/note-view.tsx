@@ -27,6 +27,7 @@ export function NoteView({
   linkTargets,
   editing,
   macros,
+  editLevel = 'on',
 }: {
   slug: string;
   note: Note;
@@ -36,12 +37,23 @@ export function NoteView({
   linkTargets: string[];
   editing: boolean;
   macros: string[];
+  /** notes.edit feature level: 'lite' = plain textarea without the split preview. */
+  editLevel?: 'on' | 'lite' | 'off';
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const follow = useCallback((name: string) => start(() => followWikiLinkAction(slug, name)), [slug]);
 
-  if (editing) return <NoteEditor slug={slug} note={note} linkTargets={linkTargets} macros={macros} />;
+  if (editing)
+    return (
+      <NoteEditor
+        slug={slug}
+        note={note}
+        linkTargets={linkTargets}
+        macros={macros}
+        lite={editLevel === 'lite'}
+      />
+    );
 
   return (
     <div className={s.main}>
@@ -123,11 +135,13 @@ function NoteEditor({
   note,
   linkTargets,
   macros,
+  lite = false,
 }: {
   slug: string;
   note: Note;
   linkTargets: string[];
   macros: string[];
+  lite?: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(note.title);
@@ -194,22 +208,35 @@ function NoteEditor({
           Done
         </Button>
       </div>
-      <div className={s.split}>
-        <MarkdownEditor
+      {lite ? (
+        <textarea
+          className={s.liteEditor}
+          aria-label="Note body"
           value={body}
-          onChange={(v) => {
-            setBody(v);
+          onChange={(e) => {
+            setBody(e.target.value);
             setDirty(true);
           }}
-          linkTargets={linkTargets}
-          macros={macros}
-          onSave={() => save(false)}
-          autoFocus
+          placeholder="Write in Markdown. [[wiki links]] and $TeX$ work."
         />
-        <div className={s.preview}>
-          <MarkdownView html={html} />
+      ) : (
+        <div className={s.split}>
+          <MarkdownEditor
+            value={body}
+            onChange={(v) => {
+              setBody(v);
+              setDirty(true);
+            }}
+            linkTargets={linkTargets}
+            macros={macros}
+            onSave={() => save(false)}
+            autoFocus
+          />
+          <div className={s.preview}>
+            <MarkdownView html={html} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -15,10 +15,12 @@ export function ExperimentView({
   slug,
   experiment,
   runs,
+  readOnly = false,
 }: {
   slug: string;
   experiment: Experiment;
   runs: Run[];
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<ActionState, FormData>(createRunAction, {});
@@ -37,20 +39,24 @@ export function ExperimentView({
           {experiment.description && <p className={s.desc}>{experiment.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="primary" size="sm" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
-            New run
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Icon icon={Trash2} />}
-            onClick={() => {
-              if (window.confirm(`Delete "${experiment.name}" and all its runs?`))
-                start(() => deleteExperimentAction(slug, experiment.id));
-            }}
-          >
-            Delete
-          </Button>
+          {!readOnly && (
+            <>
+              <Button variant="primary" size="sm" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
+                New run
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Icon icon={Trash2} />}
+                onClick={() => {
+                  if (window.confirm(`Delete "${experiment.name}" and all its runs?`))
+                    start(() => deleteExperimentAction(slug, experiment.id));
+                }}
+              >
+                Delete
+              </Button>
+            </>
+          )}
         </div>
       </div>
       {runs.length === 0 ? (

@@ -34,6 +34,10 @@ export interface PdfViewerProps {
   activeHighlightId?: string | null;
   onProgress?: (page: number, pageCount: number) => void;
   onSelection?: (sel: PdfSelection | null) => void;
+  /** Cap on the render pixel ratio (Safari limits total canvas memory; phones use 1.5). */
+  maxPixelRatio?: number;
+  /** Pages beyond viewport ± this many are released (canvas freed) until they come back. */
+  renderWindow?: number;
   ref?: React.Ref<PdfViewerHandle>;
 }
 
@@ -64,6 +68,8 @@ export function PdfViewer({
   activeHighlightId,
   onProgress,
   onSelection,
+  maxPixelRatio = 2,
+  renderWindow = 1,
   ref,
 }: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -246,6 +252,10 @@ export function PdfViewer({
               doc={doc!}
               highlights={highlights.filter((h) => h.anchor.page === p.no)}
               activeHighlightId={activeHighlightId ?? null}
+              maxPixelRatio={maxPixelRatio}
+              current={current}
+              renderWindow={renderWindow}
+              scrollRoot={viewerRef.current}
               register={(el) => {
                 if (el) pageEls.current.set(p.no, el);
                 else pageEls.current.delete(p.no);
@@ -303,6 +313,10 @@ function Page({
   highlights,
   activeHighlightId,
   register,
+  maxPixelRatio,
+  current,
+  renderWindow,
+  scrollRoot,
 }: {
   state: PageState;
   scale: number;
@@ -311,6 +325,10 @@ function Page({
   highlights: PdfHighlight[];
   activeHighlightId: string | null;
   register: (el: HTMLDivElement | null) => void;
+  maxPixelRatio: number;
+  current: number;
+  renderWindow: number;
+  scrollRoot: HTMLElement | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -321,20 +339,35 @@ function Page({
     const el = hostRef.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => setVisible(entries.some((e) => e.isIntersecting)), {
-      rootMargin: '600px 0px',
+      root: scrollRoot,
+      rootMargin: '300px 0px',
     });
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [scrollRoot]);
+
+  // Render while on screen or within the window around the current page; otherwise release the canvas so
+  // Safari (which caps total canvas memory) can reclaim it. The container keeps its size, so scrolling is stable.
+  const shouldRender = visible || Math.abs(state.no - current) <= renderWindow;
 
   useEffect(() => {
-    if (!visible) return;
     const canvas = canvasRef.current;
     const layer = layerRef.current;
     if (!canvas || !layer) return;
-    let cancelled = false;
+    if (!shouldRender) {
+      canvas.width = 0;
+      canvas.height = 0;
+      canvas.style.width = '';
+      canvas.style.height = '';
+      layer.replaceChildren();
+      return;
+    }
     const viewport = state.page.getViewport({ scale });
-    const dpr = window.devicePixelRatio || 1;
+    let dpr = Math.min(window.devicePixelRatio || 1, maxPixelRatio);
+    // Safari refuses canvases above ~16.7 million pixels.
+    const maxPixels = 16_000_000;
+    if (viewport.width * viewport.height * dpr * dpr > maxPixels)
+      dpr = Math.sqrt(maxPixels / (viewport.width * viewport.height));
     canvas.width = Math.floor(viewport.width * dpr);
     canvas.height = Math.floor(viewport.height * dpr);
     canvas.style.width = `${viewport.width}px`;
@@ -355,13 +388,11 @@ function Page({
     renderTask.promise.catch(() => {});
     textLayer.render().catch(() => {});
     return () => {
-      cancelled = true;
       renderTask.cancel();
       textLayer.cancel();
-      void cancelled;
       void doc;
     };
-  }, [visible, scale, state.page, pdfjs, doc]);
+  }, [shouldRender, scale, state.page, pdfjs, doc, maxPixelRatio]);
 
   return (
     <div
@@ -371,31 +402,34 @@ function Page({
       }}
       className={s.page}
       data-page={state.no}
+      data-rendered={shouldRender ? 'true' : 'false'}
       style={{ width: state.w * scale, height: state.h * scale }}
     >
       <canvas ref={canvasRef} />
       <div ref={layerRef} className="textLayer" />
-      <div className={s.highlights}>
-        {highlights.flatMap((h) =>
-          h.anchor.rects.map((r, i) => (
-            <div
-              key={`${h.id}-${i}`}
-              className={s.hl}
-              data-active={h.id === activeHighlightId ? 'true' : undefined}
-              style={
-                {
-                  left: r.x * scale,
-                  top: r.y * scale,
-                  width: r.w * scale,
-                  height: r.h * scale,
-                  '--hl': `var(--folio-hl-${h.type})`,
-                  '--hl-text': `var(--folio-hl-${h.type}-text)`,
-                } as React.CSSProperties
-              }
-            />
-          )),
-        )}
-      </div>
+      {shouldRender && (
+        <div className={s.highlights}>
+          {highlights.flatMap((h) =>
+            h.anchor.rects.map((r, i) => (
+              <div
+                key={`${h.id}-${i}`}
+                className={s.hl}
+                data-active={h.id === activeHighlightId ? 'true' : undefined}
+                style={
+                  {
+                    left: r.x * scale,
+                    top: r.y * scale,
+                    width: r.w * scale,
+                    height: r.h * scale,
+                    '--hl': `var(--folio-hl-${h.type})`,
+                    '--hl-text': `var(--folio-hl-${h.type}-text)`,
+                  } as React.CSSProperties
+                }
+              />
+            )),
+          )}
+        </div>
+      )}
       <span className={s.pageNo}>{state.no}</span>
     </div>
   );

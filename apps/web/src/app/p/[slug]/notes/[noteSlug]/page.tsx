@@ -5,6 +5,7 @@ import { NotesRail } from '@/components/notes/notes-rail';
 import { mergedMacros } from '@/lib/macros';
 import { renderMarkdown } from '@/lib/markdown';
 import { backlinksTo, getNote, getNoteBySlug, linkTargets, listNotes, unresolvedFrom } from '@/lib/notes';
+import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ export default async function NotePage({
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const note = (await getNoteBySlug(project.id, noteSlug)) ?? (await getNote(project.id, noteSlug));
+  const editLevel = (await currentFeature('notes.edit')).level;
   if (!note) notFound();
   const [notes, html, backlinks, unresolved, targets, macroRows] = await Promise.all([
     listNotes(project.id),
@@ -40,7 +42,8 @@ export default async function NotePage({
         backlinks={backlinks}
         unresolved={unresolved}
         linkTargets={targets.filter((t) => t !== note.title)}
-        editing={edit === '1'}
+        editing={edit === '1' && editLevel !== 'off'}
+        editLevel={editLevel}
         macros={macroRows.map((m) => m.name)}
       />
     </div>

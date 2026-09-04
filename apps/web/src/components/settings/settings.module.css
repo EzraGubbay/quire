@@ -161,3 +161,40 @@
   text-decoration: none;
   margin-bottom: -20px;
 }
+.radios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.radio {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-card);
+  background: var(--eg-bg);
+  cursor: pointer;
+}
+.radio[data-active="true"] {
+  border-color: var(--eg-accent);
+  background: var(--eg-accent-soft);
+}
+.radio span {
+  display: grid;
+  gap: 2px;
+}
+.level {
+  font: 500 11px / 1 var(--eg-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.level[data-level="on"] {
+  color: var(--folio-hl-result-text);
+}
+.level[data-level="lite"] {
+  color: var(--folio-hl-todo-text);
+}
+.level[data-level="off"] {
+  color: var(--eg-muted);
+}
