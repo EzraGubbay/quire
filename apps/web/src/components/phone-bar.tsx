@@ -13,7 +13,7 @@ export function PhoneBar({ project }: { project?: { slug: string; name: string }
   return (
     <header className={s.bar} data-testid="phone-bar">
       <NextLink href="/" className={s.mark} aria-label="Home">
-        <Mark />
+        <Mark variant="monogram" size={18} />
       </NextLink>
       {project ? (
         <NextLink href={`/p/${project.slug}/overview`} className={s.project}>

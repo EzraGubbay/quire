@@ -264,3 +264,15 @@
     padding: 16px 12px;
   }
 }
+
+/* Phone bar: back link and title share the first line; actions wrap beneath. */
+.layout[data-phone="true"] .bar {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px;
+}
+.layout[data-phone="true"] .bar .title,
+.layout[data-phone="true"] .bar .titleInput {
+  flex: 1 1 200px;
+  white-space: normal;
+}
