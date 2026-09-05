@@ -26,10 +26,12 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now net-watchdog.timer
 # Persistent journal.
-sed -i 's/^#\?Storage=.*/Storage=persistent/' /etc/systemd/journald.conf
+# Raspberry Pi OS ships a drop-in forcing Storage=volatile (SD-card protection); a later drop-in wins.
+mkdir -p /etc/systemd/journald.conf.d
+printf '[Journal]\nStorage=persistent\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/persistent.conf
 mkdir -p /var/log/journal
-systemd-tmpfiles --create --prefix /var/log/journal
 systemctl restart systemd-journald
+journalctl --flush
 # Wi-Fi power save off (2 = disable); re-activating the connection applies it and briefly drops the link.
 nmcli con modify "$CON" 802-11-wireless.powersave 2
 echo "installed; re-activating $CON"
