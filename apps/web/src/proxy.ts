@@ -11,6 +11,8 @@ const PUBLIC_PREFIXES = [
   '/sw.js',
   '/offline',
   '/pdf.worker.min.mjs',
+  // pdf.js fetches these from inside its worker; public like the worker itself (fonts and CMaps are not private).
+  '/pdfjs/',
 ];
 
 function bearerOk(req: NextRequest): boolean {
