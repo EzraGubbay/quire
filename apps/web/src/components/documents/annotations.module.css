@@ -11,6 +11,8 @@
   min-width: 0;
   min-height: 0;
   position: relative;
+  /* The viewer scrolls; nothing placed over it (popover) may grow the page and pop a scrollbar. */
+  overflow: hidden;
 }
 .panel {
   width: 360px;
@@ -214,6 +216,10 @@
   position: absolute;
   z-index: 6;
   transform: translate(-50%, calc(-100% - 8px));
+}
+/* Selection at the top edge: open beneath it instead of into the clipped area above. */
+.popover[data-below="true"] {
+  transform: translate(-50%, 0);
 }
 .popoverBtn {
   display: inline-flex;

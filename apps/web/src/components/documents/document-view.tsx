@@ -114,6 +114,8 @@ export function DocumentView({
   }, []);
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
+  // The popover sits outside the scroller in visible-area coordinates, so it goes away when the text scrolls.
+  const clearSelection = useCallback(() => setSelection(null), []);
   const toggleChrome = useCallback(() => setChrome((c) => !c), []);
   // Scrolling hides the bar, except while a sheet is up (its own scrolling should not affect the reader bar).
   const hideChrome = useCallback(() => {
@@ -238,7 +240,7 @@ export function DocumentView({
         fitPadding={phone ? 8 : 48}
         pinch={phone}
         onTap={phone ? toggleChrome : undefined}
-        onScroll={phone ? hideChrome : undefined}
+        onScroll={phone ? hideChrome : clearSelection}
       />
     ) : doc.kind === 'markdown' ? (
       <MarkdownView
@@ -252,7 +254,7 @@ export function DocumentView({
         onFontScale={phone ? setFontScale : undefined}
         pinch={phone}
         onTap={phone ? toggleChrome : undefined}
-        onScroll={phone ? hideChrome : undefined}
+        onScroll={phone ? hideChrome : clearSelection}
         onProgress={phone ? setFraction : undefined}
       />
     ) : (
@@ -454,7 +456,12 @@ export function DocumentView({
           {selection && canAnnotate && (
             <div
               className={a11y.popover}
-              style={{ top: selection.box.top, left: selection.box.left + selection.box.width / 2 }}
+              data-below={selection.box.top < 56 ? 'true' : undefined}
+              style={{
+                top:
+                  selection.box.top < 56 ? selection.box.top + selection.box.height + 8 : selection.box.top,
+                left: selection.box.left + selection.box.width / 2,
+              }}
             >
               <button
                 type="button"

@@ -21,7 +21,7 @@ export interface PdfHighlight {
 /** A user text selection inside one page, in scale-1 CSS pixels with a top-left origin. */
 export interface PdfSelection {
   anchor: PdfAnchor;
-  /** Viewport-space box of the selection at the current scale, relative to the viewer, for placing a popover. */
+  /** Box of the selection relative to the viewer's visible area (not its scroll content), for placing a popover. */
   box: { top: number; left: number; width: number; height: number };
 }
 
@@ -399,8 +399,8 @@ export function PdfViewer({
       onSelection({
         anchor: { kind: 'pdf', page: Number(pageEl.dataset.page), quote, prefix, suffix, start, end, rects },
         box: {
-          top: b.top - viewerRect.top + viewer.scrollTop,
-          left: b.left - viewerRect.left + viewer.scrollLeft,
+          top: b.top - viewerRect.top,
+          left: b.left - viewerRect.left,
           width: b.width,
           height: b.height,
         },

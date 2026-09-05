@@ -145,8 +145,8 @@ export const MarkdownView = memo(function MarkdownView({
       onSelection({
         anchor,
         box: {
-          top: b.top - w.top + wrap.scrollTop,
-          left: b.left - w.left + wrap.scrollLeft,
+          top: b.top - w.top,
+          left: b.left - w.left,
           width: b.width,
           height: b.height,
         },
