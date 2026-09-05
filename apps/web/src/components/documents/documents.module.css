@@ -195,21 +195,33 @@
   align-items: center;
 }
 
-/* Phone: one-line folder bar that opens the folder sheet. */
-.folderBar {
+/* Phone: the folder picker trigger docks just above the tab bar (thumb reach; the sheet rises from the same edge). */
+.folderDock {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  z-index: 15;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--eg-rule);
-  border-radius: var(--eg-radius-card);
-  background: var(--eg-surface-2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--eg-surface) 94%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 6px 24px rgba(20, 16, 12, 0.14);
   color: var(--eg-text);
-  font: 500 14px / 1.2 var(--eg-font-ui);
+  font: 500 15px / 1.2 var(--eg-font-ui);
   text-align: left;
   cursor: pointer;
+}
+:global(html[data-keyboard="true"]) .folderDock {
+  display: none;
+}
+.layout[data-phone="true"] .main {
+  padding-bottom: 80px;
 }
 .folderBarLabel {
   flex: 1;

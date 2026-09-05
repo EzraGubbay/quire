@@ -116,8 +116,11 @@ export function PdfViewer({
   const [zoom, setZoomState] = useState(1);
   const scale = fit * zoom;
   const [current, setCurrent] = useState(initialPage);
-  /** Scroll correction to apply once the layout reflects a new scale: keep `mid` over the same content. */
-  const pendingScroll = useRef<{ ratio: number; mid: Point } | null>(null);
+  /** Scroll correction to apply once the layout reflects a new scale: content point `anchor` (pre-scale content
+   *  coords) lands under viewport point `end`. */
+  const pendingScroll = useRef<{ ratio: number; anchor: Point; end: Point } | null>(null);
+  /** Scroll offsets when a pinch began, so the anchor is measured against the layout the fingers landed on. */
+  const pinchScroll = useRef<Point>({ x: 0, y: 0 });
   /** Programmatic scrolls (scroll-to, zoom re-centre) must not count as user scrolling. */
   const suppressScrollUntil = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -181,18 +184,27 @@ export function PdfViewer({
 
   // Zoom: commit a new factor, then (in the layout effect below) keep the focal point still.
   const applyZoom = useCallback(
-    (next: number, focal?: Point) => {
+    (next: number, focal?: { start: Point; end: Point; scroll?: Point } | Point) => {
       const el = viewerRef.current;
+      if (!el) return;
       const clamped = pinchMath.clamp(next, minZoom, maxZoom);
-      setZoomState((z) => {
-        if (Math.abs(clamped - z) < 0.001) return z;
-        const mid = focal ?? (el ? { x: el.clientWidth / 2, y: el.clientHeight / 2 } : { x: 0, y: 0 });
-        pendingScroll.current = { ratio: clamped / z, mid };
-        log('debug', 'viewer', 'zoom', { zoom: Number(clamped.toFixed(2)), fit: Number(fit.toFixed(3)) });
-        return clamped;
-      });
+      if (Math.abs(clamped - zoom) < 0.001) return;
+      const centre = { x: el.clientWidth / 2, y: el.clientHeight / 2 };
+      const f = focal
+        ? 'start' in focal
+          ? focal
+          : { start: focal, end: focal }
+        : { start: centre, end: centre };
+      const scroll = f.scroll ?? { x: el.scrollLeft, y: el.scrollTop };
+      pendingScroll.current = {
+        ratio: clamped / zoom,
+        anchor: { x: scroll.x + f.start.x, y: scroll.y + f.start.y },
+        end: f.end,
+      };
+      log('debug', 'viewer', 'zoom', { zoom: Number(clamped.toFixed(2)), fit: Number(fit.toFixed(3)) });
+      setZoomState(clamped);
     },
-    [minZoom, maxZoom, fit],
+    [minZoom, maxZoom, fit, zoom],
   );
   useEffect(() => onZoomChange?.(zoom), [zoom, onZoomChange]);
   useLayoutEffect(() => {
@@ -201,29 +213,35 @@ export function PdfViewer({
     if (!el || !p) return;
     pendingScroll.current = null;
     suppressScrollUntil.current = Date.now() + 400;
-    el.scrollLeft = pinchMath.scrollAfterZoom(el.scrollLeft, p.mid.x, p.ratio);
-    el.scrollTop = pinchMath.scrollAfterZoom(el.scrollTop, p.mid.y, p.ratio);
+    el.scrollLeft = pinchMath.scrollForAnchor(p.anchor.x, p.end.x, p.ratio);
+    el.scrollTop = pinchMath.scrollForAnchor(p.anchor.y, p.end.y, p.ratio);
   }, [scale]);
 
   usePinch(
     viewerRef,
     {
-      onPreview: (ratio, mid) => {
-        const pages = pagesRef.current;
+      onPinchStart: () => {
         const el = viewerRef.current;
-        if (!pages || !el) return;
-        const ox = mid.x + el.scrollLeft - pages.offsetLeft;
-        const oy = mid.y + el.scrollTop - pages.offsetTop;
-        pages.style.transformOrigin = `${ox}px ${oy}px`;
-        pages.style.transform = `scale(${ratio})`;
+        if (el) pinchScroll.current = { x: el.scrollLeft, y: el.scrollTop };
       },
-      onCommit: (ratio, mid) => {
+      // Scale around the point the fingers landed on and follow them as they move, so the preview and the
+      // committed layout agree about which passage stays under the hand.
+      onPreview: (ratio, mid, start) => {
+        const pages = pagesRef.current;
+        if (!pages) return;
+        const s0 = pinchScroll.current;
+        const ox = start.x + s0.x - pages.offsetLeft;
+        const oy = start.y + s0.y - pages.offsetTop;
+        pages.style.transformOrigin = `${ox}px ${oy}px`;
+        pages.style.transform = `translate(${mid.x - start.x}px, ${mid.y - start.y}px) scale(${ratio})`;
+      },
+      onCommit: (ratio, mid, start) => {
         const pages = pagesRef.current;
         if (pages) {
           pages.style.transform = '';
           pages.style.transformOrigin = '';
         }
-        applyZoom(zoom * ratio, mid);
+        applyZoom(zoom * ratio, { start, end: mid, scroll: pinchScroll.current });
       },
       onDoubleTap: (point) => applyZoom(zoom > 1.05 ? 1 : 2, point),
       onTap: () => onTap?.(),

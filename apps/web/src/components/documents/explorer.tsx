@@ -2,16 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { DocumentKind, ReadingStatus } from '@quire/shared';
-import {
-  ChevronDown,
-  FileText,
-  FolderIcon,
-  FolderOpen,
-  FolderPlus,
-  Inbox,
-  Plus,
-  Sparkles,
-} from 'lucide-react';
+import { ChevronUp, FileText, FolderIcon, FolderOpen, FolderPlus, Inbox, Plus, Sparkles } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
@@ -135,7 +126,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
         {phone && (
           <button
             type="button"
-            className={s.folderBar}
+            className={s.folderDock}
             aria-label={`Folder: ${title}. Choose folder`}
             aria-haspopup="dialog"
             aria-expanded={pickerOpen}
@@ -145,11 +136,11 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
             <Icon icon={folderId === 'all' ? FileText : folderId === null ? Inbox : FolderOpen} />
             <span className={s.folderBarLabel}>{title}</span>
             <span className={s.nodeMeta}>{currentCount}</span>
-            <Icon icon={ChevronDown} />
+            <Icon icon={ChevronUp} />
           </button>
         )}
         <div className={s.mainHead}>
-          {!phone && <h1 className={s.title}>{title}</h1>}
+          <h1 className={s.title}>{title}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
             <NextLink
               href={`/p/${slug}/discover`}

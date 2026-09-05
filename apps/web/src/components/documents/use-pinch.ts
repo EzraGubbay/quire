@@ -8,10 +8,12 @@ export interface Point {
 }
 
 export interface PinchHandlers {
-  /** Live pinch ratio relative to the gesture start, with the current midpoint (viewer-relative). */
-  onPreview?: (ratio: number, mid: Point) => void;
-  /** The gesture ended; commit the ratio. */
-  onCommit?: (ratio: number, mid: Point) => void;
+  /** Two fingers down: `start` is the midpoint the gesture is anchored to (viewer-relative). */
+  onPinchStart?: (start: Point) => void;
+  /** Live pinch ratio relative to the gesture start, with the current and starting midpoints (viewer-relative). */
+  onPreview?: (ratio: number, mid: Point, start: Point) => void;
+  /** The gesture ended; commit the ratio. The content under `start` should end up under `mid`. */
+  onCommit?: (ratio: number, mid: Point, start: Point) => void;
   onDoubleTap?: (point: Point) => void;
   /** A single tap (fires after the double-tap window unless a second tap came). */
   onTap?: (point: Point) => void;
@@ -28,6 +30,8 @@ export const pinchMath = {
   midpoint: (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }),
   /** Scroll offset that keeps `mid` (viewport-relative) over the same content after scaling by `ratio`. */
   scrollAfterZoom: (scroll: number, mid: number, ratio: number) => (scroll + mid) * ratio - mid,
+  /** Scroll offset that puts content point `anchor` (content coords before scaling) under viewport point `end`. */
+  scrollForAnchor: (anchor: number, end: number, ratio: number) => anchor * ratio - end,
   clamp: (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v)),
 };
 
@@ -41,7 +45,7 @@ export function usePinch(ref: RefObject<HTMLElement | null>, handlers: PinchHand
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    let pinch: { start: number; mid: Point; ratio: number } | null = null;
+    let pinch: { start: number; origin: Point; mid: Point; ratio: number } | null = null;
     let tap: { at: number; point: Point; moved: boolean } | null = null;
     let lastTap: { at: number; point: Point } | null = null;
     let tapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,8 +58,10 @@ export function usePinch(ref: RefObject<HTMLElement | null>, handlers: PinchHand
       if (e.touches.length === 2) {
         const a = rel(e.touches[0]!);
         const b = rel(e.touches[1]!);
-        pinch = { start: pinchMath.distance(a, b), mid: pinchMath.midpoint(a, b), ratio: 1 };
+        const origin = pinchMath.midpoint(a, b);
+        pinch = { start: pinchMath.distance(a, b), origin, mid: origin, ratio: 1 };
         tap = null;
+        h.current.onPinchStart?.(origin);
         return;
       }
       if (e.touches.length === 1 && !pinch) {
@@ -71,7 +77,7 @@ export function usePinch(ref: RefObject<HTMLElement | null>, handlers: PinchHand
         const b = rel(e.touches[1]!);
         pinch.ratio = pinchMath.distance(a, b) / pinch.start;
         pinch.mid = pinchMath.midpoint(a, b);
-        h.current.onPreview?.(pinch.ratio, pinch.mid);
+        h.current.onPreview?.(pinch.ratio, pinch.mid, pinch.origin);
         return;
       }
       if (tap && e.touches.length === 1) {
@@ -82,7 +88,7 @@ export function usePinch(ref: RefObject<HTMLElement | null>, handlers: PinchHand
     const onEnd = (e: TouchEvent) => {
       if (pinch) {
         if (e.touches.length < 2) {
-          h.current.onCommit?.(pinch.ratio, pinch.mid);
+          h.current.onCommit?.(pinch.ratio, pinch.mid, pinch.origin);
           pinch = null;
         }
         return;
