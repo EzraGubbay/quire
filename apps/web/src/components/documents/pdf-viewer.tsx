@@ -4,9 +4,10 @@ import type { AnnotationType, PdfAnchor } from '@quire/shared';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { deviceInfo, isDebug, log, setCrashMark } from '@/lib/debug-client';
+import { installPdfPolyfills } from '@/lib/pdf-polyfill';
 import s from './pdf-viewer.module.css';
 
-type Pdfjs = typeof import('pdfjs-dist');
+type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist').PDFDocumentProxy;
 type PdfPage = import('pdfjs-dist').PDFPageProxy;
 
@@ -48,7 +49,9 @@ const WORKER_URL = '/pdf.worker.min.mjs';
 let pdfjsPromise: Promise<Pdfjs> | undefined;
 function loadPdfjs(): Promise<Pdfjs> {
   if (!pdfjsPromise) {
-    pdfjsPromise = import('pdfjs-dist').then((m) => {
+    installPdfPolyfills();
+    // The legacy build carries polyfills for engines a release or two behind (iOS Safari); the modern build does not.
+    pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((m) => {
       m.GlobalWorkerOptions.workerSrc = WORKER_URL;
       return m;
     });
