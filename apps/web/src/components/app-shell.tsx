@@ -7,7 +7,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { AskLauncher } from '@/components/chat/ask-launcher';
 import { CommandPalette } from '@/components/palette/command-palette';
+import { PhoneBar } from '@/components/phone-bar';
 import { usePlatform } from '@/components/platform';
+import { TabBar } from '@/components/tab-bar';
 import { useTheme } from './providers';
 
 export const PROJECT_TABS = [
@@ -85,6 +87,17 @@ export function AppShell({ project, children }: AppShellProps) {
         <main className="quire-main" data-immersive="true">
           {children}
         </main>
+      </div>
+    );
+  }
+  if (platform === 'phone') {
+    return (
+      <div style={{ display: 'contents' }}>
+        <PhoneBar project={project} />
+        <main className="quire-main" data-phone="true">
+          {children}
+        </main>
+        {project && <TabBar slug={project.slug} />}
       </div>
     );
   }

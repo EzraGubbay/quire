@@ -5,6 +5,7 @@ import { SpendBanner } from '@/components/chat/spend-banner';
 import { spendSummary } from '@/lib/ai/ledger';
 import { aiConfigured } from '@/lib/ai/provider';
 import { listThreads } from '@/lib/chat';
+import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,18 @@ export default async function ChatPage({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
-  const [threads, summary] = await Promise.all([listThreads(project.id), spendSummary()]);
+  const [threads, summary, chat] = await Promise.all([
+    listThreads(project.id),
+    spendSummary(),
+    currentFeature('chat'),
+  ]);
+  // Phones: the list is the page; a thread opens on its own route.
+  if (chat.platform === 'phone')
+    return (
+      <div className={s.layout} data-phone="true">
+        <ChatRail slug={slug} threads={threads} phone />
+      </div>
+    );
   return (
     <div className={s.layout}>
       <ChatRail slug={slug} threads={threads} />

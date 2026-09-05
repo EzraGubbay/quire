@@ -19,6 +19,7 @@ import type { Backlink } from '@/lib/notes';
 import s from './notes.module.css';
 
 export function NoteView({
+  backHref,
   slug,
   note,
   html,
@@ -29,6 +30,8 @@ export function NoteView({
   macros,
   editLevel = 'on',
 }: {
+  /** Phone: link back to the notes list, shown in the bar. */
+  backHref?: string;
   slug: string;
   note: Note;
   html: string;
@@ -52,12 +55,18 @@ export function NoteView({
         linkTargets={linkTargets}
         macros={macros}
         lite={editLevel === 'lite'}
+        backHref={backHref}
       />
     );
 
   return (
     <div className={s.main}>
       <div className={s.bar}>
+        {backHref && (
+          <NextLink href={backHref} className={s.back}>
+            ← Notes
+          </NextLink>
+        )}
         <h1 className={s.title}>{note.title}</h1>
         <span className={s.status}>
           edited {note.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
@@ -136,12 +145,14 @@ function NoteEditor({
   linkTargets,
   macros,
   lite = false,
+  backHref,
 }: {
   slug: string;
   note: Note;
   linkTargets: string[];
   macros: string[];
   lite?: boolean;
+  backHref?: string;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(note.title);
@@ -185,6 +196,11 @@ function NoteEditor({
   return (
     <div className={s.main}>
       <div className={s.bar}>
+        {backHref && (
+          <NextLink href={backHref} className={s.back}>
+            ← Notes
+          </NextLink>
+        )}
         <input
           className={s.titleInput}
           aria-label="Title"

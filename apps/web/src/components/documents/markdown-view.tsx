@@ -87,6 +87,8 @@ export const MarkdownView = memo(function MarkdownView({
       onProgress?.(range > 0 ? pinchMath.clamp(el.scrollTop / range, 0, 1) : 1);
       if (Date.now() >= suppressScrollUntil.current) onScroll?.();
     };
+    const range = el.scrollHeight - el.clientHeight;
+    onProgress?.(range > 0 ? pinchMath.clamp(el.scrollTop / range, 0, 1) : 1);
     el.addEventListener('scroll', handler, { passive: true });
     return () => el.removeEventListener('scroll', handler);
   }, [onScroll, onProgress]);

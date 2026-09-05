@@ -1,11 +1,13 @@
 import { Card, CardRow, HighlightChip, Icon } from '@ezragubbay/folio';
 import { ANNOTATION_TYPE_LABEL } from '@quire/shared';
-import { FileText, FolderOpen } from 'lucide-react';
+import { FileText, FlaskConical, FolderOpen, StickyNote } from 'lucide-react';
 import NextLink from 'next/link';
 import { notFound } from 'next/navigation';
 import { GraphView } from '@/components/graph/graph-view';
 import { getGraph } from '@/lib/graph';
-import { getOverview } from '@/lib/overview';
+import { listNotes } from '@/lib/notes';
+import { getOverview, recentRuns } from '@/lib/overview';
+import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 import s from './overview.module.css';
 
@@ -25,7 +27,13 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
-  const [o, graph] = await Promise.all([getOverview(project.id), getGraph(project.id, slug)]);
+  const graphLevel = (await currentFeature('graph')).level;
+  const [o, graph, notes, runs] = await Promise.all([
+    getOverview(project.id),
+    graphLevel === 'off' ? Promise.resolve(null) : getGraph(project.id, slug),
+    listNotes(project.id),
+    recentRuns(project.id, 3),
+  ]);
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -102,20 +110,70 @@ export default async function OverviewPage({ params }: { params: Promise<{ slug:
             ))
           )}
         </Card>
-        <Card title="Experiments" action={<span />}>
-          <p className={s.muted}>Runs reported by the Python client arrive in Phase 3.</p>
-        </Card>
         <Card
-          title="Note graph"
+          title="Experiments"
           action={
-            <NextLink href={`/p/${slug}/notes/graph`} className={s.more}>
-              Open
+            <NextLink href={`/p/${slug}/experiments`} className={s.more}>
+              All
             </NextLink>
           }
-          className={s.wide}
         >
-          <GraphView data={graph} width={640} height={320} legend={false} />
+          {runs.length === 0 ? (
+            <p className={s.muted}>
+              No runs yet. Start one from Python with quire-client and it shows up here.
+            </p>
+          ) : (
+            runs.map((r) => (
+              <CardRow
+                key={r.run.id}
+                icon={<Icon icon={FlaskConical} />}
+                title={
+                  <NextLink href={`/p/${slug}/experiments/${r.run.experimentId}/runs/${r.run.id}`}>
+                    {r.run.name}
+                  </NextLink>
+                }
+                meta={[r.experimentName, r.run.status, ago(r.run.createdAt)].join(' · ')}
+              />
+            ))
+          )}
         </Card>
+        {graph ? (
+          <Card
+            title="Note graph"
+            action={
+              <NextLink href={`/p/${slug}/notes/graph`} className={s.more}>
+                Open
+              </NextLink>
+            }
+            className={s.wide}
+          >
+            <GraphView data={graph} width={640} height={320} legend={false} />
+          </Card>
+        ) : (
+          <Card
+            title="Recent notes"
+            action={
+              <NextLink href={`/p/${slug}/notes`} className={s.more}>
+                All
+              </NextLink>
+            }
+          >
+            {notes.length === 0 ? (
+              <p className={s.muted}>No notes yet.</p>
+            ) : (
+              notes
+                .slice(0, 5)
+                .map((n) => (
+                  <CardRow
+                    key={n.id}
+                    icon={<Icon icon={StickyNote} />}
+                    title={<NextLink href={`/p/${slug}/notes/${n.slug}`}>{n.title}</NextLink>}
+                    meta={ago(n.updatedAt)}
+                  />
+                ))
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );

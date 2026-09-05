@@ -189,3 +189,32 @@
   color: var(--eg-text);
   background: var(--eg-bg);
 }
+
+/* Phone: the rail is the whole page; the note page has no rail. */
+.layout[data-phone="true"] {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+.rail[data-phone="true"] {
+  border-right: 0;
+  border-bottom: 0 !important;
+  max-height: none !important;
+}
+.rail[data-phone="true"] .item {
+  padding: 12px 12px;
+}
+.rail[data-phone="true"] .itemTitle {
+  font-size: 16px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--eg-text-2);
+  text-decoration: none;
+  font: 500 13px / 1 var(--eg-font-ui);
+  white-space: nowrap;
+}
+.layout[data-phone="true"] .bar {
+  flex-wrap: wrap;
+}

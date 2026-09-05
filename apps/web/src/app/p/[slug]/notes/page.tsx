@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import s from '@/components/notes/notes.module.css';
 import { NotesRail } from '@/components/notes/notes-rail';
 import { listNotes } from '@/lib/notes';
+import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,14 @@ export default async function NotesPage({
   const { new: openNew } = await searchParams;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
-  const notes = await listNotes(project.id);
+  const [notes, read] = await Promise.all([listNotes(project.id), currentFeature('notes.read')]);
+  // Phones: the list is the page; a note opens on its own route.
+  if (read.platform === 'phone')
+    return (
+      <div className={s.layout} data-phone="true">
+        <NotesRail slug={slug} notes={notes} openNew={openNew === '1'} phone />
+      </div>
+    );
   return (
     <div className={s.layout}>
       <NotesRail slug={slug} notes={notes} openNew={openNew === '1'} />

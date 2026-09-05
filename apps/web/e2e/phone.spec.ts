@@ -20,8 +20,40 @@ test('phone: flags, immersive reader (bar, zoom, sheets), folder sheet, theme se
   await page.waitForURL(/\/p\/([^/]+)\/overview$/);
   const slug = page.url().match(/\/p\/([^/]+)\//)?.[1] as string;
 
+  // Phone shell: slim top bar, bottom tab bar (no app-bar tab row), More sheet for the rest.
+  await expect(page.getByTestId('phone-bar')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Sections' })).toHaveCount(0);
+  const tabs = page.getByTestId('tab-bar');
+  await expect(tabs.getByRole('link')).toHaveCount(4);
+  await tabs.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByTestId('more-nav')).toHaveAttribute('data-open', 'true');
+  await expect(page.getByTestId('more-nav').getByRole('link', { name: 'Sources' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Overview: no graph card on phones (graph is off); recent notes instead; experiments card is real data.
+  await expect(page.getByText('Note graph')).toHaveCount(0);
+  await expect(page.getByText('Recent notes')).toBeVisible();
+  await expect(page.getByText('No runs yet.')).toBeVisible();
+  // Inputs are 16px on phones so iOS does not zoom on focus.
+  await tabs.getByRole('link', { name: 'Notes' }).click();
+  await page.waitForURL(/\/notes$/);
+  expect(await page.getByLabel('Search notes').evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px');
+  // Notes is a full-page list on phones (no "pick one on the left" placeholder); a note opens on its own page.
+  await expect(page.getByText('Pick one on the left')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Notes' })).toHaveAttribute('data-phone', 'true');
+  await page.getByRole('button', { name: 'New note' }).click();
+  await page.getByLabel('Title').fill('Phone note');
+  await page.getByRole('button', { name: 'Create note' }).click();
+  await page.waitForURL(/\/notes\/[^/]+$/);
+  await expect(page.getByRole('complementary', { name: 'Notes' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '← Notes' })).toBeVisible();
+  // Chat likewise.
+  await tabs.getByRole('link', { name: 'Chat' }).click();
+  await page.waitForURL(/\/chat$/);
+  await expect(page.getByText('Pick a chat on the left')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Chats' })).toHaveAttribute('data-phone', 'true');
+
   // Graph is off on phones: no link in the rail, and the route explains itself.
-  await page.getByRole('link', { name: 'Notes', exact: true }).click();
+  await page.goto(`/p/${slug}/notes`);
   await expect(page.getByRole('link', { name: 'Graph' })).toHaveCount(0);
   await page.goto(`/p/${slug}/notes/graph`);
   await expect(page.getByTestId('unavailable')).toContainText('not available on phones');
@@ -76,6 +108,13 @@ test('phone: flags, immersive reader (bar, zoom, sheets), folder sheet, theme se
   await expect(sheet).toHaveAttribute('data-open', 'true');
   await page.getByRole('button', { name: 'Add a general annotation' }).click();
   await expect(page.getByTestId('annotation-card')).toHaveCount(1);
+  // The new card starts in edit mode; commit, then a tap on the body re-opens the editor (no double-click on touch).
+  await page.getByLabel('Annotation text').fill('captured on the phone');
+  await page.getByLabel('Annotation text').blur();
+  await expect(page.getByTestId('annotation-card')).toContainText('captured on the phone');
+  await page.getByTestId('annotation-card').locator('[data-body]').click();
+  await expect(page.getByLabel('Annotation text')).toBeVisible();
+  await page.getByLabel('Annotation text').blur();
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveAttribute('data-open', 'false');
   // The More sheet holds status, Ask and Delete.
@@ -97,7 +136,6 @@ test('phone: flags, immersive reader (bar, zoom, sheets), folder sheet, theme se
   await expect(folderSheet).toHaveAttribute('data-open', 'true');
   await folderSheet.getByRole('button', { name: /^Unfiled/ }).click();
   await expect(folderSheet).toHaveAttribute('data-open', 'false');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Unfiled');
   await expect(page.getByTestId('folder-bar')).toContainText('Unfiled');
 
   // Theme setting in Settings applies to the page.

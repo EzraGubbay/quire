@@ -227,3 +227,40 @@
   grid-template-rows: auto auto 1fr auto;
   min-height: 0;
 }
+
+/* Phone: the rail is the whole page; the thread page has no rail. */
+.layout[data-phone="true"] {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+.rail[data-phone="true"] {
+  border-right: 0;
+  border-bottom: 0 !important;
+  max-height: none !important;
+}
+.rail[data-phone="true"] .item {
+  padding: 12px 12px;
+}
+.rail[data-phone="true"] .itemTitle {
+  font-size: 16px;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--eg-text-2);
+  text-decoration: none;
+  font: 500 13px / 1 var(--eg-font-ui);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .composer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .hint {
+    display: none;
+  }
+  .messages {
+    padding: 16px 12px;
+  }
+}

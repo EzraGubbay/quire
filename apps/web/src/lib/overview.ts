@@ -1,6 +1,14 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { type Annotation, annotations, type Document, documents } from '@/db/schema';
+import {
+  type Annotation,
+  annotations,
+  type Document,
+  documents,
+  experiments,
+  type Run,
+  runs,
+} from '@/db/schema';
 
 export interface OverviewData {
   counts: { documents: number; annotations: number; open: number };
@@ -43,4 +51,18 @@ export async function getOverview(projectId: string): Promise<OverviewData> {
     openItems: openRows.map((r) => ({ ...r.a, documentTitle: r.documentTitle })),
     lastActivity: last?.at ? new Date(last.at) : null,
   };
+}
+
+/** Latest runs across the project's experiments, for the overview card. */
+export async function recentRuns(
+  projectId: string,
+  limit = 3,
+): Promise<{ run: Run; experimentName: string }[]> {
+  return db
+    .select({ run: runs, experimentName: experiments.name })
+    .from(runs)
+    .innerJoin(experiments, eq(runs.experimentId, experiments.id))
+    .where(eq(experiments.projectId, projectId))
+    .orderBy(desc(runs.createdAt))
+    .limit(limit);
 }

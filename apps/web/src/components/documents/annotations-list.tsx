@@ -95,6 +95,7 @@ export function AnnotationsList({
                 if (tapToScroll && a.anchor) onScrollTo(a);
                 else setExpanded((e) => (e === a.id ? null : a.id));
               }}
+              tapToEdit={tapToScroll}
               onScrollTo={() => onScrollTo(a)}
               onChangeType={(t) => onChangeType(a.id, t)}
               onChangeBody={(b) => onChangeBody(a.id, b)}
@@ -112,6 +113,7 @@ function AnnotationCard({
   active,
   expanded,
   autoFocus,
+  tapToEdit = false,
   onHover,
   onToggleExpand,
   onScrollTo,
@@ -123,6 +125,8 @@ function AnnotationCard({
   active: boolean;
   expanded: boolean;
   autoFocus: boolean;
+  /** Touch: a tap on the body starts editing (no double-click on a phone). */
+  tapToEdit?: boolean;
   onHover: (id: string | null) => void;
   onToggleExpand: () => void;
   onScrollTo: () => void;
@@ -156,6 +160,11 @@ function AnnotationCard({
       onMouseLeave={() => onHover(null)}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('button, textarea')) return;
+        if (tapToEdit && (e.target as HTMLElement).closest('[data-body]')) {
+          setDraft(a.body);
+          setEditing(true);
+          return;
+        }
         if (!editing) onToggleExpand();
       }}
       onKeyDown={(e) => {
@@ -247,13 +256,14 @@ function AnnotationCard({
       ) : (
         <div
           className={s.body}
+          data-body
           onDoubleClick={() => {
             setDraft(a.body);
             setEditing(true);
           }}
           style={a.body ? undefined : { color: 'var(--eg-muted)' }}
         >
-          {a.body || 'Double-click to write…'}
+          {a.body || (tapToEdit ? 'Tap to write…' : 'Double-click to write…')}
         </div>
       )}
     </div>

@@ -8,6 +8,7 @@ import {
   importReferenceAction,
   uploadPdfAction,
 } from '@/app/actions/documents';
+import { usePlatform } from '@/components/platform';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
 import type { Folder } from '@/db/schema';
@@ -94,6 +95,7 @@ function UploadForm({
   const [fileName, setFileName] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const phone = usePlatform().platform === 'phone';
   return (
     <form action={action} className={s.form}>
       <input type="hidden" name="slug" value={slug} />
@@ -117,8 +119,8 @@ function UploadForm({
           }
         }}
       >
-        <strong>{fileName ?? 'Drop a PDF here'}</strong>
-        <span>or</span>
+        <strong>{fileName ?? (phone ? 'Choose a PDF from Files' : 'Drop a PDF here')}</strong>
+        {!phone && <span>or</span>}
         <label>
           <Button type="button" variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
             Choose file

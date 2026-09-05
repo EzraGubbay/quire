@@ -22,7 +22,9 @@ export default async function NotePage({
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const note = (await getNoteBySlug(project.id, noteSlug)) ?? (await getNote(project.id, noteSlug));
-  const editLevel = (await currentFeature('notes.edit')).level;
+  const editFeature = await currentFeature('notes.edit');
+  const editLevel = editFeature.level;
+  const phone = editFeature.platform === 'phone';
   if (!note) notFound();
   const [notes, html, backlinks, unresolved, targets, macroRows] = await Promise.all([
     listNotes(project.id),
@@ -33,9 +35,10 @@ export default async function NotePage({
     mergedMacros(project.id),
   ]);
   return (
-    <div className={s.layout}>
-      <NotesRail slug={slug} notes={notes} activeSlug={note.slug} />
+    <div className={s.layout} data-phone={phone ? 'true' : undefined}>
+      {!phone && <NotesRail slug={slug} notes={notes} activeSlug={note.slug} />}
       <NoteView
+        backHref={phone ? `/p/${slug}/notes` : undefined}
         slug={slug}
         note={note}
         html={html}

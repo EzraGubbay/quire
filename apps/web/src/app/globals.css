@@ -28,6 +28,34 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
 }
+/* Installed PWA with viewport-fit=cover: keep the app bar clear of the status bar. */
+.folio header[class*="AppBar"] {
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(56px + env(safe-area-inset-top, 0px));
+}
+/* Phone shell: the bottom TabBar floats over the last 60px, so pages keep that much clear. */
+.quire-main[data-phone="true"] {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+}
+/* Phones: 16px inputs (iOS zooms the page on focus below that) and finger-sized chips and rows. */
+@media (max-width: 640px) {
+  .folio input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .folio textarea,
+  .folio select {
+    font-size: 16px;
+  }
+  .folio [class*="__chip"],
+  .folio [class*="__filter"]:not([class*="__filters"]) {
+    min-height: 36px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  [class*="notes-module"][class*="__item"],
+  [class*="chat-module"][class*="__item"],
+  [class*="documents-module"][class*="__row"] {
+    min-height: 44px;
+  }
+}
 /* Immersive reader (phone): no app bar; the viewer owns the whole viewport and its own scrolling. */
 .quire-main[data-immersive="true"] {
   overflow: hidden;
@@ -119,41 +147,8 @@ a {
   cursor: pointer;
 }
 
-/* Phones: the header wraps, tabs get their own scrollable row, layouts go single-column. */
+/* Phones: single-column layouts. The header is the PhoneBar and tabs live in the bottom TabBar. */
 @media (max-width: 640px) {
-  .folio header {
-    height: auto;
-    flex-wrap: wrap;
-    padding: 8px 12px;
-    gap: 6px 10px;
-  }
-  /* Flatten the left group so mark, crumb, icons and tabs are all header rows: mark + crumb + icons first, tabs second. */
-  .folio header > div:first-child {
-    display: contents;
-  }
-  .folio header > div:first-child > div {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .folio header nav[aria-label="Sections"] {
-    flex-basis: 100%;
-    order: 3;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    margin: 0 -12px;
-    padding: 0 12px;
-  }
-  .folio header nav[aria-label="Sections"]::-webkit-scrollbar {
-    display: none;
-  }
-  .folio header > div:last-child {
-    gap: 6px;
-    order: 2;
-    margin-left: auto;
-  }
   [class*="overview-module"][class*="wrap"],
   [class*="settings-module"][class*="wrap"],
   [class*="sources-module"][class*="wrap"],

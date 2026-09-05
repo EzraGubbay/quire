@@ -12,14 +12,17 @@ export function ChatRail({
   slug,
   threads,
   activeId,
+  phone = false,
 }: {
   slug: string;
   threads: ChatThread[];
   activeId?: string;
+  /** Full-page list on phones. */
+  phone?: boolean;
 }) {
   const [pending, start] = useTransition();
   return (
-    <aside className={s.rail} aria-label="Chats">
+    <aside className={s.rail} aria-label="Chats" data-phone={phone ? 'true' : undefined}>
       <div className={s.railHead}>
         <h2 className={s.railTitle}>Chats · {threads.length}</h2>
         <Button

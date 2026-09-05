@@ -16,11 +16,14 @@ export function NotesRail({
   notes,
   activeSlug,
   openNew = false,
+  phone = false,
 }: {
   slug: string;
   notes: Note[];
   activeSlug?: string;
   openNew?: boolean;
+  /** Full-page list on phones. */
+  phone?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(openNew);
@@ -37,13 +40,15 @@ export function NotesRail({
       .map((x) => x.n);
   }, [notes, query]);
   return (
-    <aside className={s.rail} aria-label="Notes">
+    <aside className={s.rail} aria-label="Notes" data-phone={phone ? 'true' : undefined}>
       <div className={s.railHead}>
         <h2 className={s.railTitle}>Notes · {notes.length}</h2>
         <div style={{ display: 'flex', gap: 2 }}>
-          <NextLink href={`/p/${slug}/notes/graph`} aria-label="Graph" title="Graph" className={s.iconLink}>
-            <Icon icon={Waypoints} />
-          </NextLink>
+          {!phone && (
+            <NextLink href={`/p/${slug}/notes/graph`} aria-label="Graph" title="Graph" className={s.iconLink}>
+              <Icon icon={Waypoints} />
+            </NextLink>
+          )}
           <Button
             variant="ghost"
             size="sm"

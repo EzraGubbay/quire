@@ -149,7 +149,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
           </button>
         )}
         <div className={s.mainHead}>
-          <h1 className={s.title}>{title}</h1>
+          {!phone && <h1 className={s.title}>{title}</h1>}
           <div style={{ display: 'flex', gap: 8 }}>
             <NextLink
               href={`/p/${slug}/discover`}

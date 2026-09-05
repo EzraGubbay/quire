@@ -2,6 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import { Trash2 } from 'lucide-react';
+import NextLink from 'next/link';
 import { useTransition } from 'react';
 import { deleteThreadAction } from '@/app/actions/chat';
 import s from '@/components/chat/chat.module.css';
@@ -11,14 +12,22 @@ export function ThreadBar({
   slug,
   thread,
   scopeTitle,
+  backHref,
 }: {
   slug: string;
   thread: ChatThread;
   scopeTitle: string | null;
+  /** Phone: link back to the chat list. */
+  backHref?: string;
 }) {
   const [pending, start] = useTransition();
   return (
     <div className={s.bar}>
+      {backHref && (
+        <NextLink href={backHref} className={s.back}>
+          ← Chats
+        </NextLink>
+      )}
       <h1 className={s.title}>{thread.title}</h1>
       {scopeTitle && <span className={s.scope}>about: {scopeTitle}</span>}
       <Button

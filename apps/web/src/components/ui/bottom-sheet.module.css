@@ -61,6 +61,10 @@
 }
 .title {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 600 13px / 1.2 var(--eg-font-ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;

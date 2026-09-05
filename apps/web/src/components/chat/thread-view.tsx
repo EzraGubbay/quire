@@ -163,6 +163,13 @@ export function ThreadView({
           value={draft}
           disabled={disabled || busy}
           onChange={(e) => setDraft(e.target.value)}
+          // Phone: the bottom tab bar steps aside while the keyboard is up.
+          onFocus={() => {
+            document.documentElement.dataset.keyboard = 'true';
+          }}
+          onBlur={() => {
+            delete document.documentElement.dataset.keyboard;
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
