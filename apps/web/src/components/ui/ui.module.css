@@ -98,6 +98,9 @@
 .skelWrap[data-rail="true"] {
   grid-template-columns: 280px 1fr;
 }
+.skelWrap[data-phone="true"] .skelMain {
+  padding: 20px 12px;
+}
 .skelRail {
   border-right: 1px solid var(--eg-rule);
   background: var(--eg-surface-2);

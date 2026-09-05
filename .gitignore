@@ -15,3 +15,4 @@ test-results
 *.tsbuildinfo
 next-env.d.ts
 apps/web/public/pdf.worker.min.mjs
+apps/web/public/pdfjs/

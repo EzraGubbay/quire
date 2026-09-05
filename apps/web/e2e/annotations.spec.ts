@@ -66,6 +66,10 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await page.getByRole('button', { name: 'Scroll to this passage' }).click();
   await expect.poll(() => viewer.evaluate((el) => el.scrollTop)).toBeLessThan(100);
 
+  // pdf.js font assets are served (substitute fonts for PDFs that do not embed theirs; CMaps for CID fonts).
+  expect((await page.request.get('/pdfjs/standard_fonts/LiberationSans-Regular.ttf')).status()).toBe(200);
+  expect((await page.request.get('/pdfjs/cmaps/Adobe-Japan1-UCS2.bcmap')).status()).toBe(200);
+
   // Zoom buttons scale the rendered page relative to fit-width.
   const pageWidth = () => page.locator('[data-page="1"]').evaluate((el) => el.getBoundingClientRect().width);
   const fitted = await pageWidth();

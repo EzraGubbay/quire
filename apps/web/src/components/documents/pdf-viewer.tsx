@@ -136,7 +136,14 @@ export function PdfViewer({
         const lib = await loadPdfjs();
         log('info', 'viewer', 'loading document', { fileUrl, ...deviceInfo() });
         const t0 = performance.now();
-        const d = await lib.getDocument({ url: fileUrl }).promise;
+        const d = await lib.getDocument({
+          url: fileUrl,
+          // Substitute fonts for PDFs that do not embed theirs (Symbol, Helvetica, Times…) and CMaps for CID fonts;
+          // otherwise glyphs missing from the browser's fallback face render as boxes.
+          standardFontDataUrl: '/pdfjs/standard_fonts/',
+          cMapUrl: '/pdfjs/cmaps/',
+          cMapPacked: true,
+        }).promise;
         log('info', 'viewer', 'document loaded', {
           pages: d.numPages,
           ms: Math.round(performance.now() - t0),
