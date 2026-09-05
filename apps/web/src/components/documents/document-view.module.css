@@ -87,3 +87,59 @@
 .attach input[type="file"] {
   display: none;
 }
+
+/* Phone reader: the viewer fills the shell; chrome and sheets float above it. */
+.wrapImmersive {
+  display: grid;
+  grid-template-rows: 1fr;
+  flex: 1;
+  min-height: 0;
+}
+.zoom {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 6px;
+}
+.zoom .chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+}
+.moreBody {
+  display: grid;
+  gap: 14px;
+  padding: 4px 16px 20px;
+}
+.moreRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.moreLabel {
+  font: 500 13px / 1.2 var(--eg-font-ui);
+  color: var(--eg-text-2);
+}
+.moreValue {
+  font: 500 12px / 1 var(--eg-font-mono);
+  color: var(--eg-muted);
+  min-width: 44px;
+  text-align: center;
+}
+.moreAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-card);
+  background: var(--eg-bg);
+  color: var(--eg-text);
+  font: 500 14px / 1.2 var(--eg-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.moreAction[data-danger] {
+  color: var(--folio-hl-todo-text, #a33);
+}

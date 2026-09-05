@@ -28,6 +28,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // Lets fixed bars pad with env(safe-area-inset-*) in the installed PWA.
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#F6F1E7' },
     { media: '(prefers-color-scheme: dark)', color: '#1C1915' },

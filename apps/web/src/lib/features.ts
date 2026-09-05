@@ -25,6 +25,10 @@ export const FEATURES = {
   discover: { phone: 'on', desktop: 'on' },
   palette: { phone: 'off', desktop: 'on' },
   'settings.full': { phone: 'lite', desktop: 'on' },
+  /** Fullscreen reader: no app bar, bottom bar on tap, sheets for annotations and actions. */
+  'reader.immersive': { phone: 'on', desktop: 'off' },
+  /** Pinch / double-tap / button zoom in the document reader. */
+  'reader.zoom': { phone: 'on', desktop: 'on' },
   /** Meta flag: show the read-only feature-flags table in Settings. */
   'settings.flags': { phone: 'off', tablet: 'off', desktop: 'on' },
 } as const satisfies Record<string, Row>;
@@ -49,6 +53,8 @@ export const FEATURE_LABEL: Record<FeatureKey, string> = {
   discover: 'Discover',
   palette: 'Command palette (⌘K)',
   'settings.full': 'Full settings',
+  'reader.immersive': 'Immersive reader (bottom bar, sheets)',
+  'reader.zoom': 'Reader zoom',
   'settings.flags': 'Feature-flags table (meta)',
 };
 

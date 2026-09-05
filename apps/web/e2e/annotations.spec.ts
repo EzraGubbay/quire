@@ -66,6 +66,16 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await page.getByRole('button', { name: 'Scroll to this passage' }).click();
   await expect.poll(() => viewer.evaluate((el) => el.scrollTop)).toBeLessThan(100);
 
+  // Zoom buttons scale the rendered page relative to fit-width.
+  const pageWidth = () => page.locator('[data-page="1"]').evaluate((el) => el.getBoundingClientRect().width);
+  const fitted = await pageWidth();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(viewer).toHaveAttribute('data-zoom', '1.25');
+  await expect.poll(pageWidth).toBeGreaterThan(fitted * 1.2);
+  await page.getByRole('button', { name: 'Fit width' }).click();
+  await expect(viewer).toHaveAttribute('data-zoom', '1.00');
+  await expect.poll(pageWidth).toBeCloseTo(fitted, 0);
+
   // Collapse and restore the panel.
   await page.getByRole('button', { name: 'Hide annotations' }).click();
   await expect(page.getByRole('button', { name: 'Show annotations' })).toBeVisible();

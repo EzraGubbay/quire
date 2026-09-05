@@ -194,3 +194,35 @@
   gap: 6px;
   align-items: center;
 }
+
+/* Phone: one-line folder bar that opens the folder sheet. */
+.folderBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-card);
+  background: var(--eg-surface-2);
+  color: var(--eg-text);
+  font: 500 14px / 1.2 var(--eg-font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.folderBarLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sheetTree {
+  padding: 0 8px 16px;
+}
+.sheetTree .node {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 15px;
+}

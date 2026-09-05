@@ -6,6 +6,11 @@ import { MathJax } from 'better-react-mathjax';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { anchorFromSelection, locateQuote } from '@/lib/text-anchor';
 import s from './markdown-view.module.css';
+import { pinchMath, usePinch } from './use-pinch';
+
+export const FONT_SCALE_MIN = 0.85;
+export const FONT_SCALE_MAX = 1.6;
+const BASE_TEXT_PX = 17.5;
 
 export interface MarkdownHighlight {
   id: string;
@@ -20,6 +25,7 @@ export interface MarkdownSelection {
 
 export interface MarkdownViewHandle {
   scrollToAnchor: (anchor: MarkdownAnchor) => void;
+  scrollToTop: () => void;
 }
 
 interface Props {
@@ -28,6 +34,15 @@ interface Props {
   activeHighlightId?: string | null;
   onSelection?: (sel: MarkdownSelection | null) => void;
   onWikiLink?: (name: string) => void;
+  /** Text size multiplier (reader zoom for reflowing text). */
+  fontScale?: number;
+  onFontScale?: (next: number) => void;
+  /** Touch pinch / double-tap change the text size; single tap reports up (reader chrome). */
+  pinch?: boolean;
+  onTap?: () => void;
+  onScroll?: () => void;
+  /** Reading position as a fraction of the scroll range. */
+  onProgress?: (fraction: number) => void;
   ref?: React.Ref<MarkdownViewHandle>;
 }
 
@@ -41,11 +56,40 @@ export const MarkdownView = memo(function MarkdownView({
   activeHighlightId,
   onSelection,
   onWikiLink,
+  fontScale = 1,
+  onFontScale,
+  pinch = false,
+  onTap,
+  onScroll,
+  onProgress,
   ref,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const ranges = useRef(new Map<string, Range>());
+  const suppressScrollUntil = useRef(0);
+
+  usePinch(
+    wrapRef,
+    {
+      onCommit: (ratio) => onFontScale?.(pinchMath.clamp(fontScale * ratio, FONT_SCALE_MIN, FONT_SCALE_MAX)),
+      onDoubleTap: () => onFontScale?.(fontScale > 1.05 ? 1 : 1.25),
+      onTap: () => onTap?.(),
+    },
+    pinch,
+  );
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || (!onScroll && !onProgress)) return;
+    const handler = () => {
+      const range = el.scrollHeight - el.clientHeight;
+      onProgress?.(range > 0 ? pinchMath.clamp(el.scrollTop / range, 0, 1) : 1);
+      if (Date.now() >= suppressScrollUntil.current) onScroll?.();
+    };
+    el.addEventListener('scroll', handler, { passive: true });
+    return () => el.removeEventListener('scroll', handler);
+  }, [onScroll, onProgress]);
 
   // Paint highlights. One registry entry per type plus one for the active card.
   useEffect(() => {
@@ -118,7 +162,12 @@ export const MarkdownView = memo(function MarkdownView({
         if (!root) return;
         const r = locateQuote(root, anchor);
         const el = r?.startContainer.parentElement;
+        suppressScrollUntil.current = Date.now() + 1000;
         el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      },
+      scrollToTop: () => {
+        suppressScrollUntil.current = Date.now() + 1000;
+        wrapRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       },
     };
     if (typeof ref === 'function') ref(handle);
@@ -141,7 +190,12 @@ export const MarkdownView = memo(function MarkdownView({
   );
 
   return (
-    <div ref={wrapRef} className={s.wrap}>
+    <div
+      ref={wrapRef}
+      className={s.wrap}
+      data-testid="markdown-view"
+      style={{ '--folio-text-body': `${(BASE_TEXT_PX * fontScale).toFixed(1)}px` } as React.CSSProperties}
+    >
       <Prose>
         {/* Typeset once per HTML change (key), never on re-render: re-typesetting rewrites the DOM and drops the user's selection. */}
         <MathJax key={html} hideUntilTypeset="first">

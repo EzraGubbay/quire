@@ -1,6 +1,8 @@
 .viewer {
   position: relative;
   overflow: auto;
+  /* Browser scrolls; pinch is ours (use-pinch). */
+  touch-action: pan-x pan-y;
   background: var(--eg-surface-2);
   padding: 24px 0 120px;
   flex: 1;
@@ -10,6 +12,10 @@
   display: grid;
   gap: 18px;
   justify-items: center;
+  /* Wider than the viewer when zoomed: start at the left edge so every part is reachable by panning. */
+  width: max-content;
+  min-width: 100%;
+  will-change: transform;
 }
 .page {
   position: relative;

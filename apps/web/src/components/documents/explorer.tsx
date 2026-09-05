@@ -2,7 +2,16 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { DocumentKind, ReadingStatus } from '@quire/shared';
-import { FileText, FolderIcon, FolderOpen, FolderPlus, Inbox, Plus, Sparkles, Trash2 } from 'lucide-react';
+import {
+  ChevronDown,
+  FileText,
+  FolderIcon,
+  FolderOpen,
+  FolderPlus,
+  Inbox,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
@@ -12,11 +21,14 @@ import {
   deleteFolderAction,
   moveDocumentAction,
 } from '@/app/actions/documents';
+import { usePlatform } from '@/components/platform';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
 import type { Document, Folder } from '@/db/schema';
 import { AddDocumentDialog } from './add-document-dialog';
 import s from './documents.module.css';
+import { buildTree, type FolderSelection, FolderTree, folderLabel } from './folder-tree';
 
 type Filter = 'all' | ReadingStatus;
 
@@ -32,11 +44,14 @@ export interface ExplorerProps {
 
 export function Explorer({ slug, folders, documents, activeDocumentId, openAdd = false }: ExplorerProps) {
   const router = useRouter();
-  const [folderId, setFolderId] = useState<string | null | 'all'>('all');
+  const { platform } = usePlatform();
+  const phone = platform === 'phone';
+  const [folderId, setFolderId] = useState<FolderSelection>('all');
   const [filter, setFilter] = useState<Filter>('all');
   const [kind, setKind] = useState<'all' | DocumentKind>('all');
   const [addOpen, setAddOpen] = useState(openAdd);
   const [folderOpen, setFolderOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -78,71 +93,63 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
     onDrop: onDrop(target),
     'data-dragover': dragOver === key ? 'true' : undefined,
   });
+  const deleteFolder = (id: string) =>
+    startTransition(async () => {
+      await deleteFolderAction(slug, id);
+      if (folderId === id) setFolderId('all');
+      router.refresh();
+    });
+
+  const title = folderLabel(folderId, folders);
+  const currentCount = folderId === 'all' ? documents.length : (counts.get(folderId) ?? 0);
+  const newFolderButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-label="New folder"
+      icon={<Icon icon={FolderPlus} />}
+      onClick={() => setFolderOpen(true)}
+    />
+  );
 
   return (
-    <div className={s.layout}>
-      <aside className={s.rail} aria-label="Folders">
-        <div className={s.railHead}>
-          <h2 className={s.railTitle}>Folders</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="New folder"
-            icon={<Icon icon={FolderPlus} />}
-            onClick={() => setFolderOpen(true)}
+    <div className={s.layout} data-phone={phone ? 'true' : undefined}>
+      {!phone && (
+        <aside className={s.rail} aria-label="Folders">
+          <div className={s.railHead}>
+            <h2 className={s.railTitle}>Folders</h2>
+            {newFolderButton}
+          </div>
+          <FolderTree
+            tree={tree}
+            activeId={folderId}
+            counts={counts}
+            total={documents.length}
+            onSelect={setFolderId}
+            onDelete={deleteFolder}
+            dragProps={dragProps}
           />
-        </div>
-        <div className={s.tree}>
-          <button
-            type="button"
-            className={s.node}
-            data-active={folderId === 'all'}
-            onClick={() => setFolderId('all')}
-          >
-            <Icon icon={FileText} />
-            <span className={s.nodeLabel}>All documents</span>
-            <span className={s.nodeMeta}>{documents.length}</span>
-          </button>
-          <button
-            type="button"
-            className={s.node}
-            data-active={folderId === null}
-            onClick={() => setFolderId(null)}
-            {...dragProps('root', null)}
-          >
-            <Icon icon={Inbox} />
-            <span className={s.nodeLabel}>Unfiled</span>
-            <span className={s.nodeMeta}>{counts.get(null) ?? 0}</span>
-          </button>
-          {tree.map((n) => (
-            <FolderNode
-              key={n.folder.id}
-              node={n}
-              depth={0}
-              activeId={folderId}
-              counts={counts}
-              onSelect={setFolderId}
-              dragProps={dragProps}
-              onDelete={(id) =>
-                startTransition(async () => {
-                  await deleteFolderAction(slug, id);
-                  if (folderId === id) setFolderId('all');
-                  router.refresh();
-                })
-              }
-            />
-          ))}
-        </div>
-      </aside>
+        </aside>
+      )}
       <section className={s.main}>
+        {phone && (
+          <button
+            type="button"
+            className={s.folderBar}
+            aria-label={`Folder: ${title}. Choose folder`}
+            aria-haspopup="dialog"
+            aria-expanded={pickerOpen}
+            onClick={() => setPickerOpen(true)}
+            data-testid="folder-bar"
+          >
+            <Icon icon={folderId === 'all' ? FileText : folderId === null ? Inbox : FolderOpen} />
+            <span className={s.folderBarLabel}>{title}</span>
+            <span className={s.nodeMeta}>{currentCount}</span>
+            <Icon icon={ChevronDown} />
+          </button>
+        )}
         <div className={s.mainHead}>
-          <h1 className={s.title}>
-            {folderId === 'all'
-              ? 'All documents'
-              : folderId === null
-                ? 'Unfiled'
-                : (folders.find((f) => f.id === folderId)?.name ?? 'Folder')}
-          </h1>
+          <h1 className={s.title}>{title}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
             <NextLink
               href={`/p/${slug}/discover`}
@@ -194,10 +201,10 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
                 key={d.id}
                 href={`/p/${slug}/documents/${d.id}`}
                 className={s.row}
-                draggable
+                draggable={!phone}
                 onDragStart={(e) => e.dataTransfer.setData('text/quire-document', d.id)}
               >
-                <Icon icon={d.kind === 'pdf' ? FileText : FolderOpen} />
+                <Icon icon={d.kind === 'pdf' ? FileText : FolderIcon} />
                 <span>
                   <div className={s.rowTitle}>{d.title}</div>
                   <div className={s.rowMeta}>
@@ -223,6 +230,30 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
           </div>
         )}
       </section>
+      {phone && (
+        <BottomSheet
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          title="Folders"
+          snap="full"
+          actions={newFolderButton}
+          data-testid="folder-sheet"
+        >
+          <div className={s.sheetTree}>
+            <FolderTree
+              tree={tree}
+              activeId={folderId}
+              counts={counts}
+              total={documents.length}
+              onSelect={(id) => {
+                setFolderId(id);
+                setPickerOpen(false);
+              }}
+              onDelete={deleteFolder}
+            />
+          </div>
+        </BottomSheet>
+      )}
       <AddDocumentDialog
         slug={slug}
         folders={folders}
@@ -232,91 +263,6 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
       />
       <NewFolderDialog slug={slug} folders={folders} open={folderOpen} onClose={() => setFolderOpen(false)} />
     </div>
-  );
-}
-
-interface TreeNode {
-  folder: Folder;
-  children: TreeNode[];
-}
-function buildTree(folders: Folder[]): TreeNode[] {
-  const byParent = new Map<string | null, Folder[]>();
-  for (const f of folders) {
-    const k = f.parentId ?? null;
-    byParent.set(k, [...(byParent.get(k) ?? []), f]);
-  }
-  const build = (parent: string | null, seen: Set<string>): TreeNode[] =>
-    (byParent.get(parent) ?? [])
-      .filter((f) => !seen.has(f.id))
-      .map((f) => ({ folder: f, children: build(f.id, new Set([...seen, f.id])) }));
-  return build(null, new Set());
-}
-
-function FolderNode({
-  node,
-  depth,
-  activeId,
-  counts,
-  onSelect,
-  dragProps,
-  onDelete,
-}: {
-  node: TreeNode;
-  depth: number;
-  activeId: string | null | 'all';
-  counts: Map<string | null, number>;
-  onSelect: (id: string) => void;
-  dragProps: (key: string, target: string | null) => Record<string, unknown>;
-  onDelete: (id: string) => void;
-}) {
-  const active = activeId === node.folder.id;
-  return (
-    <>
-      <button
-        type="button"
-        className={s.node}
-        style={{ '--depth': depth } as React.CSSProperties}
-        data-active={active}
-        onClick={() => onSelect(node.folder.id)}
-        {...dragProps(node.folder.id, node.folder.id)}
-      >
-        <Icon icon={active ? FolderOpen : FolderIcon} />
-        <span className={s.nodeLabel}>{node.folder.name}</span>
-        <span className={s.nodeMeta}>{counts.get(node.folder.id) ?? 0}</span>
-        {active && (
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={`Delete folder ${node.folder.name}`}
-            title="Delete folder (documents move up one level)"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(node.folder.id);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.stopPropagation();
-                onDelete(node.folder.id);
-              }
-            }}
-          >
-            <Icon icon={Trash2} />
-          </span>
-        )}
-      </button>
-      {node.children.map((c) => (
-        <FolderNode
-          key={c.folder.id}
-          node={c}
-          depth={depth + 1}
-          activeId={activeId}
-          counts={counts}
-          onSelect={onSelect}
-          dragProps={dragProps}
-          onDelete={onDelete}
-        />
-      ))}
-    </>
   );
 }
 

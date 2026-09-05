@@ -28,6 +28,10 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
 }
+/* Immersive reader (phone): no app bar; the viewer owns the whole viewport and its own scrolling. */
+.quire-main[data-immersive="true"] {
+  overflow: hidden;
+}
 
 /* Quire annotation types. The design package ships claim/method/result/question/todo; until it ships
    note/insight/idea (see docs/design-requests.md) alias the missing three onto existing hues. */
@@ -75,6 +79,10 @@ a {
   [class*="chat-module"][class*="layout"] {
     grid-template-columns: 1fr !important;
     grid-template-rows: auto 1fr;
+  }
+  /* Phones use a folder sheet instead of the rail; keep the single main row. */
+  [class*="documents-module"][class*="layout"][data-phone="true"] {
+    grid-template-rows: 1fr;
   }
   [class*="documents-module"][class*="rail"],
   [class*="notes-module"][class*="rail"],

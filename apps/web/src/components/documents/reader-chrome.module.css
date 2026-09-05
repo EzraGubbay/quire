@@ -1,0 +1,74 @@
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: color-mix(in srgb, var(--eg-surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--eg-rule);
+  transition:
+    transform var(--eg-duration-base) var(--eg-ease-standard),
+    opacity var(--eg-duration-base) var(--eg-ease-standard);
+}
+.bar[data-visible="false"] {
+  transform: translateY(110%);
+  opacity: 0;
+  pointer-events: none;
+}
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--eg-text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn:active {
+  background: var(--eg-surface-2);
+}
+.title {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  text-align: left;
+  font: 500 14px / 1.2 var(--eg-font-ui);
+  color: var(--eg-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pos {
+  font: 500 12px / 1 var(--eg-font-mono);
+  color: var(--eg-muted);
+  padding: 0 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--eg-accent);
+  color: var(--eg-accent-ink);
+  font: 600 10px / 16px var(--eg-font-ui);
+  text-align: center;
+}

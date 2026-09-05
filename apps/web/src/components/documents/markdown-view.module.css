@@ -3,6 +3,17 @@
   padding: 32px 24px 120px;
   flex: 1;
   min-height: 0;
+  touch-action: pan-x pan-y;
+}
+/* Prose is the only child; centre it so narrow screens do not hug the left edge. */
+.wrap > * {
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-width: 640px) {
+  .wrap {
+    padding: 20px 16px 140px;
+  }
 }
 .body :global(.wikilink) {
   color: var(--eg-accent-text);

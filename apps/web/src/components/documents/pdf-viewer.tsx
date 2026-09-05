@@ -2,10 +2,11 @@
 
 import type { AnnotationType, PdfAnchor } from '@quire/shared';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { deviceInfo, isDebug, log, setCrashMark } from '@/lib/debug-client';
 import { installPdfPolyfills } from '@/lib/pdf-polyfill';
 import s from './pdf-viewer.module.css';
+import { type Point, pinchMath, usePinch } from './use-pinch';
 
 type Pdfjs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocument = import('pdfjs-dist').PDFDocumentProxy;
@@ -27,6 +28,12 @@ export interface PdfSelection {
 export interface PdfViewerHandle {
   scrollToPage: (page: number) => void;
   scrollToAnchor: (anchor: PdfAnchor) => void;
+  scrollToTop: () => void;
+  /** Zoom relative to fit-to-width (1 = fit). */
+  setZoom: (zoom: number, focal?: Point) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitWidth: () => void;
 }
 
 export interface PdfViewerProps {
@@ -42,6 +49,19 @@ export interface PdfViewerProps {
   renderWindow?: number;
   /** Build the selectable text layer (off in lite mode: fewer DOM nodes, less memory). */
   textLayer?: boolean;
+  /** Zoom bounds relative to fit-to-width. */
+  minZoom?: number;
+  maxZoom?: number;
+  /** Horizontal room left around a fitted page. */
+  fitPadding?: number;
+  /** Cap on canvas pixels per page; the pixel ratio drops to stay under it (phones: 6 MP). */
+  maxCanvasPixels?: number;
+  /** Touch pinch and double-tap zoom, single-tap callback. */
+  pinch?: boolean;
+  onZoomChange?: (zoom: number) => void;
+  onTap?: () => void;
+  /** User-initiated scrolling (programmatic scrolls are filtered out). */
+  onScroll?: () => void;
   ref?: React.Ref<PdfViewerHandle>;
 }
 
@@ -77,14 +97,29 @@ export function PdfViewer({
   maxPixelRatio = 2,
   renderWindow = 1,
   textLayer = true,
+  minZoom = 0.5,
+  maxZoom = 3,
+  fitPadding = 48,
+  maxCanvasPixels = 16_000_000,
+  pinch = false,
+  onZoomChange,
+  onTap,
+  onScroll,
   ref,
 }: PdfViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
+  const pagesRef = useRef<HTMLDivElement>(null);
   const [pdfjs, setPdfjs] = useState<Pdfjs | null>(null);
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [pages, setPages] = useState<PageState[]>([]);
-  const [scale, setScale] = useState(1);
+  const [fit, setFit] = useState(1);
+  const [zoom, setZoomState] = useState(1);
+  const scale = fit * zoom;
   const [current, setCurrent] = useState(initialPage);
+  /** Scroll correction to apply once the layout reflects a new scale: keep `mid` over the same content. */
+  const pendingScroll = useRef<{ ratio: number; mid: Point } | null>(null);
+  /** Programmatic scrolls (scroll-to, zoom re-centre) must not count as user scrolling. */
+  const suppressScrollUntil = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const pageEls = useRef(new Map<number, HTMLDivElement>());
   const didInitialScroll = useRef(false);
@@ -135,14 +170,78 @@ export function PdfViewer({
     if (!el || pages.length === 0) return;
     const fitWidth = () => {
       const maxW = Math.max(...pages.map((p) => p.w));
-      const available = el.clientWidth - 48;
-      setScale(Math.min(2, Math.max(0.5, available / maxW)));
+      const available = el.clientWidth - fitPadding;
+      setFit(Math.min(2, Math.max(0.5, available / maxW)));
     };
     fitWidth();
     const ro = new ResizeObserver(fitWidth);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [pages]);
+  }, [pages, fitPadding]);
+
+  // Zoom: commit a new factor, then (in the layout effect below) keep the focal point still.
+  const applyZoom = useCallback(
+    (next: number, focal?: Point) => {
+      const el = viewerRef.current;
+      const clamped = pinchMath.clamp(next, minZoom, maxZoom);
+      setZoomState((z) => {
+        if (Math.abs(clamped - z) < 0.001) return z;
+        const mid = focal ?? (el ? { x: el.clientWidth / 2, y: el.clientHeight / 2 } : { x: 0, y: 0 });
+        pendingScroll.current = { ratio: clamped / z, mid };
+        log('debug', 'viewer', 'zoom', { zoom: Number(clamped.toFixed(2)), fit: Number(fit.toFixed(3)) });
+        return clamped;
+      });
+    },
+    [minZoom, maxZoom, fit],
+  );
+  useEffect(() => onZoomChange?.(zoom), [zoom, onZoomChange]);
+  useLayoutEffect(() => {
+    const el = viewerRef.current;
+    const p = pendingScroll.current;
+    if (!el || !p) return;
+    pendingScroll.current = null;
+    suppressScrollUntil.current = Date.now() + 400;
+    el.scrollLeft = pinchMath.scrollAfterZoom(el.scrollLeft, p.mid.x, p.ratio);
+    el.scrollTop = pinchMath.scrollAfterZoom(el.scrollTop, p.mid.y, p.ratio);
+  }, [scale]);
+
+  usePinch(
+    viewerRef,
+    {
+      onPreview: (ratio, mid) => {
+        const pages = pagesRef.current;
+        const el = viewerRef.current;
+        if (!pages || !el) return;
+        const ox = mid.x + el.scrollLeft - pages.offsetLeft;
+        const oy = mid.y + el.scrollTop - pages.offsetTop;
+        pages.style.transformOrigin = `${ox}px ${oy}px`;
+        pages.style.transform = `scale(${ratio})`;
+      },
+      onCommit: (ratio, mid) => {
+        const pages = pagesRef.current;
+        if (pages) {
+          pages.style.transform = '';
+          pages.style.transformOrigin = '';
+        }
+        applyZoom(zoom * ratio, mid);
+      },
+      onDoubleTap: (point) => applyZoom(zoom > 1.05 ? 1 : 2, point),
+      onTap: () => onTap?.(),
+    },
+    pinch,
+  );
+
+  // User scrolling (for hiding reader chrome); programmatic scrolls are suppressed for a short window.
+  useEffect(() => {
+    const el = viewerRef.current;
+    if (!el || !onScroll) return;
+    const handler = () => {
+      if (Date.now() < suppressScrollUntil.current) return;
+      onScroll();
+    };
+    el.addEventListener('scroll', handler, { passive: true });
+    return () => el.removeEventListener('scroll', handler);
+  }, [onScroll]);
 
   // Current page tracking.
   useEffect(() => {
@@ -189,7 +288,12 @@ export function PdfViewer({
   useEffect(() => () => setCrashMark(null), []);
 
   const scrollToPage = useCallback((page: number) => {
+    suppressScrollUntil.current = Date.now() + 1000;
     pageEls.current.get(page)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, []);
+  const scrollToTop = useCallback(() => {
+    suppressScrollUntil.current = Date.now() + 1000;
+    viewerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const scrollToAnchor = useCallback(
@@ -199,17 +303,31 @@ export function PdfViewer({
       if (!el || !viewer) return;
       const first = anchor.rects[0];
       const y = el.offsetTop + (first ? first.y * scale : 0) - 80;
+      suppressScrollUntil.current = Date.now() + 1000;
       viewer.scrollTo({ top: y, behavior: 'smooth' });
     },
     [scale],
   );
 
-  useImperativeHandle(ref, () => ({ scrollToPage, scrollToAnchor }), [scrollToPage, scrollToAnchor]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToPage,
+      scrollToAnchor,
+      scrollToTop,
+      setZoom: applyZoom,
+      zoomIn: () => applyZoom(zoom * 1.25),
+      zoomOut: () => applyZoom(zoom / 1.25),
+      fitWidth: () => applyZoom(1),
+    }),
+    [scrollToPage, scrollToAnchor, scrollToTop, applyZoom, zoom],
+  );
 
   // Initial scroll once pages have real size.
   useEffect(() => {
     if (didInitialScroll.current || pages.length === 0 || initialPage <= 1) return;
     didInitialScroll.current = true;
+    suppressScrollUntil.current = Date.now() + 1000;
     requestAnimationFrame(() => pageEls.current.get(initialPage)?.scrollIntoView({ block: 'start' }));
   }, [pages, initialPage]);
 
@@ -270,11 +388,11 @@ export function PdfViewer({
   if (error) return <div className={s.loading}>Could not load the PDF: {error}</div>;
 
   return (
-    <div className={s.viewer} ref={viewerRef} data-testid="pdf-viewer">
+    <div className={s.viewer} ref={viewerRef} data-testid="pdf-viewer" data-zoom={zoom.toFixed(2)}>
       {pages.length === 0 ? (
         <div className={s.loading}>Loading PDF…</div>
       ) : (
-        <div className={s.pages}>
+        <div className={s.pages} ref={pagesRef}>
           {pages.map((p) => (
             <Page
               key={p.no}
@@ -285,6 +403,7 @@ export function PdfViewer({
               highlights={highlights.filter((h) => h.anchor.page === p.no)}
               activeHighlightId={activeHighlightId ?? null}
               maxPixelRatio={maxPixelRatio}
+              maxCanvasPixels={maxCanvasPixels}
               current={current}
               renderWindow={renderWindow}
               scrollRoot={viewerRef.current}
@@ -347,6 +466,7 @@ function Page({
   activeHighlightId,
   register,
   maxPixelRatio,
+  maxCanvasPixels,
   current,
   renderWindow,
   scrollRoot,
@@ -360,6 +480,7 @@ function Page({
   activeHighlightId: string | null;
   register: (el: HTMLDivElement | null) => void;
   maxPixelRatio: number;
+  maxCanvasPixels: number;
   current: number;
   renderWindow: number;
   scrollRoot: HTMLElement | null;
@@ -404,10 +525,10 @@ function Page({
     }
     const viewport = state.page.getViewport({ scale });
     let dpr = Math.min(window.devicePixelRatio || 1, maxPixelRatio);
-    // Safari refuses canvases above ~16.7 million pixels.
-    const maxPixels = 16_000_000;
+    // Safari refuses canvases above ~16.7 million pixels, and total canvas memory is capped; stay under the budget.
+    const maxPixels = Math.min(16_000_000, maxCanvasPixels);
     if (viewport.width * viewport.height * dpr * dpr > maxPixels)
-      dpr = Math.sqrt(maxPixels / (viewport.width * viewport.height));
+      dpr = Math.max(0.5, Math.sqrt(maxPixels / (viewport.width * viewport.height)));
     canvas.width = Math.floor(viewport.width * dpr);
     canvas.height = Math.floor(viewport.height * dpr);
     canvas.style.width = `${viewport.width}px`;
@@ -449,7 +570,7 @@ function Page({
       text?.cancel();
       void doc;
     };
-  }, [shouldRender, scale, state.page, pdfjs, doc, maxPixelRatio, textLayer]);
+  }, [shouldRender, scale, state.page, pdfjs, doc, maxPixelRatio, maxCanvasPixels, textLayer]);
 
   return (
     <div
