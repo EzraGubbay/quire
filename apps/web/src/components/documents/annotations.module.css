@@ -1,7 +1,10 @@
 .shell {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* minmax(0, …): the viewer column is sized by the viewport, never by the PDF canvas inside it (which is
+     itself sized to the column; a plain 1fr lets the two chase each other and push the panel off screen). */
+  grid-template-columns: minmax(0, 1fr) auto;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   position: relative;
 }
@@ -21,6 +24,9 @@
   display: grid;
   grid-template-rows: auto auto 1fr;
   min-height: 0;
+  /* Clip while the width animates: the content is laid out at the final width and would otherwise spill past
+     the edge of the viewport mid-transition (lists and menus inside scroll or clip on their own). */
+  overflow: hidden;
   transition: width var(--eg-duration-base) var(--eg-ease-standard);
 }
 .panel[data-collapsed="true"] {

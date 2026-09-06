@@ -24,12 +24,21 @@ export function useWikiLinkComplete({
   const [dismissed, setDismissed] = useState<string | null>(null);
   const caretAfter = useRef<number | null>(null);
 
-  const refresh = () => {
+  // Read straight from the DOM: state can lag a render behind the caret, and a key pressed in that gap
+  // must not act on a stale match (Enter would re-apply a completion instead of reaching the textarea).
+  const current = () => {
     const ta = textareaRef.current;
-    if (!ta) return;
+    if (!ta) return null;
     const head = ta.value.slice(0, ta.selectionStart);
     const m = head.match(/\[\[([^\]\n]*)$/);
-    const next = m ? { from: head.length - m[0].length, query: m[1] ?? '' } : null;
+    return m ? { from: head.length - m[0].length, query: m[1] ?? '' } : null;
+  };
+  const keyOf = (m: { from: number; query: string }) => `${m.from}:${m.query}`;
+  const optionsFor = (m: { from: number; query: string } | null) =>
+    m ? targets.filter((n) => n.toLowerCase().includes(m.query.toLowerCase())).slice(0, MAX) : [];
+
+  const refresh = () => {
+    const next = current();
     setMatch((prev) => (prev?.from === next?.from && prev?.query === next?.query ? prev : next));
   };
 
@@ -44,43 +53,43 @@ export function useWikiLinkComplete({
     refresh();
   }, [value]);
 
-  const key = match ? `${match.from}:${match.query}` : null;
-  const options = match
-    ? targets.filter((n) => n.toLowerCase().includes(match.query.toLowerCase())).slice(0, MAX)
-    : [];
-  const open = key !== null && key !== dismissed && options.length > 0;
+  const options = optionsFor(match);
+  const open = match !== null && keyOf(match) !== dismissed && options.length > 0;
   const selected = Math.min(index, Math.max(0, options.length - 1));
 
-  const apply = (name: string) => {
+  const apply = (name: string, m = current()) => {
     const ta = textareaRef.current;
-    if (!ta || !match) return;
+    if (!ta || !m) return;
     const inserted = `[[${name}]]`;
-    caretAfter.current = match.from + inserted.length;
-    onChange(value.slice(0, match.from) + inserted + value.slice(ta.selectionStart));
+    caretAfter.current = m.from + inserted.length;
+    onChange(ta.value.slice(0, m.from) + inserted + ta.value.slice(ta.selectionStart));
     setIndex(0);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (!open) return false;
+    const m = current();
+    const opts = optionsFor(m);
+    if (!m || keyOf(m) === dismissed || opts.length === 0) return false;
+    const at = Math.min(index, opts.length - 1);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setIndex((i) => (i + 1) % options.length);
+      setIndex((i) => (i + 1) % opts.length);
       return true;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setIndex((i) => (i - 1 + options.length) % options.length);
+      setIndex((i) => (i - 1 + opts.length) % opts.length);
       return true;
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault();
-      const name = options[selected];
-      if (name) apply(name);
+      const name = opts[at];
+      if (name) apply(name, m);
       return true;
     }
     if (e.key === 'Escape') {
       e.preventDefault();
-      setDismissed(key);
+      setDismissed(keyOf(m));
       return true;
     }
     return false;

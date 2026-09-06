@@ -1,7 +1,10 @@
 .wrap {
   display: grid;
   grid-template-rows: auto 1fr;
+  /* The single column follows the viewport; neither the bar nor the viewer may widen it. */
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 .bar {
@@ -9,6 +12,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* The title is the part that gives way at narrow widths (it truncates); the controls keep their size. */
+  min-width: 0;
   padding: 10px 24px;
   border-bottom: 1px solid var(--eg-rule);
   background: var(--eg-surface-2);
@@ -17,6 +22,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-shrink: 0;
 }
 .back {
   display: inline-flex;
