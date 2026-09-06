@@ -1,4 +1,4 @@
-import { extractWikiLinks, normalizeMathDelimiters, renderMarkdown } from './markdown';
+import { extractWikiLinks, normalizeMathDelimiters, renderMarkdown, wikiSegments } from './markdown';
 
 describe('renderMarkdown', () => {
   it('turns wiki links into anchors and keeps math for MathJax', async () => {
@@ -10,6 +10,16 @@ describe('renderMarkdown', () => {
   });
   it('extracts unique link names', () => {
     expect(extractWikiLinks('[[a]] [[b|B]] [[a]]')).toEqual(['a', 'b']);
+  });
+  it('splits text into runs and links', () => {
+    expect(wikiSegments('see [[A|the A]] and [[B]]')).toEqual([
+      { kind: 'text', value: 'see ' },
+      { kind: 'link', name: 'A', label: 'the A' },
+      { kind: 'text', value: ' and ' },
+      { kind: 'link', name: 'B', label: 'B' },
+    ]);
+    expect(wikiSegments('plain')).toEqual([{ kind: 'text', value: 'plain' }]);
+    expect(wikiSegments('')).toEqual([]);
   });
 });
 

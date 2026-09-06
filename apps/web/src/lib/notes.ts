@@ -1,7 +1,7 @@
 import { type EntityKind, slugify } from '@quire/shared';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { documents, type Link, links, type Note, notes, sources } from '@/db/schema';
+import { annotations, documents, type Link, links, type Note, notes, sources } from '@/db/schema';
 import { extractWikiLinks } from './markdown';
 
 export async function listNotes(projectId: string): Promise<Note[]> {
@@ -156,6 +156,8 @@ export interface Backlink {
   fromKind: EntityKind;
   fromId: string;
   title: string;
+  /** Project-relative path when the source is not itself a page (annotations open their host document). */
+  href?: string;
 }
 
 export async function backlinksTo(projectId: string, kind: EntityKind, id: string): Promise<Backlink[]> {
@@ -173,7 +175,8 @@ export async function backlinksTo(projectId: string, kind: EntityKind, id: strin
   if (rows.length === 0) return [];
   const noteIds = rows.filter((r) => r.fromKind === 'note').map((r) => r.fromId);
   const docIds = rows.filter((r) => r.fromKind === 'document').map((r) => r.fromId);
-  const [ns, ds] = await Promise.all([
+  const annoIds = rows.filter((r) => r.fromKind === 'annotation').map((r) => r.fromId);
+  const [ns, ds, as] = await Promise.all([
     noteIds.length
       ? db.select({ id: notes.id, title: notes.title }).from(notes).where(inArray(notes.id, noteIds))
       : [],
@@ -183,13 +186,33 @@ export async function backlinksTo(projectId: string, kind: EntityKind, id: strin
           .from(documents)
           .where(inArray(documents.id, docIds))
       : [],
+    annoIds.length
+      ? db
+          .select({
+            id: annotations.id,
+            body: annotations.body,
+            quote: annotations.quote,
+            documentId: annotations.documentId,
+            docTitle: documents.title,
+          })
+          .from(annotations)
+          .leftJoin(documents, eq(documents.id, annotations.documentId))
+          .where(inArray(annotations.id, annoIds))
+      : [],
   ]);
   const titles = new Map<string, string>([
     ...ns.map((n): [string, string] => [`note:${n.id}`, n.title]),
     ...ds.map((d): [string, string] => [`document:${d.id}`, d.title]),
+    ...as.map((a): [string, string] => [
+      `annotation:${a.id}`,
+      `“${(a.body || a.quote).slice(0, 60)}” · ${a.docTitle ?? 'annotation'}`,
+    ]),
   ]);
+  const hrefs = new Map(
+    as.filter((a) => a.documentId).map((a): [string, string] => [a.id, `documents/${a.documentId}`]),
+  );
   return rows
-    .map((r) => ({ ...r, title: titles.get(`${r.fromKind}:${r.fromId}`) ?? '' }))
+    .map((r) => ({ ...r, title: titles.get(`${r.fromKind}:${r.fromId}`) ?? '', href: hrefs.get(r.fromId) }))
     .filter((r) => r.title)
     .sort((a, b) => a.title.localeCompare(b.title));
 }

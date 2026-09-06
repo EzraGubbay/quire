@@ -3,6 +3,7 @@ import { DocumentView } from '@/components/documents/document-view';
 import { listAnnotations } from '@/lib/annotations';
 import { getDocument } from '@/lib/documents';
 import { renderMarkdown } from '@/lib/markdown';
+import { linkTargets } from '@/lib/notes';
 import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 
@@ -14,9 +15,10 @@ export default async function DocumentPage({ params }: { params: Promise<{ slug:
   if (!project) notFound();
   const doc = await getDocument(project.id, docId);
   if (!doc) notFound();
-  const [annotations, html] = await Promise.all([
+  const [annotations, html, targets] = await Promise.all([
     listAnnotations(project.id, doc.id),
     doc.kind === 'markdown' ? renderMarkdown(doc.markdownBody ?? '') : Promise.resolve(''),
+    linkTargets(project.id),
   ]);
   const [viewer, annotate] = await Promise.all([
     currentFeature('documents.viewer'),
@@ -28,6 +30,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ slug:
       document={doc}
       annotations={annotations}
       html={html}
+      linkTargets={targets}
       canAnnotate={annotate.level !== 'off'}
       lite={viewer.level === 'lite'}
       platform={viewer.platform}

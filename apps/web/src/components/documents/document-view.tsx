@@ -39,6 +39,7 @@ export function DocumentView({
   document: doc,
   annotations: initial,
   html,
+  linkTargets = [],
   canAnnotate = true,
   lite = false,
   platform = 'desktop',
@@ -47,6 +48,8 @@ export function DocumentView({
   document: Document;
   annotations: Annotation[];
   html: string;
+  /** Titles offered after typing `[[` in an annotation. */
+  linkTargets?: string[];
   /** Text-selection annotations (feature documents.annotate). */
   canAnnotate?: boolean;
   /** Memory-safe rendering and a simplified panel (feature documents.viewer = lite). */
@@ -192,6 +195,7 @@ export function DocumentView({
       await deleteAnnotationAction(slug, doc.id, id);
       router.refresh();
     });
+  const followLink = (name: string) => start(() => followWikiLinkAction(slug, name));
   const scrollToAnnotation = (x: Annotation) => {
     const anchor = x.anchor as Anchor | null;
     if (anchor?.kind === 'pdf') viewer.current?.scrollToAnchor(anchor);
@@ -249,7 +253,7 @@ export function DocumentView({
         highlights={mdHighlights}
         activeHighlightId={activeId}
         onSelection={canAnnotate ? setSelection : undefined}
-        onWikiLink={(name) => start(() => followWikiLinkAction(slug, name))}
+        onWikiLink={followLink}
         fontScale={phone ? fontScale : 1}
         onFontScale={phone ? setFontScale : undefined}
         pinch={phone}
@@ -306,6 +310,8 @@ export function DocumentView({
             onChangeType={changeType}
             onChangeBody={changeBody}
             onDelete={remove}
+            onFollowLink={followLink}
+            linkTargets={linkTargets}
             focusId={focusId}
             tapToScroll
             emptyHint="No annotations yet. Use + for a general note; text annotations are made on an iPad or laptop."
@@ -485,6 +491,8 @@ export function DocumentView({
           onChangeType={changeType}
           onChangeBody={changeBody}
           onDelete={remove}
+          onFollowLink={followLink}
+          linkTargets={linkTargets}
           focusId={focusId}
         />
       </div>

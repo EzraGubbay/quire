@@ -107,9 +107,11 @@ export function NoteView({
                 <NextLink
                   key={`${b.fromKind}:${b.fromId}`}
                   href={
-                    b.fromKind === 'note'
-                      ? `/p/${slug}/notes/${b.fromId}`
-                      : `/p/${slug}/documents/${b.fromId}`
+                    b.href
+                      ? `/p/${slug}/${b.href}`
+                      : b.fromKind === 'note'
+                        ? `/p/${slug}/notes/${b.fromId}`
+                        : `/p/${slug}/documents/${b.fromId}`
                   }
                 >
                   {b.title}

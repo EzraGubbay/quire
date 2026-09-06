@@ -102,3 +102,21 @@ export function extractWikiLinks(md: string): string[] {
   }
   return [...seen];
 }
+
+export type WikiSegment = { kind: 'text'; value: string } | { kind: 'link'; name: string; label: string };
+
+/** Splits plain text into runs of text and `[[Name]]` / `[[Name|label]]` links, for rendering without Markdown. */
+export function wikiSegments(text: string): WikiSegment[] {
+  const out: WikiSegment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g)) {
+    const at = m.index ?? 0;
+    const name = (m[1] ?? '').trim();
+    if (!name) continue;
+    if (at > last) out.push({ kind: 'text', value: text.slice(last, at) });
+    out.push({ kind: 'link', name, label: (m[2] ?? name).trim() });
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push({ kind: 'text', value: text.slice(last) });
+  return out;
+}

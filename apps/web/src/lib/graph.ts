@@ -1,5 +1,5 @@
 import type { AnnotationType, EntityKind } from '@quire/shared';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { annotations, documents, links, notes, sources } from '@/db/schema';
 
@@ -21,9 +21,10 @@ export interface GraphData {
   edges: GraphEdgeData[];
 }
 
-/** Notes, documents, sources (later), and Idea/Insight annotations, with wiki edges and annotation→document edges. */
+/** Notes, documents, sources, and annotations that are Ideas/Insights or author a resolved [[wiki link]],
+ *  with wiki edges and annotation→document `belongs` edges. */
 export async function getGraph(projectId: string, slug: string): Promise<GraphData> {
-  const [ns, ds, ideas, ls, ss] = await Promise.all([
+  const [ns, ds, all, ls, ss] = await Promise.all([
     db
       .select({ id: notes.id, title: notes.title, slug: notes.slug })
       .from(notes)
@@ -41,7 +42,7 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
         documentId: annotations.documentId,
       })
       .from(annotations)
-      .where(and(eq(annotations.projectId, projectId), inArray(annotations.type, ['idea', 'insight']))),
+      .where(eq(annotations.projectId, projectId)),
     db
       .select({
         fromKind: links.fromKind,
@@ -53,8 +54,9 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
       .from(links)
       .where(and(eq(links.projectId, projectId), sql`${links.unresolved} is null`)),
     db.select({ id: sources.id, title: sources.title }).from(sources).where(eq(sources.projectId, projectId)),
-    db.select({ id: sources.id, title: sources.title }).from(sources).where(eq(sources.projectId, projectId)),
   ]);
+  const linking = new Set(ls.filter((l) => l.fromKind === 'annotation').map((l) => l.fromId));
+  const ideas = all.filter((a) => a.type === 'idea' || a.type === 'insight' || linking.has(a.id));
   const docHue = new Map<string, AnnotationType>();
   const hueCounts = await db
     .select({ documentId: annotations.documentId, type: annotations.type, n: sql<number>`count(*)::int` })
@@ -100,12 +102,15 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
     })),
   ];
   const known = new Set(nodes.map((n) => n.id));
+  const wiki = ls
+    .filter((l) => known.has(l.fromId) && known.has(l.toId) && l.fromId !== l.toId)
+    .map((l) => ({ from: l.fromId, to: l.toId, kind: l.kind }));
+  // An annotation that [[links]] its own document already has an edge there; do not draw a second one.
+  const linked = new Set(wiki.map((e) => `${e.from}>${e.to}`));
   const edges: GraphEdgeData[] = [
-    ...ls
-      .filter((l) => known.has(l.fromId) && known.has(l.toId) && l.fromId !== l.toId)
-      .map((l) => ({ from: l.fromId, to: l.toId, kind: l.kind })),
+    ...wiki,
     ...ideas
-      .filter((a) => a.documentId && known.has(a.documentId))
+      .filter((a) => a.documentId && known.has(a.documentId) && !linked.has(`${a.id}>${a.documentId}`))
       .map((a) => ({ from: a.id, to: a.documentId as string, kind: 'belongs' as const })),
   ];
   return { nodes, edges };

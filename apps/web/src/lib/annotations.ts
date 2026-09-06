@@ -1,7 +1,7 @@
 import type { Anchor, AnnotationType } from '@quire/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { type Annotation, annotations } from '@/db/schema';
+import { type Annotation, annotations, links } from '@/db/schema';
 
 export async function listAnnotations(projectId: string, documentId: string): Promise<Annotation[]> {
   return db
@@ -50,4 +50,6 @@ export async function updateAnnotation(
 
 export async function deleteAnnotation(projectId: string, id: string): Promise<void> {
   await db.delete(annotations).where(and(eq(annotations.id, id), eq(annotations.projectId, projectId)));
+  // Annotations author wiki links but are never link targets.
+  await db.delete(links).where(and(eq(links.projectId, projectId), eq(links.fromId, id)));
 }

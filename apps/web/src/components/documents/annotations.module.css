@@ -158,6 +158,15 @@
 .card[data-expanded="true"] .body {
   -webkit-line-clamp: unset;
 }
+.wikilink {
+  color: var(--eg-accent-text);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--eg-accent);
+}
+.editWrap {
+  position: relative;
+  display: grid;
+}
 .bodyEdit {
   font: 400 13.5px / 1.5 var(--eg-font-prose);
   color: var(--eg-text);

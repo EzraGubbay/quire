@@ -7,7 +7,7 @@ Built on the [Folio](https://github.com/ezragubbay/design) research design regis
 ## What it does
 
 - **Documents**: PDFs (upload, URL, arXiv, DOI) and Markdown documents you write, in one viewer with a pull-out annotations panel. Five annotation types: Note, Insight, Idea, Question, Todo. Highlight text to annotate, or add general notes.
-- **Notes**: short linked Markdown pages with `[[wiki links]]`, backlinks, math macros, read/edit modes, and a graph of notes, documents, sources, and ideas.
+- **Notes**: short linked Markdown pages with `[[wiki links]]`, backlinks, math macros, read/edit modes, and a graph of notes, documents, sources, and ideas. Annotations can `[[link]]` documents and notes too, and then join the graph.
 - **Sources**: any non-paper reference, catalogued and linkable.
 - **Experiments**: a tracker for runs, metrics, artifacts, and observations, fed by a small Python client from wherever your code runs.
 - **AI**: chat over the project, ask about a document, and discover new sources. Cost-capped, provider-agnostic.

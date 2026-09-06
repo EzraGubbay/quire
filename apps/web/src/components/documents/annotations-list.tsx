@@ -2,10 +2,12 @@
 
 import { Icon } from '@ezragubbay/folio';
 import { ANNOTATION_TYPE_LABEL, ANNOTATION_TYPES, type Anchor, type AnnotationType } from '@quire/shared';
-import { Crosshair, Trash2 } from 'lucide-react';
+import { Crosshair, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useWikiLinkComplete } from '@/components/editor/wikilink-complete';
 import type { Annotation } from '@/db/schema';
 import { fuzzyScore } from '@/lib/fuzzy';
+import { wikiSegments } from '@/lib/markdown';
 import s from './annotations.module.css';
 
 export const typeVars = (t: AnnotationType) =>
@@ -19,6 +21,10 @@ export interface AnnotationsListProps {
   onChangeType: (id: string, type: AnnotationType) => void;
   onChangeBody: (id: string, body: string) => void;
   onDelete: (id: string) => void;
+  /** A [[wiki link]] in a body was clicked. */
+  onFollowLink: (name: string) => void;
+  /** Titles offered after typing `[[` in a body. */
+  linkTargets?: string[];
   /** Id of the annotation whose body should start focused (just created). */
   focusId: string | null;
   /** Phone reader: tapping an anchored card jumps to the passage instead of expanding it. */
@@ -35,6 +41,8 @@ export function AnnotationsList({
   onChangeType,
   onChangeBody,
   onDelete,
+  onFollowLink,
+  linkTargets = [],
   focusId,
   tapToScroll = false,
   emptyHint = 'Select text in the document and press Annotate, or use + for a general note.',
@@ -100,6 +108,8 @@ export function AnnotationsList({
               onChangeType={(t) => onChangeType(a.id, t)}
               onChangeBody={(b) => onChangeBody(a.id, b)}
               onDelete={() => onDelete(a.id)}
+              onFollowLink={onFollowLink}
+              linkTargets={linkTargets}
             />
           ))
         )}
@@ -120,6 +130,8 @@ function AnnotationCard({
   onChangeType,
   onChangeBody,
   onDelete,
+  onFollowLink,
+  linkTargets,
 }: {
   a: Annotation;
   active: boolean;
@@ -133,6 +145,8 @@ function AnnotationCard({
   onChangeType: (t: AnnotationType) => void;
   onChangeBody: (b: string) => void;
   onDelete: () => void;
+  onFollowLink: (name: string) => void;
+  linkTargets: string[];
 }) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(autoFocus);
@@ -144,6 +158,14 @@ function AnnotationCard({
     if (editing) textareaRef.current?.focus();
   }, [editing]);
 
+  const wiki = useWikiLinkComplete({ textareaRef, value: draft, targets: linkTargets, onChange: setDraft });
+
+  const startEdit = () => {
+    setDraft(a.body);
+    setEditing(true);
+    // A double-click also selects a word in the quote or body; the editor replaces that.
+    window.getSelection()?.removeAllRanges();
+  };
   const commit = () => {
     setEditing(false);
     if (draft !== a.body) onChangeBody(draft);
@@ -158,14 +180,29 @@ function AnnotationCard({
       data-testid="annotation-card"
       onMouseEnter={() => onHover(a.id)}
       onMouseLeave={() => onHover(null)}
+      // Keyboard focus counts as hover: the passage lights up and the hover-only buttons become reachable.
+      onFocus={() => onHover(a.id)}
       onClick={(e) => {
-        if ((e.target as HTMLElement).closest('button, textarea')) return;
-        if (tapToEdit && (e.target as HTMLElement).closest('[data-body]')) {
-          setDraft(a.body);
-          setEditing(true);
+        const target = e.target as HTMLElement;
+        const link = target.closest<HTMLElement>('a[data-wikilink]');
+        if (link) {
+          e.preventDefault();
+          onFollowLink(link.dataset.wikilink ?? '');
           return;
         }
+        if (target.closest('button, textarea')) return;
+        if (tapToEdit && target.closest('[data-body]')) {
+          startEdit();
+          return;
+        }
+        // The second click of a double-click must not undo the first one's expand.
+        if (e.detail > 1) return;
         if (!editing) onToggleExpand();
+      }}
+      // Anywhere on the card: the first click expands and moves the body, so the body alone is a poor target.
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest('button, textarea, a, [role="listbox"]')) return;
+        if (!editing) startEdit();
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && e.target === e.currentTarget) onToggleExpand();
@@ -213,6 +250,17 @@ function AnnotationCard({
         </div>
         {a.pageNo && <span className={s.page}>p.{a.pageNo}</span>}
         {!anchor && <span className={s.page}>general</span>}
+        {active && !editing && (
+          <button
+            type="button"
+            className={s.iconBtn}
+            aria-label="Edit annotation"
+            title="Edit annotation"
+            onClick={startEdit}
+          >
+            <Icon icon={Pencil} />
+          </button>
+        )}
         <span className={s.spacer} />
         {anchor && active && (
           <button
@@ -237,35 +285,58 @@ function AnnotationCard({
       </div>
       {a.quote && <div className={s.quote}>“{a.quote}”</div>}
       {editing ? (
-        <textarea
-          ref={textareaRef}
-          className={s.bodyEdit}
-          aria-label="Annotation text"
-          value={draft}
-          placeholder="Write your note…"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setDraft(a.body);
-              setEditing(false);
-            }
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit();
-          }}
-        />
+        <div className={s.editWrap}>
+          <textarea
+            ref={textareaRef}
+            className={s.bodyEdit}
+            aria-label="Annotation text"
+            value={draft}
+            placeholder="Write your note… [[ links a document"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyUp={wiki.refresh}
+            onClick={wiki.refresh}
+            onKeyDown={(e) => {
+              if (wiki.onKeyDown(e)) return;
+              if (e.key === 'Escape') {
+                setDraft(a.body);
+                setEditing(false);
+              }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit();
+            }}
+          />
+          {wiki.list}
+        </div>
       ) : (
-        <div
-          className={s.body}
-          data-body
-          onDoubleClick={() => {
-            setDraft(a.body);
-            setEditing(true);
-          }}
-          style={a.body ? undefined : { color: 'var(--eg-muted)' }}
-        >
-          {a.body || (tapToEdit ? 'Tap to write…' : 'Double-click to write…')}
+        <div className={s.body} data-body style={a.body ? undefined : { color: 'var(--eg-muted)' }}>
+          {a.body ? <BodyText text={a.body} /> : tapToEdit ? 'Tap to write…' : 'Double-click to write…'}
         </div>
       )}
     </div>
   );
+}
+
+/** Plain text with `[[wiki links]]` as anchors; clicks are handled by the card. */
+function BodyText({ text }: { text: string }) {
+  const nodes: React.ReactNode[] = [];
+  let at = 0;
+  for (const seg of wikiSegments(text)) {
+    if (seg.kind === 'link') {
+      nodes.push(
+        <a
+          key={at}
+          href={`#wiki:${encodeURIComponent(seg.name)}`}
+          data-wikilink={seg.name}
+          className={s.wikilink}
+        >
+          {seg.label}
+        </a>,
+      );
+      at += seg.name.length + 4;
+    } else {
+      nodes.push(<span key={at}>{seg.value}</span>);
+      at += seg.value.length;
+    }
+  }
+  return nodes;
 }

@@ -33,6 +33,25 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await body.fill('Why a single sample?');
   await body.press('Control+Enter');
   await expect(card).toContainText('Why a single sample?');
+  const docUrl = page.url();
+
+  // Hover reveals a pencil in the card header that opens the editor; Escape leaves it.
+  await card.hover();
+  await card.getByRole('button', { name: 'Edit annotation' }).click();
+  await expect(page.getByLabel('Annotation text')).toBeFocused();
+  await page.getByLabel('Annotation text').press('Escape');
+  await expect(page.getByLabel('Annotation text')).toHaveCount(0);
+  // Double-clicking the quote works too (the first click expands the card and moves the body).
+  await card.locator('[class*="quote"]').dblclick();
+  await expect(page.getByLabel('Annotation text')).toBeVisible();
+  // `[[` offers document titles; the saved body renders the link.
+  const title = (await page.locator('[class*="barTitle"]').textContent()) ?? '';
+  expect(title).not.toBe('');
+  await page.getByLabel('Annotation text').fill('Why a single sample? See [[');
+  await page.getByRole('option', { name: title }).click();
+  await expect(page.getByLabel('Annotation text')).toHaveValue(`Why a single sample? See [[${title}]]`);
+  await page.getByLabel('Annotation text').press('Control+Enter');
+  await expect(card.locator('a[data-wikilink]')).toHaveText(title);
 
   // Change type via the label menu.
   await card.getByRole('button', { name: 'Note' }).click();
@@ -85,4 +104,13 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await expect(page.getByRole('button', { name: 'Show annotations' })).toBeVisible();
   await page.getByRole('button', { name: 'Show annotations' }).click();
   await expect(page.getByLabel('Search annotations')).toBeVisible();
+
+  // The linking annotation is a graph node with one edge to the document; deleting it removes both.
+  await page.goto(docUrl.replace(/\/documents\/.*$/, '/notes/graph'));
+  await expect(page.getByText(/2 nodes · 1 links/)).toBeVisible();
+  await page.goto(docUrl);
+  await page.getByTestId('annotation-card').first().getByRole('button', { name: 'Delete annotation' }).click();
+  await expect(page.getByTestId('annotation-card')).toHaveCount(1);
+  await page.goto(docUrl.replace(/\/documents\/.*$/, '/notes/graph'));
+  await expect(page.getByText(/1 nodes · 0 links/)).toBeVisible();
 });

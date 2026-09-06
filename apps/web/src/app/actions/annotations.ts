@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Annotation } from '@/db/schema';
 import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { createAnnotation, deleteAnnotation, updateAnnotation } from '@/lib/annotations';
+import { syncLinks } from '@/lib/notes';
 import { getProjectBySlug } from '@/lib/projects';
 
 const createSchema = z.object({
@@ -24,6 +25,7 @@ export async function createAnnotationAction(
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error('project not found');
   const row = await createAnnotation(project.id, parsed);
+  if (parsed.body) await syncLinks(project.id, 'annotation', row.id, parsed.body);
   after(() => indexOwner(project.id, 'annotation', row.id).catch(() => {}));
   revalidatePath(`/p/${slug}/documents/${parsed.documentId}`);
   return row;
@@ -44,6 +46,7 @@ export async function updateAnnotationAction(
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error('project not found');
   await updateAnnotation(project.id, id, parsed);
+  if (parsed.body !== undefined) await syncLinks(project.id, 'annotation', id, parsed.body);
   after(() => indexOwner(project.id, 'annotation', id).catch(() => {}));
   revalidatePath(`/p/${slug}/documents/${documentId}`);
 }
