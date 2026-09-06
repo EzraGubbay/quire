@@ -109,7 +109,11 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   await page.goto(docUrl.replace(/\/documents\/.*$/, '/notes/graph'));
   await expect(page.getByText(/2 nodes · 1 links/)).toBeVisible();
   await page.goto(docUrl);
-  await page.getByTestId('annotation-card').first().getByRole('button', { name: 'Delete annotation' }).click();
+  await page
+    .getByTestId('annotation-card')
+    .first()
+    .getByRole('button', { name: 'Delete annotation' })
+    .click();
   await expect(page.getByTestId('annotation-card')).toHaveCount(1);
   await page.goto(docUrl.replace(/\/documents\/.*$/, '/notes/graph'));
   await expect(page.getByText(/1 nodes · 0 links/)).toBeVisible();
