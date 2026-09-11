@@ -15,6 +15,12 @@
   max-height: 220px;
   overflow-y: auto;
 }
+.list[data-placement="above"] {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
 .item {
   display: block;
   padding: 6px 8px;

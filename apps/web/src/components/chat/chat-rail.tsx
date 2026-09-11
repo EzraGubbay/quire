@@ -13,31 +13,42 @@ export function ChatRail({
   threads,
   activeId,
   phone = false,
+  scope,
 }: {
   slug: string;
   threads: ChatThread[];
   activeId?: string;
   /** Full-page list on phones. */
   phone?: boolean;
+  /** Only this document's chats are listed and new chats are scoped to it. */
+  scope?: { documentId: string; title: string } | null;
 }) {
   const [pending, start] = useTransition();
   return (
     <aside className={s.rail} aria-label="Chats" data-phone={phone ? 'true' : undefined}>
       <div className={s.railHead}>
-        <h2 className={s.railTitle}>Chats · {threads.length}</h2>
+        <h2 className={s.railTitle} title={scope ? `Chats about ${scope.title}` : undefined}>
+          {scope ? `About “${scope.title}” · ${threads.length}` : `Chats · ${threads.length}`}
+        </h2>
         <Button
           variant="ghost"
           size="sm"
           aria-label="New chat"
           icon={<Icon icon={Plus} />}
           disabled={pending}
-          onClick={() => start(() => newThreadAndGoAction(slug))}
+          onClick={() => start(() => newThreadAndGoAction(slug, scope?.documentId ?? null))}
         />
       </div>
+      {scope && (
+        <div className={s.railScope}>
+          <NextLink href={`/p/${slug}/documents/${scope.documentId}`}>Open document</NextLink>
+          <NextLink href={`/p/${slug}/chat`}>All chats</NextLink>
+        </div>
+      )}
       <div className={s.list}>
         {threads.length === 0 ? (
           <p className={s.itemMeta} style={{ padding: 10 }}>
-            No chats yet.
+            {scope ? 'No chats about this document yet.' : 'No chats yet.'}
           </p>
         ) : (
           threads.map((t) => (
@@ -50,7 +61,7 @@ export function ChatRail({
               <span className={s.itemTitle}>{t.title}</span>
               <span className={s.itemMeta}>
                 {t.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                {t.documentId ? ' · document' : ''}
+                {t.documentId && !scope ? ' · document' : ''}
               </span>
             </NextLink>
           ))

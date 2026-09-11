@@ -3,8 +3,7 @@
 import { Icon } from '@ezragubbay/folio';
 import { MessageSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { spendSummaryAction } from '@/app/actions/ai';
-import type { SpendSummary } from '@/lib/ai/ledger';
+import { type AskContext, askContextAction } from '@/app/actions/chat';
 import { AskSlideover } from './ask-slideover';
 
 /** App-bar "Ask" button plus the slide-over. Other components can open it by dispatching `quire:ask` with {documentId, documentTitle}. */
@@ -14,19 +13,21 @@ export function AskLauncher({ slug }: { slug: string }) {
     documentId: null,
     documentTitle: null,
   });
-  const [state, setState] = useState<{ summary: SpendSummary; configured: boolean } | null>(null);
+  const [context, setContext] = useState<AskContext | null>(null);
   useEffect(() => {
     const onAsk = (e: Event) => {
       const d = (e as CustomEvent<{ documentId?: string; documentTitle?: string }>).detail ?? {};
       setScope({ documentId: d.documentId ?? null, documentTitle: d.documentTitle ?? null });
+      setContext(null);
       setOpen(true);
     };
     window.addEventListener('quire:ask', onAsk);
     return () => window.removeEventListener('quire:ask', onAsk);
   }, []);
+  // Fresh context every time the panel opens: the chats in scope may have changed elsewhere.
   useEffect(() => {
-    if (open) spendSummaryAction().then(setState);
-  }, [open]);
+    if (open) askContextAction(slug, scope.documentId).then(setContext);
+  }, [open, slug, scope.documentId]);
   return (
     <>
       <button
@@ -35,6 +36,7 @@ export function AskLauncher({ slug }: { slug: string }) {
         title="Ask this project (AI)"
         onClick={() => {
           setScope({ documentId: null, documentTitle: null });
+          setContext(null);
           setOpen(true);
         }}
         style={{
@@ -48,15 +50,14 @@ export function AskLauncher({ slug }: { slug: string }) {
       >
         <Icon icon={MessageSquare} />
       </button>
-      {state && (
+      {context && (
         <AskSlideover
           slug={slug}
           open={open}
           onClose={() => setOpen(false)}
           documentId={scope.documentId}
           documentTitle={scope.documentTitle}
-          summary={state.summary}
-          configured={state.configured}
+          context={context}
         />
       )}
     </>

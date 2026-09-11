@@ -224,7 +224,7 @@
   border-left: 1px solid var(--eg-rule);
   box-shadow: -20px 0 60px rgba(20, 16, 12, 0.2);
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
   min-height: 0;
 }
 
@@ -275,4 +275,70 @@
 .layout[data-phone="true"] .bar .titleInput {
   flex: 1 1 200px;
   white-space: normal;
+}
+
+/* Composer: the document completer opens above the textarea. */
+.composerField {
+  position: relative;
+}
+.streaming {
+  white-space: pre-wrap;
+}
+.errorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+/* Slide-over: wide math never widens the panel past the viewport. */
+.slide {
+  overflow: hidden;
+}
+.slide > * {
+  min-width: 0;
+}
+.messages,
+.msg,
+.bubble {
+  min-width: 0;
+}
+.bubble {
+  overflow-wrap: anywhere;
+}
+.switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--eg-rule);
+  background: var(--eg-surface-2);
+}
+.switcherSelect {
+  flex: 1;
+  min-width: 0;
+  font: 500 13px / 1.3 var(--eg-font-ui);
+  padding: 6px 8px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-control);
+  background: var(--eg-bg);
+  color: var(--eg-text);
+}
+.switcherLink {
+  display: inline-flex;
+  padding: 6px;
+  color: var(--eg-text-2);
+}
+.railScope {
+  display: flex;
+  gap: 12px;
+  padding: 0 16px 8px;
+  font: 500 12px / 1.2 var(--eg-font-ui);
+}
+.railScope a {
+  color: var(--eg-accent-text);
+  text-decoration: none;
+}
+.scope a {
+  color: inherit;
 }

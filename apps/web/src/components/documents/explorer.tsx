@@ -2,7 +2,18 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { DocumentKind, ReadingStatus } from '@quire/shared';
-import { ChevronUp, FileText, FolderIcon, FolderOpen, FolderPlus, Inbox, Plus, Sparkles } from 'lucide-react';
+import {
+  ChevronUp,
+  Download,
+  FileText,
+  FolderIcon,
+  FolderOpen,
+  FolderPlus,
+  Inbox,
+  MessageSquare,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
@@ -188,16 +199,17 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
         ) : (
           <div className={s.list}>
             {visible.map((d) => (
-              <NextLink
+              <div
                 key={d.id}
-                href={`/p/${slug}/documents/${d.id}`}
                 className={s.row}
                 draggable={!phone}
                 onDragStart={(e) => e.dataTransfer.setData('text/quire-document', d.id)}
               >
                 <Icon icon={d.kind === 'pdf' ? FileText : FolderIcon} />
                 <span>
-                  <div className={s.rowTitle}>{d.title}</div>
+                  <NextLink href={`/p/${slug}/documents/${d.id}`} className={s.rowLink}>
+                    <div className={s.rowTitle}>{d.title}</div>
+                  </NextLink>
                   <div className={s.rowMeta}>
                     {d.authors.length > 0 && (
                       <span>
@@ -216,7 +228,24 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
                 <span className={s.status} data-status={d.readingStatus}>
                   {d.readingStatus}
                 </span>
-              </NextLink>
+                <a
+                  href={`/api/projects/${slug}/documents/${d.id}/file?download=1`}
+                  download
+                  className={s.rowChat}
+                  aria-label={`Download ${d.title}`}
+                  title={d.kind === 'pdf' ? 'Download PDF' : 'Download Markdown'}
+                >
+                  <Icon icon={Download} />
+                </a>
+                <NextLink
+                  href={`/p/${slug}/chat?doc=${d.id}`}
+                  className={s.rowChat}
+                  aria-label={`Chats about ${d.title}`}
+                  title="Chats about this document"
+                >
+                  <Icon icon={MessageSquare} />
+                </NextLink>
+              </div>
             ))}
           </div>
         )}

@@ -1,6 +1,7 @@
 'use client';
 
-import { FolioProvider, MathProvider } from '@ezragubbay/folio';
+import { FolioProvider } from '@ezragubbay/folio';
+import { MathJaxContext } from 'better-react-mathjax';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ThemeSetting } from '@/lib/theme';
 
@@ -21,6 +22,22 @@ const ThemeContext = createContext<ThemeCtx>({
   applySetting: () => {},
 });
 export const useTheme = () => useContext(ThemeContext);
+
+// Same setup as folio's MathProvider, but served from this origin: the CDN copy failed to load on the iPad.
+const MATHJAX = {
+  loader: { load: ['[tex]/ams'] },
+  tex: {
+    packages: { '[+]': ['ams'] },
+    inlineMath: [
+      ['$', '$'],
+      ['\\(', '\\)'],
+    ],
+    displayMath: [
+      ['$$', '$$'],
+      ['\\[', '\\]'],
+    ],
+  },
+};
 
 const STORAGE_KEY = 'quire.theme';
 
@@ -75,7 +92,9 @@ export function Providers({ children, themeSetting }: { children: ReactNode; the
   return (
     <ThemeContext.Provider value={value}>
       <FolioProvider theme={theme}>
-        <MathProvider>{children}</MathProvider>
+        <MathJaxContext version={3} src="/mathjax/tex-mml-chtml.js" config={MATHJAX}>
+          {children}
+        </MathJaxContext>
       </FolioProvider>
     </ThemeContext.Provider>
   );

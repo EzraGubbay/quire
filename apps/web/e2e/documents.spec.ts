@@ -31,9 +31,11 @@ test.describe('documents', () => {
 
     // Back to explorer: the row shows the status
     await page.getByRole('link', { name: 'Documents' }).first().click();
-    await expect(page.locator('a', { hasText: 'sparse attention with learned routing' })).toContainText(
-      'reading',
-    );
+    await expect(
+      page.locator('div[class$="__row"]', {
+        hasText: 'sparse attention with learned routing',
+      }),
+    ).toContainText('reading');
 
     // Folder
     await page.getByRole('button', { name: 'New folder' }).click();

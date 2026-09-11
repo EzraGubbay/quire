@@ -32,6 +32,7 @@
     "drizzle-orm": "^0.45.0",
     "fast-xml-parser": "^5.11.1",
     "lucide-react": "^1.39.0",
+    "mathjax": "3.2.2",
     "next": "16.3.4",
     "next-auth": "5.0.0-beta.32",
     "openai": "^7.9.0",

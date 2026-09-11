@@ -6,7 +6,7 @@ import { ThreadView } from '@/components/chat/thread-view';
 import { spendSummary } from '@/lib/ai/ledger';
 import { aiConfigured } from '@/lib/ai/provider';
 import { getThread, listMessages, listThreads } from '@/lib/chat';
-import { getDocument } from '@/lib/documents';
+import { getDocument, listDocuments } from '@/lib/documents';
 import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug } from '@/lib/projects';
 import { ThreadBar } from './thread-bar';
@@ -23,19 +23,21 @@ export default async function ThreadPage({
   if (!project) notFound();
   const thread = await getThread(project.id, threadId);
   if (!thread) notFound();
-  const [threads, messages, summary, scopeDoc, chat] = await Promise.all([
-    listThreads(project.id),
+  const [threads, messages, summary, scopeDoc, chat, docs] = await Promise.all([
+    listThreads(project.id, thread.documentId),
     listMessages(threadId),
     spendSummary(),
     thread.documentId ? getDocument(project.id, thread.documentId) : Promise.resolve(undefined),
     currentFeature('chat'),
+    listDocuments(project.id),
   ]);
+  const scope = scopeDoc ? { documentId: scopeDoc.id, title: scopeDoc.title } : null;
   const phone = chat.platform === 'phone';
   const configured = aiConfigured();
   const disabled = !configured || summary.state === 'capped' || summary.state === 'blocked';
   return (
     <div className={s.layout} data-phone={phone ? 'true' : undefined}>
-      {!phone && <ChatRail slug={slug} threads={threads} activeId={threadId} />}
+      {!phone && <ChatRail slug={slug} threads={threads} activeId={threadId} scope={scope} />}
       <div className={s.main}>
         <ThreadBar
           slug={slug}
@@ -51,6 +53,7 @@ export default async function ThreadPage({
             initial={messages}
             disabled={disabled}
             scopeTitle={scopeDoc?.title ?? null}
+            mentionTargets={docs.map((d) => d.title)}
           />
         </div>
         <div />

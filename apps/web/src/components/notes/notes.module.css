@@ -227,3 +227,25 @@
   flex: 1 1 200px;
   white-space: normal;
 }
+
+/* Rail rows: the link fills the row; a download icon sits at its right edge. */
+.itemWrap {
+  position: relative;
+}
+.itemWrap .item {
+  padding-right: 36px;
+}
+.itemDownload {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  padding: 6px;
+  border-radius: var(--eg-radius-control);
+  color: var(--eg-muted);
+}
+.itemDownload:hover {
+  color: var(--eg-text);
+  background: var(--eg-bg);
+}

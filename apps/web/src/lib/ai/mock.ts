@@ -20,8 +20,26 @@ export function mockEmbedding(text: string, dims = 1536): number[] {
   return v.map((x) => x / n);
 }
 
+const failedOnce = new Set<string>();
+
 export function mockChat(messages: ChatMessageIn[], model: string): ChatResult {
   const last = messages[messages.length - 1]?.content ?? '';
+  // Test hook: the first attempt at a question containing MOCK_FAIL_ONCE fails like an OpenAI 500; the next succeeds.
+  if (last.includes('MOCK_FAIL_ALWAYS')) {
+    const err = new Error('The server had an error processing your request. (mock)') as Error & {
+      status: number;
+    };
+    err.status = 500;
+    throw err;
+  }
+  if (last.includes('MOCK_FAIL_ONCE') && !failedOnce.has(last)) {
+    failedOnce.add(last);
+    const err = new Error('The server had an error processing your request. (mock)') as Error & {
+      status: number;
+    };
+    err.status = 500;
+    throw err;
+  }
   const system = messages.find((m) => m.role === 'system')?.content ?? '';
   const cites = [...system.matchAll(/^\[(\d+)\]/gm)].map((m) => m[1]).slice(0, 2);
   const text = `Mock answer to “${last.slice(0, 60)}”.${cites.length ? ` Based on ${cites.map((c) => `[${c}]`).join(' and ')}.` : ''} (AI_MOCK)`;

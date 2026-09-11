@@ -13,11 +13,19 @@ export function useWikiLinkComplete({
   value,
   targets,
   onChange,
+  pattern = /\[\[([^\]\n]*)$/,
+  placement = 'below',
+  label = 'Link to',
 }: {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   targets: string[];
   onChange: (next: string) => void;
+  /** Trigger before the caret; group 1 is the query. Default `[[`. The completion always inserts `[[name]]`. */
+  pattern?: RegExp;
+  /** Where the list opens relative to the textarea (composers at the bottom of the screen open upward). */
+  placement?: 'below' | 'above';
+  label?: string;
 }) {
   const [match, setMatch] = useState<{ from: number; query: string } | null>(null);
   const [index, setIndex] = useState(0);
@@ -30,7 +38,7 @@ export function useWikiLinkComplete({
     const ta = textareaRef.current;
     if (!ta) return null;
     const head = ta.value.slice(0, ta.selectionStart);
-    const m = head.match(/\[\[([^\]\n]*)$/);
+    const m = head.match(pattern);
     return m ? { from: head.length - m[0].length, query: m[1] ?? '' } : null;
   };
   const keyOf = (m: { from: number; query: string }) => `${m.from}:${m.query}`;
@@ -96,7 +104,7 @@ export function useWikiLinkComplete({
   };
 
   const list = open ? (
-    <div className={s.list} role="listbox" aria-label="Link to">
+    <div className={s.list} role="listbox" aria-label={label} data-placement={placement}>
       {options.map((n, i) => (
         <button
           key={n}

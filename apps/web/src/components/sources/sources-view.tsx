@@ -2,7 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import { SOURCE_TYPES, type SourceType } from '@quire/shared';
-import { ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Download, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
 import { type ActionState, deleteSourceAction, saveSourceAction } from '@/app/actions/sources';
@@ -85,6 +85,15 @@ export function SourcesView({ slug, sources }: { slug: string; sources: Source[]
                   </span>
                 )}
                 <span className={s.actions}>
+                  <a
+                    className={s.iconBtn}
+                    href={`/api/projects/${slug}/sources/${x.id}/file`}
+                    download
+                    aria-label={`Download ${x.title}`}
+                    title="Download as Markdown"
+                  >
+                    <Icon icon={Download} />
+                  </a>
                   {x.url && (
                     <a
                       className={s.iconBtn}

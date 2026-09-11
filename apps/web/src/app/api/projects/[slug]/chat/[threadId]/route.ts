@@ -2,11 +2,23 @@ import { z } from 'zod';
 import { answer, BudgetError, ProviderError } from '@/lib/ai/answer';
 import { aiConfigured } from '@/lib/ai/provider';
 import { apiError, projectFromSlug, readJson } from '@/lib/api';
-import { addMessage, getThread, listMessages, renameThread, touchThread } from '@/lib/chat';
+import {
+  addMessage,
+  dropFailedAfter,
+  getThread,
+  lastUserMessage,
+  listMessages,
+  renameThread,
+  touchThread,
+} from '@/lib/chat';
 
 export const dynamic = 'force-dynamic';
 
-const schema = z.object({ question: z.string().trim().min(1).max(8000) });
+const schema = z.union([
+  z.object({ question: z.string().trim().min(1).max(8000) }),
+  /** Ask the thread's last question again (after a failed answer); no new user row is written. */
+  z.object({ retry: z.literal(true) }),
+]);
 
 /**
  * POST a question; the response streams newline-delimited JSON events:
@@ -21,12 +33,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
   if (!aiConfigured()) return apiError('AI is not configured: set OPENAI_API_KEY on the server.', 503);
   const body = await readJson(req, schema);
   if (!body.ok) return body.res;
-  const question = body.data.question;
+  const retry = 'retry' in body.data;
+  let question: string;
+  let userMsg: Awaited<ReturnType<typeof addMessage>> | undefined;
+  if ('retry' in body.data) {
+    const last = await lastUserMessage(threadId);
+    if (!last) return apiError('nothing to retry', 400);
+    await dropFailedAfter(threadId, last.createdAt);
+    question = last.content;
+    userMsg = last;
+  } else question = body.data.question;
   const history = (await listMessages(threadId))
-    .filter((m) => !m.error)
+    .filter((m) => !m.error && m.id !== userMsg?.id)
     .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-  const userMsg = await addMessage(threadId, { role: 'user', content: question });
-  if (history.length === 0) await renameThread(threadId, question.slice(0, 80));
+  if (!retry) {
+    userMsg = await addMessage(threadId, { role: 'user', content: question });
+    if (history.length === 0) await renameThread(threadId, question.slice(0, 80));
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -54,12 +77,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
           costUsd: res.costUsd,
         });
         await touchThread(threadId);
-        send({ type: 'done', message: saved });
+        send({ type: 'done', message: saved, fallback: res.fallback ?? false });
       } catch (err) {
         const kind =
           err instanceof BudgetError ? 'budget' : err instanceof ProviderError ? err.kind : 'other';
         const message = (err as Error).message;
-        const saved = await addMessage(threadId, { role: 'assistant', content: '', error: message });
+        const partial = err instanceof ProviderError ? err.partial : '';
+        const saved = await addMessage(threadId, { role: 'assistant', content: partial, error: message });
         send({ type: 'error', message, kind, saved });
       } finally {
         controller.close();

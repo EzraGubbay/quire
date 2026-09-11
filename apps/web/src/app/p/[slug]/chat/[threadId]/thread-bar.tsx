@@ -29,7 +29,11 @@ export function ThreadBar({
         </NextLink>
       )}
       <h1 className={s.title}>{thread.title}</h1>
-      {scopeTitle && <span className={s.scope}>about: {scopeTitle}</span>}
+      {scopeTitle && (
+        <span className={s.scope}>
+          about: <NextLink href={`/p/${slug}/documents/${thread.documentId}`}>{scopeTitle}</NextLink>
+        </span>
+      )}
       <Button
         variant="ghost"
         size="sm"

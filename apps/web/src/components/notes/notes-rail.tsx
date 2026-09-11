@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { Plus, Waypoints } from 'lucide-react';
+import { Download, Plus, Waypoints } from 'lucide-react';
 import NextLink from 'next/link';
 import { useActionState, useMemo, useState } from 'react';
 import { type ActionState, createNoteAction } from '@/app/actions/notes';
@@ -73,17 +73,27 @@ export function NotesRail({
           </p>
         ) : (
           visible.map((n) => (
-            <NextLink
-              key={n.id}
-              href={`/p/${slug}/notes/${n.slug}`}
-              className={s.item}
-              data-active={n.slug === activeSlug}
-            >
-              <span className={s.itemTitle}>{n.title}</span>
-              <span className={s.itemMeta}>
-                {n.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-              </span>
-            </NextLink>
+            <div key={n.id} className={s.itemWrap}>
+              <NextLink
+                href={`/p/${slug}/notes/${n.slug}`}
+                className={s.item}
+                data-active={n.slug === activeSlug}
+              >
+                <span className={s.itemTitle}>{n.title}</span>
+                <span className={s.itemMeta}>
+                  {n.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </span>
+              </NextLink>
+              <a
+                href={`/api/projects/${slug}/notes/${n.id}/file`}
+                download
+                className={s.itemDownload}
+                aria-label={`Download ${n.title}`}
+                title="Download Markdown"
+              >
+                <Icon icon={Download} />
+              </a>
+            </div>
           ))
         )}
       </div>

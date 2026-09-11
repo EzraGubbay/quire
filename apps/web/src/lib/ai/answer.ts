@@ -1,6 +1,6 @@
 // Retrieval-augmented answering: builds the prompt with numbered context, streams the answer, records usage.
 import type { EntityKind } from '@quire/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { documents } from '@/db/schema';
 import type { Citation } from '../chat';
@@ -27,6 +27,24 @@ export interface AnswerResult {
   model: string;
   usage: { input: number; cached: number; output: number };
   costUsd: number;
+  /** The configured answer model failed with a server error and the light model answered instead. */
+  fallback?: boolean;
+}
+
+/** `[[Title]]` references in a question, resolved to this project's documents (case-insensitive exact title). */
+export async function resolveMentions(
+  projectId: string,
+  text: string,
+): Promise<{ id: string; title: string }[]> {
+  const names = [
+    ...new Set([...text.matchAll(/\[\[([^\]\n]+)\]\]/g)].map((m) => m[1]!.trim().toLowerCase())),
+  ];
+  if (names.length === 0) return [];
+  const rows = await db
+    .select({ id: documents.id, title: documents.title })
+    .from(documents)
+    .where(and(eq(documents.projectId, projectId), inArray(sql`lower(${documents.title})`, names)));
+  return rows;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -51,9 +69,25 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
       .where(eq(documents.id, input.documentId));
     scopeTitle = d?.title ?? null;
   }
-  const chunks = await retrieve(input.projectId, input.slug, input.question, {
+  // Documents named as [[Title]] in the question get their own retrieval so the answer can lean on them.
+  const mentions = await resolveMentions(input.projectId, input.question);
+  const general = await retrieve(input.projectId, input.slug, input.question, {
     k: input.documentId ? 10 : 8,
     documentId: input.documentId ?? null,
+  });
+  const mentioned = (
+    await Promise.all(
+      mentions
+        .filter((m) => m.id !== input.documentId)
+        .map((m) => retrieve(input.projectId, input.slug, input.question, { k: 5, documentId: m.id })),
+    )
+  ).flat();
+  const seen = new Set<string>();
+  const chunks = [...mentioned, ...general].filter((c) => {
+    const key = `${c.kind}:${c.id}:${c.pageNo ?? ''}:${c.text.slice(0, 80)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
   const citations: Citation[] = chunks.map((c, i) => ({
     n: i + 1,
@@ -73,7 +107,11 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
   const messages: ChatMessageIn[] = [
     {
       role: 'system',
-      content: `${SYSTEM(input.projectName, scopeTitle, counts)}\n\nContext:\n${context || '(nothing indexed matches this question; say so)'}`,
+      content: `${SYSTEM(input.projectName, scopeTitle, counts)}${
+        mentions.length
+          ? ` The user names documents as [[Title]]; in this question ${mentions.map((m) => `[[${m.title}]]`).join(', ')} ${mentions.length === 1 ? 'is a document' : 'are documents'} in the project, and passages from ${mentions.length === 1 ? 'it' : 'them'} are included in the context.`
+          : ''
+      }\n\nContext:\n${context || '(nothing indexed matches this question; say so)'}`,
     },
     ...input.history.slice(-12),
     { role: 'user', content: input.question },
@@ -82,12 +120,43 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
   const estimate = costFor(s.prices, model, { input: promptTokens, cached: 0, output: 1200 });
   await assertBudget(estimate, s);
   try {
-    const res = await chatStream(messages, {
-      model,
-      settings: s,
-      onDelta: input.onDelta,
-      ...(input.signal ? { signal: input.signal } : {}),
-    });
+    let fallback = false;
+    let res: Awaited<ReturnType<typeof chatStream>>;
+    try {
+      res = await chatStream(messages, {
+        model,
+        settings: s,
+        onDelta: input.onDelta,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    } catch (err) {
+      // The heavy model's server errors are usually short-lived; the light model answers rather than nothing.
+      const light = s.models.light;
+      if (
+        !(err instanceof ProviderError) ||
+        !err.retryable ||
+        err.partial ||
+        light === model ||
+        input.signal?.aborted
+      )
+        throw err;
+      await recordUsage({
+        projectId: input.projectId,
+        task: 'answer',
+        model,
+        usage: { input: promptTokens, cached: 0, output: 0 },
+        ok: false,
+        error: `${err.message} (falling back to ${light})`,
+        settings: s,
+      });
+      fallback = true;
+      res = await chatStream(messages, {
+        model: light,
+        settings: s,
+        onDelta: input.onDelta,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    }
     const costUsd = await recordUsage({
       projectId: input.projectId,
       task: 'answer',
@@ -102,6 +171,7 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
       model: res.model,
       usage: res.usage,
       costUsd,
+      ...(fallback ? { fallback: true } : {}),
     };
   } catch (err) {
     if (err instanceof ProviderError) {

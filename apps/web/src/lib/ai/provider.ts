@@ -19,6 +19,8 @@ export interface ChatResult {
 }
 
 export class ProviderError extends Error {
+  /** Text streamed before the failure, if any (the answer was cut off rather than never started). */
+  partial = '';
   constructor(
     message: string,
     public readonly kind: 'quota' | 'rate_limit' | 'auth' | 'other',
@@ -27,7 +29,16 @@ export class ProviderError extends Error {
     super(message);
     this.name = 'ProviderError';
   }
+  /** Server-side or transient: worth another attempt (or the light model). Never auth or quota. */
+  get retryable(): boolean {
+    return (
+      this.kind === 'rate_limit' ||
+      (this.kind === 'other' && (this.status === undefined || this.status >= 500))
+    );
+  }
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function classifyError(err: unknown): ProviderError {
   const e = err as {
@@ -113,39 +124,53 @@ export async function chatStream(
   },
 ): Promise<ChatResult> {
   if (aiMock()) {
-    const r = mockChat(messages, opts.model);
+    let r: ChatResult;
+    try {
+      r = mockChat(messages, opts.model);
+    } catch (err) {
+      throw classifyError(err);
+    }
     for (const word of r.text.split(/(?<= )/)) opts.onDelta(word);
     return r;
   }
   const s = opts.settings ?? (await getAiSettings());
   const client = getClient(s);
-  let text = '';
-  let usage: Usage = { input: 0, cached: 0, output: 0 };
-  let model = opts.model;
-  try {
-    const stream = await client.chat.completions.create(
-      {
-        model: opts.model,
-        messages,
-        max_completion_tokens: opts.maxTokens ?? 4000,
-        stream: true,
-        stream_options: { include_usage: true },
-      },
-      { signal: opts.signal },
-    );
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content ?? '';
-      if (delta) {
-        text += delta;
-        opts.onDelta(delta);
+  // The SDK only retries before the stream opens; OpenAI's occasional "server had an error" 500s also arrive as
+  // the first (and only) chunk of a stream. Retry ourselves while nothing has been shown to the user yet.
+  const attempts = 3;
+  for (let attempt = 1; ; attempt++) {
+    let text = '';
+    let usage: Usage = { input: 0, cached: 0, output: 0 };
+    let model = opts.model;
+    try {
+      const stream = await client.chat.completions.create(
+        {
+          model: opts.model,
+          messages,
+          max_completion_tokens: opts.maxTokens ?? 4000,
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+        { signal: opts.signal },
+      );
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content ?? '';
+        if (delta) {
+          text += delta;
+          opts.onDelta(delta);
+        }
+        if (chunk.usage) usage = usageOf(chunk.usage);
+        if (chunk.model) model = chunk.model;
       }
-      if (chunk.usage) usage = usageOf(chunk.usage);
-      if (chunk.model) model = chunk.model;
+      return { text, usage, model };
+    } catch (err) {
+      const pe = classifyError(err);
+      pe.partial = text;
+      const aborted = opts.signal?.aborted ?? false;
+      if (text || aborted || !pe.retryable || attempt >= attempts) throw pe;
+      await sleep(400 * 2 ** attempt);
     }
-  } catch (err) {
-    throw classifyError(err);
   }
-  return { text, usage, model };
 }
 
 export async function embed(

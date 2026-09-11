@@ -109,8 +109,9 @@
   gap: 8px;
 }
 .row {
+  position: relative;
   display: grid;
-  grid-template-columns: 24px 1fr auto;
+  grid-template-columns: 24px 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
@@ -237,4 +238,27 @@
   padding-top: 10px;
   padding-bottom: 10px;
   font-size: 15px;
+}
+
+/* The title link covers the whole row; the chat button sits above it. */
+.rowLink {
+  color: inherit;
+  text-decoration: none;
+}
+.rowLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.rowChat {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  padding: 8px;
+  border-radius: var(--eg-radius-control);
+  color: var(--eg-muted);
+}
+.rowChat:hover {
+  color: var(--eg-accent-text);
+  background: var(--eg-surface-2);
 }

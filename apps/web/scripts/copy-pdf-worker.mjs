@@ -20,3 +20,11 @@ writeFileSync('public/pdf.worker.min.mjs', `${polyfill}\n${readFileSync(src, 'ut
 const root = path.dirname(require.resolve('pdfjs-dist/package.json'));
 cpSync(path.join(root, 'standard_fonts'), 'public/pdfjs/standard_fonts', { recursive: true });
 cpSync(path.join(root, 'cmaps'), 'public/pdfjs/cmaps', { recursive: true });
+// MathJax, self-hosted with its fonts and the ams extension (the bundle looks these up next to itself).
+const mj = path.join(path.dirname(require.resolve('mathjax/package.json')), 'es5');
+mkdirSync('public/mathjax', { recursive: true });
+cpSync(path.join(mj, 'tex-mml-chtml.js'), 'public/mathjax/tex-mml-chtml.js');
+cpSync(path.join(mj, 'input/tex/extensions'), 'public/mathjax/input/tex/extensions', { recursive: true });
+cpSync(path.join(mj, 'output/chtml/fonts/woff-v2'), 'public/mathjax/output/chtml/fonts/woff-v2', {
+  recursive: true,
+});
