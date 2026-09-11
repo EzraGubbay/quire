@@ -3,6 +3,7 @@
 import { Button, Icon } from '@ezragubbay/folio';
 import type { DocumentKind, ReadingStatus } from '@quire/shared';
 import {
+  BookOpen,
   ChevronUp,
   Download,
   FileText,
@@ -22,6 +23,7 @@ import {
   createFolderAction,
   deleteFolderAction,
   moveDocumentAction,
+  updateDocumentAction,
 } from '@/app/actions/documents';
 import { usePlatform } from '@/components/platform';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -48,7 +50,8 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
   const router = useRouter();
   const { platform } = usePlatform();
   const phone = platform === 'phone';
-  const [folderId, setFolderId] = useState<FolderSelection>('all');
+  // The built-in Active Reading folder is where a session starts.
+  const [folderId, setFolderId] = useState<FolderSelection>('reading');
   const [filter, setFilter] = useState<Filter>('all');
   const [kind, setKind] = useState<'all' | DocumentKind>('all');
   const [addOpen, setAddOpen] = useState(openAdd);
@@ -69,20 +72,24 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
     return m;
   }, [documents]);
 
+  const readingCount = documents.filter((d) => d.readingStatus === 'reading').length;
   const visible = documents.filter(
     (d) =>
-      (folderId === 'all' || (d.folderId ?? null) === folderId) &&
+      (folderId === 'all' ||
+        (folderId === 'reading' ? d.readingStatus === 'reading' : (d.folderId ?? null) === folderId)) &&
       (filter === 'all' || d.readingStatus === filter) &&
       (kind === 'all' || d.kind === kind),
   );
 
-  const onDrop = (targetFolder: string | null) => (e: React.DragEvent) => {
+  const onDrop = (target: string | null) => (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(null);
     const id = e.dataTransfer.getData('text/quire-document');
     if (!id) return;
     startTransition(async () => {
-      await moveDocumentAction(slug, id, targetFolder);
+      // Dropping on Active Reading marks the document as reading; it stays in its folder.
+      if (target === 'reading') await updateDocumentAction(slug, id, { readingStatus: 'reading' });
+      else await moveDocumentAction(slug, id, target);
       router.refresh();
     });
   };
@@ -103,7 +110,12 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
     });
 
   const title = folderLabel(folderId, folders);
-  const currentCount = folderId === 'all' ? documents.length : (counts.get(folderId) ?? 0);
+  const currentCount =
+    folderId === 'all'
+      ? documents.length
+      : folderId === 'reading'
+        ? readingCount
+        : (counts.get(folderId) ?? 0);
   const newFolderButton = (
     <Button
       variant="ghost"
@@ -127,6 +139,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
             activeId={folderId}
             counts={counts}
             total={documents.length}
+            reading={readingCount}
             onSelect={setFolderId}
             onDelete={deleteFolder}
             dragProps={dragProps}
@@ -144,7 +157,17 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
             onClick={() => setPickerOpen(true)}
             data-testid="folder-bar"
           >
-            <Icon icon={folderId === 'all' ? FileText : folderId === null ? Inbox : FolderOpen} />
+            <Icon
+              icon={
+                folderId === 'all'
+                  ? FileText
+                  : folderId === 'reading'
+                    ? BookOpen
+                    : folderId === null
+                      ? Inbox
+                      : FolderOpen
+              }
+            />
             <span className={s.folderBarLabel}>{title}</span>
             <span className={s.nodeMeta}>{currentCount}</span>
             <Icon icon={ChevronUp} />
@@ -194,7 +217,9 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
           <p className={s.muted}>
             {documents.length === 0
               ? 'No documents yet. Add a PDF, or start a Markdown document.'
-              : 'Nothing matches these filters.'}
+              : folderId === 'reading' && filter === 'all' && kind === 'all'
+                ? 'Nothing is being read right now. Mark a document as reading, or drop one here, and it appears in this folder.'
+                : 'Nothing matches these filters.'}
           </p>
         ) : (
           <div className={s.list}>
@@ -265,6 +290,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
               activeId={folderId}
               counts={counts}
               total={documents.length}
+              reading={readingCount}
               onSelect={(id) => {
                 setFolderId(id);
                 setPickerOpen(false);
@@ -277,7 +303,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
       <AddDocumentDialog
         slug={slug}
         folders={folders}
-        defaultFolderId={folderId === 'all' ? null : folderId}
+        defaultFolderId={folderId === 'all' || folderId === 'reading' ? null : folderId}
         open={addOpen}
         onClose={() => setAddOpen(false)}
       />

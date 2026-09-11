@@ -92,17 +92,18 @@
   align-content: start;
 }
 .msg {
-  max-width: 72ch;
+  max-width: min(880px, 100%);
   display: grid;
   gap: 6px;
 }
 .msg[data-role="user"] {
   justify-self: end;
+  max-width: min(640px, 100%);
 }
 .bubble {
-  padding: 10px 14px;
+  padding: 12px 18px;
   border-radius: 12px;
-  font: 400 14.5px / 1.55 var(--eg-font-prose);
+  font: 400 15.5px / 1.55 var(--eg-font-prose);
   color: var(--eg-text);
 }
 .msg[data-role="user"] .bubble {

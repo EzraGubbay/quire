@@ -1,11 +1,12 @@
 'use client';
 
 import { Icon } from '@ezragubbay/folio';
-import { FileText, FolderIcon, FolderOpen, Inbox, Trash2 } from 'lucide-react';
+import { BookOpen, FileText, FolderIcon, FolderOpen, Inbox, Trash2 } from 'lucide-react';
 import type { Folder } from '@/db/schema';
 import s from './documents.module.css';
 
-export type FolderSelection = string | null | 'all';
+/** A folder id, `null` for Unfiled, `'all'`, or `'reading'` for the built-in Active Reading folder. */
+export type FolderSelection = string | null | 'all' | 'reading';
 
 export interface TreeNode {
   folder: Folder;
@@ -27,6 +28,7 @@ export function buildTree(folders: Folder[]): TreeNode[] {
 
 export function folderLabel(id: FolderSelection, folders: Folder[]): string {
   if (id === 'all') return 'All documents';
+  if (id === 'reading') return 'Active Reading';
   if (id === null) return 'Unfiled';
   return folders.find((f) => f.id === id)?.name ?? 'Folder';
 }
@@ -39,6 +41,8 @@ export interface FolderTreeProps {
   activeId: FolderSelection;
   counts: Map<string | null, number>;
   total: number;
+  /** Documents with status reading (the Active Reading folder). */
+  reading: number;
   onSelect: (id: FolderSelection) => void;
   onDelete: (id: string) => void;
   /** Drop-target props for moving documents by drag; omitted on touch devices. */
@@ -51,6 +55,7 @@ export function FolderTree({
   activeId,
   counts,
   total,
+  reading,
   onSelect,
   onDelete,
   dragProps = noDrag,
@@ -66,6 +71,18 @@ export function FolderTree({
         <Icon icon={FileText} />
         <span className={s.nodeLabel}>All documents</span>
         <span className={s.nodeMeta}>{total}</span>
+      </button>
+      <button
+        type="button"
+        className={s.node}
+        data-active={activeId === 'reading'}
+        onClick={() => onSelect('reading')}
+        title="Every document marked as reading. Drop a document here to start reading it."
+        {...dragProps('reading', 'reading')}
+      >
+        <Icon icon={BookOpen} />
+        <span className={s.nodeLabel}>Active Reading</span>
+        <span className={s.nodeMeta}>{reading}</span>
       </button>
       <button
         type="button"

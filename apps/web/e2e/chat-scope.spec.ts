@@ -58,6 +58,8 @@ test('chat: ask reuses the last chat, doc mentions, per-document chats, retry an
 
   // Documents page: the row's chat button opens that document's chats.
   await page.goto(`/p/${slug}/documents`);
+  // The page opens in Active Reading; the new document is unread, so switch to All documents.
+  await page.getByRole('button', { name: /^All documents/ }).click();
   await page.getByRole('link', { name: 'Chats about Routing summary' }).click();
   await page.waitForURL(/\/chat\?doc=/);
   await expect(page.locator('[class*="itemTitle"]')).toHaveCount(2);

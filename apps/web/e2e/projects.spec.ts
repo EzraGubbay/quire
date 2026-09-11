@@ -10,7 +10,7 @@ test('create a project and walk its tabs', async ({ page }) => {
   await expect(page).toHaveURL(/\/p\/e2e-project-\d+\/overview$/);
   await expect(page.getByRole('heading', { name })).toBeVisible();
   const headings: Record<string, string> = {
-    Documents: 'All documents',
+    Documents: 'Active Reading',
     Notes: 'Notes',
     Sources: 'Sources',
     Experiments: 'Experiments',

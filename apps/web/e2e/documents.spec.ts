@@ -11,7 +11,8 @@ test.describe('documents', () => {
     await page.getByLabel('Name').fill(name);
     await page.getByRole('button', { name: 'Create project' }).click();
     await page.getByRole('link', { name: 'Documents' }).click();
-    await expect(page.getByRole('heading', { name: 'All documents' })).toBeVisible();
+    // Documents opens in the built-in Active Reading folder.
+    await expect(page.getByRole('heading', { name: 'Active Reading' })).toBeVisible();
 
     // Upload
     await page.getByRole('button', { name: 'Add document' }).click();
