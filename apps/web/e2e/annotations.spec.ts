@@ -64,8 +64,14 @@ test('annotate a PDF: selection popover, quick-add, type change, filter, search,
   // General annotation via +.
   await page.getByRole('button', { name: 'Add a general annotation' }).click();
   await expect(page.getByTestId('annotation-card')).toHaveCount(2);
-  await page.getByLabel('Annotation text').fill('Overall: promising but needs a baseline.');
+  await page
+    .getByLabel('Annotation text')
+    .fill('Overall: **promising** but needs a baseline, since $x^2$ grows.');
   await page.getByLabel('Annotation text').press('Control+Enter');
+  // Bodies render as Markdown with math typeset (bold survives, TeX becomes a MathJax container).
+  const rendered = page.getByTestId('annotation-card').filter({ hasText: 'promising' });
+  await expect(rendered.locator('strong')).toHaveText('promising');
+  await expect(rendered.locator('mjx-container')).toHaveCount(1, { timeout: 15_000 });
 
   // Filter to Question only, then search.
   await page.getByRole('button', { name: 'Question', exact: true }).first().click();

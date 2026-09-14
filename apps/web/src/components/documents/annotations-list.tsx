@@ -2,12 +2,13 @@
 
 import { Icon } from '@ezragubbay/folio';
 import { ANNOTATION_TYPE_LABEL, ANNOTATION_TYPES, type Anchor, type AnnotationType } from '@quire/shared';
+import { MathJax } from 'better-react-mathjax';
 import { Crosshair, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWikiLinkComplete } from '@/components/editor/wikilink-complete';
 import type { Annotation } from '@/db/schema';
 import { fuzzyScore } from '@/lib/fuzzy';
-import { wikiSegments } from '@/lib/markdown';
+import { renderMarkdownClient } from '@/lib/markdown-client';
 import s from './annotations.module.css';
 
 export const typeVars = (t: AnnotationType) =>
@@ -309,34 +310,33 @@ function AnnotationCard({
         </div>
       ) : (
         <div className={s.body} data-body style={a.body ? undefined : { color: 'var(--eg-muted)' }}>
-          {a.body ? <BodyText text={a.body} /> : tapToEdit ? 'Tap to write…' : 'Double-click to write…'}
+          {a.body ? <BodyMarkdown text={a.body} /> : tapToEdit ? 'Tap to write…' : 'Double-click to write…'}
         </div>
       )}
     </div>
   );
 }
 
-/** Plain text with `[[wiki links]]` as anchors; clicks are handled by the card. */
-function BodyText({ text }: { text: string }) {
-  const nodes: React.ReactNode[] = [];
-  let at = 0;
-  for (const seg of wikiSegments(text)) {
-    if (seg.kind === 'link') {
-      nodes.push(
-        <a
-          key={at}
-          href={`#wiki:${encodeURIComponent(seg.name)}`}
-          data-wikilink={seg.name}
-          className={s.wikilink}
-        >
-          {seg.label}
-        </a>,
-      );
-      at += seg.name.length + 4;
-    } else {
-      nodes.push(<span key={at}>{seg.value}</span>);
-      at += seg.value.length;
-    }
-  }
-  return nodes;
+/**
+ * The body as Markdown: the same renderer as notes and documents (GFM, TeX math typeset by MathJax with the
+ * project's macros, `[[wiki links]]` as anchors that the card's click handler follows). Falls back to the raw
+ * text until the HTML is ready so the card never flashes empty.
+ */
+function BodyMarkdown({ text }: { text: string }) {
+  const [html, setHtml] = useState('');
+  useEffect(() => {
+    let live = true;
+    renderMarkdownClient(text).then((h) => {
+      if (live) setHtml(h);
+    });
+    return () => {
+      live = false;
+    };
+  }, [text]);
+  if (!html) return <span className={s.bodyPlain}>{text}</span>;
+  return (
+    <MathJax key={html} hideUntilTypeset="first">
+      <div className={s.bodyProse} dangerouslySetInnerHTML={{ __html: html }} />
+    </MathJax>
+  );
 }
