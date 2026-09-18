@@ -140,7 +140,7 @@ function FolderNode({
         {...dragProps(node.folder.id, node.folder.id)}
       >
         <Icon icon={active ? FolderOpen : FolderIcon} />
-        <span className={s.nodeLabel}>{node.folder.name}</span>
+        <span className={s.nodeLabel}>{node.folder.name.length <= 30 ? node.folder.name: node.folder.name.slice(0, 29).concat('...')}</span>
         <span className={s.nodeMeta}>{counts.get(node.folder.id) ?? 0}</span>
         {active && (
           <span
