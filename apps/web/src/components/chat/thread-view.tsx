@@ -52,6 +52,8 @@ export function ThreadView({
   const [busy, setBusy] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mention = useWikiLinkComplete({
     textareaRef,
@@ -71,8 +73,17 @@ export function ThreadView({
   }, [resetKey]);
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
+    if(isAtBottomRef) {
+        bottom.current?.scrollIntoView({ block: 'end' });
+    }
   }, [messages]);
+
+  const handleScroll = () => {
+    const lmnt = containerRef.current;
+    if (!lmnt) return;
+    const atBottom = lmnt.scrollHeight - lmnt.scrollTop - lmnt.clientHeight <= 40;
+    isAtBottomRef.current = atBottom;
+  }
 
   const run = useCallback(
     async (question: string, retry: boolean) => {
