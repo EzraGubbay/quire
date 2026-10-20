@@ -90,9 +90,59 @@ Decisions below came from the grill session on 2026-09-03. Design context comes 
 - Chat scope and resilience (2026-09-11): Ask opens the most recent chat in scope (the document's, or the project's) instead of creating one; a chat is created on the first question or via New chat, and the panel has a switcher for that document's chats. The Documents page has a per-row chat button to `/chat?doc=<id>`, where the rail lists only that document's chats and new ones are scoped to it. In any composer `doc.` or `[[` opens a document picker; the pick is written `[[Title]]`, which the server resolves to the document and retrieves from directly. OpenAI's transient 500s are retried before the first token, fall back to the light model, keep partial text if cut off mid-stream, and show a Retry button. MathJax is self-hosted (`/mathjax/`) and chat answers typeset once complete.
 - Apple Pencil (assessed, not built): Safari gives pen pointer events with pressure and tilt at up to 240 Hz and hover on M2+ iPads, but no coalesced or predicted events; good enough for margin sketches and pen highlighting, not a Notability replacement. Planned as a tablet-only `ink` feature: SVG stroke layer per page, strokes stored in scale-1 page coordinates, prototype latency on the real iPad first.
 
+### Courses (grill session 2026-10-19 to 2026-10-21)
+Quire gains a second side for university courses. This supersedes "course platform out of scope" in Context.
+
+- **Shape**: one Next.js app, two sides. A `Courses | Research` segmented switch sits in the app bar next to the mark (on phones, at the top of the More sheet). Courses home `/courses`, course pages `/c/<slug>/…`; research home `/research`, project pages stay `/p/<slug>/…`. `/` redirects to the side last used on that device. Login, viewer, annotations, notes, chat, AI budget, macros and settings are shared.
+- **Storage**: a course is a `projects` row with `kind = 'course'` (new column, existing rows `research`), so every project-scoped table works unchanged. Course-only data gets its own tables keyed by `project_id`.
+- **+ Course** dialog: name, type, course code, semester (e.g. 2027 A), description, links (Moodle, recordings, course site). All editable in course settings.
+- **Type**: Practical / Theoretical / Mixed. It sets defaults only and gates nothing: the synthesis prompt addendum (code-first vs. proof-first) and which note templates show first.
+- **Home and archive** (one shared component, also used for the research Projects home): an Active card, then an "Archived (n)" section, collapsed by default, with its open state remembered per device. Active rows have an Archive icon button, archived rows an ArchiveRestore button. Archiving is instant, with no confirm, and shows an "Archived <name> · Undo" toast. Archived items leave the app-bar switcher, ⌘K and the "due" widgets, but still open by URL and stay fully editable. Archiving is purely a UI filter. The Courses home also shows "Due this week" across active courses.
+- **Course tabs**: Overview, Lectures, Recitations, Homework, Tests, Documents, Notes, Chat. No Experiments, Sources or Discover (research only).
+- **Overview**: due next, latest lecture, To re-read list, open questions/todos from annotations, recent notes, quick links.
+
+#### Lectures and Recitations
+- Two tabs with the same shape: number, title, date, and attached files. Recitations are not paired with lectures; any relation is semantic, by title.
+- **Adding**: drop one or many decks/PDFs. Each file becomes an entry with number and title parsed from the filename (`Lecture 2 - SIMD - A 2027.pptx` → #2 "SIMD") and the date defaulting to today, all editable. `+ Lecture` / `+ Recitation` creates an empty one.
+- **PPTX**: the original is kept for "Download / Open .pptx", which is how animated decks get presented (PowerPoint/Keynote; no in-browser animation playback). A Gotenberg (headless LibreOffice) container on the Pi converts to PDF on upload, with Carlito, Liberation and Culmus (David) fonts installed. "Replace rendering" swaps in a PowerPoint-exported PDF, which then wins. The PDF is what is viewed, annotated, text-extracted and rendered to slide images.
+- **Lecture page**: slides in the viewer on the left, that lecture's raw note in the editor on the right (created on first keystroke, linked to the lecture, filed under Raw). A toggle swaps the right pane between note and annotations. `[[Lecture 2#14]]` cites slide 14.
+- Slides are Hebrew (RTL); notes are English. The viewer, editor and chat handle mixed-direction text per paragraph; math and code stay LTR.
+
+#### Notes in courses
+- Same editor as research (CodeMirror, Read/Edit, wiki links, macro autocomplete, live preview). Notes gain folders (shared tree and drag-to-move with Documents). Every course starts with non-deletable **Raw** and **Synthesized** folders; user folders and subfolders are allowed.
+- New renderers, available in every project of either kind: syntax highlighting (C/C++/CUDA/Python/asm) in notes, synthesized notes and chat; a read-only code viewer for source files in Documents, annotatable by line; callouts for Definition / Theorem / Lemma / Claim / Proof / Example / Remark (numbered per note, collapsible proofs, `[[Note#Theorem 3]]` links); ` ```algorithm ` pseudocode blocks rendered like LaTeX algorithmic; Mermaid diagrams (TikZ via TikZJax later if needed).
+- **Synthesize** (button on a raw note): asks only for a title, shows a cost estimate, then creates a note in Synthesized at once with a greyed title and a loading shimmer while the model runs in the background (`after()`). It survives navigation. Failure shows the error and Retry, keeping the title.
+  - Prompt: an adapted copy of the `lecture-note-synthesis` skill kept in the repo (`lib/ai/prompts/`). Steps 1 (ask about splitting), 2 (conversation context) and 4 (write files) are removed. It adds: one-shot, no follow-up, not a dialogue; return only the Markdown body of one note, with no H1, no preamble or sign-off, and no wrapping code fence. Also added: use the course's macros (sent in the prompt), the callout and algorithm syntax above, English with key Hebrew terms in parentheses on first use, and the type addendum.
+  - Input: the raw note, course name and description, and the linked lecture's/recitation's slides as images plus their numbered text, so `*(See slide 14)*` resolves.
+  - Model: new `synthesis` slot in AI settings, default `gpt-5.6-terra` (the middle of Sol > Terra > Luna). Logged in `ai_usage` and subject to the cap.
+  - Re-synthesizing creates a new note; the previous one gets an "(older)" marker and is never overwritten. Synthesized notes can also be written by hand, with an optional "Synthesized from…" picker. Either way, a `synthesized` link records the relation (backlinks both ways, graph edge).
+
+#### Homework
+- Track and store only; solutions are written elsewhere (LaTeX/LyX/Overleaf, code repos). Assignments are created manually with `+ Assignment`: number, title, due date/time, problem sheet (annotatable document).
+- Per-question checklist (Q1, Q2a…): status todo / working / done / stuck, plus working notes (Markdown + math). Progress = done / total. Assignment status: not started / in progress / submitted / graded.
+- Submission: files or a repo link. Grade & feedback: score / max, the returned PDF (annotatable), and "what I lost points on", which feeds test generation.
+- "Ask about this question": a chat scoped to the sheet and course material, in hint mode by default (hints, pointers to lectures and definitions, checking your reasoning). A per-chat "Full solution" toggle is off by default and labelled.
+- Due dates live in the app only (Homework tab sorted by due date, overdue/soon badges, Overview, Courses home). No external calendar or task sync.
+
+#### Tests and re-reading
+- **Tests** tab with two generators, both triggered manually:
+  - **Weekly test**: pick the lectures/recitations to cover. Recall-oriented and allowed to be dry; not exam-like. Needs no practice exams. Model: Terra.
+  - **Tri-weekly test**: all material to date, exam style and difficulty, heavily inspired by the practice exams without copying them. The button is disabled until the course has ≥ 5 practice exams ("3/5 practice exams"). A nudge appears once 3 weeks have passed since the last one. Model: Sol.
+- **Practice Exams**: a non-deletable built-in folder in each course's Documents. Each exam has an optional year/term (e.g. 2024 A, Moed B) and an optional attached solution file, which is sent too for calibration when present. Every exam there counts toward the 5.
+- Taking a test: it is generated as a PDF (math typeset) to take on paper or the iPad, with no AI grading. Afterwards the in-app page reveals each model answer, and you mark pass / partial / fail.
+- **Re-reading** applies only to what failed. For each partial/fail, the model returns deep links to the specific note sections (scroll to and highlight the heading) and slide numbers, each with a one-line reason and the missed concept. These appear on the result page and as a tickable To re-read list on Overview. Missed concepts feed the next weekly test.
+
+#### Phone (course side)
+On: course list and archive, Overview, Homework list/status, Tests list and reveal/marking, Notes reading, Chat. Lite: lecture slides (viewer only), raw-note quick capture (textarea). Off: side-by-side lecture page, synthesis and test generation dialogs, folder drag-and-drop.
+
+#### AI provider
+Stay on OpenAI for everything for now. DeepSeek (`https://api.deepseek.com`, OpenAI-compatible; `deepseek-v4-pro`, and `deepseek-flash` = V4.1-Flash-1017, the one with image input) is a later option. It needs a separate embeddings provider first, because DeepSeek has no embeddings API.
+
 ## Data model (Postgres, Drizzle)
 
 `projects`, `folders`(project, parent, name, order), `documents`(project, folder, kind pdf|markdown, title, authors[], year, abstract, source_url, arxiv_id, doi, file_path, markdown_body, reading_status, last_page, progress, tags[]), `document_pages`(document, page_no, text) for PDF text, `annotations`(project, document nullable for unanchored, type note|insight|idea|question|todo, body, quote, anchor jsonb, page_no, orphaned bool), `notes`(project, title/slug, body), `links`(from_kind, from_id, to_kind, to_id, kind wiki|mention|belongs|suggested) as the single edge table for the graph and backlinks, `sources`(project, type, url, title, description, tags[], snapshot_text), `experiments`, `runs`(experiment, name, status, params jsonb, started, finished), `run_metrics`(run, key, step, value, ts), `run_artifacts`, `run_logs`, `observations`(run, body), `chat_threads`, `chat_messages`(role, content, citations jsonb, model, usage), `embeddings`(owner_kind, owner_id, chunk_no, text, vector(1536)), `ai_usage`(ts, task, model, in_tokens, out_tokens, cost_usd), `macros`(project nullable, name, definition), `settings` (singleton: models per task, monthly cap, macros global).
+
+Courses additions (2026-10-21): `projects.kind` research|course, `projects.meta` jsonb (type, code, semester, links); `notes.folder_id` (folders gain `scope` documents|notes and `builtin` raw|synthesized|practice_exams|null); `notes.status` ready|generating|failed and `notes.session_id`; `sessions`(project, kind lecture|recitation, number, title, date, sort) with `documents.session_id` and `documents.original_path` for the kept .pptx; `documents.exam_meta` jsonb (term, solution document) for Practice Exams; `assignments`(project, number, title, due_at, status, sheet document, submission files/repo URL, score, max_score, returned document, lost_points); `assignment_questions`(assignment, label, status, notes, order); `tests`(project, kind weekly|triweekly, covers session ids, pdf_path, created, marked_at); `test_questions`(test, n, body, model_answer, result pass|partial|fail|null, concept); `reread_items`(test_question, target kind/id, anchor heading or slide, reason, done); `link_kind` gains `synthesized`; AI settings gain `models.synthesis`, `models.testWeekly`, `models.testTriweekly`.
 
 ## Progress (updated 2026-09-03)
 
@@ -127,6 +177,15 @@ Provider adapter + settings (models per task, cap, spend view); embedding pipeli
 
 ### Phase 5 — PWA and iPad
 Serwist service worker, manifest, offline app shell, install prompt; responsive pass for iPad widths (viewer + panel behaviour); decide the reduced mobile feature set then.
+
+### Phase 6 — Courses
+1. `projects.kind`, `/courses` + `/research` homes, the switch, `+ Course`, the shared Active/Archived list with archive/unarchive + Undo for both sides; course tab set.
+2. Note folders with Raw/Synthesized built-ins; callouts, code highlighting, algorithm blocks, Mermaid.
+3. Lectures and Recitations: sessions, filename parsing, Gotenberg conversion + Replace rendering, side-by-side lecture page, slide citations.
+4. Synthesize: prompt file, slide images, `synthesis` model slot, background generation with pending note UI.
+5. Homework: assignments, question checklist, submissions, grades, hint-mode question chat.
+6. Tests: Practice Exams folder, weekly and tri-weekly generation to PDF, reveal/marking, re-read list, feedback into the next weekly.
+7. Phone pass for the course side.
 
 ## Coordination with the design repo (`~/.design`, other session)
 - Change `HIGHLIGHT_KINDS` from claim/method/result/question/todo to **note/insight/idea/question/todo** (tokens `--folio-hl-*`, `HighlightChip`, `AnnotationCard`, `NoteGraph` legend). Until then Quire aliases colours via CSS overrides.
