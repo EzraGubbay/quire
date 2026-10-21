@@ -28,10 +28,11 @@ After pulling new code, `pnpm local:up` again rebuilds the image; migrations run
 
 1. Deploy the same commit to the Pi first (both sides must be on the same schema).
 2. `pnpm local:export` → note the `dumps/<timestamp>` path it prints.
-3. On a network that reaches the Pi: `infra/local/migrate-to-pi.sh ~/Desktop/current-uni/quire-local/dumps/<timestamp>`
-   — copies the rows into the Pi's database (course projects only; research projects are untouched) and the files
-   into its `files` volume.
-4. Open each course on the Pi and run **Reindex** in its settings (embeddings are not exported).
+3. On a network that reaches the Pi: `infra/local/migrate-to-pi.sh ~/Desktop/current-uni/quire-local/dumps/<timestamp>`.
+   It backs up the Pi (database + files, also copied to `backups/` here), dry-runs the import against the live
+   database, imports the course rows (research projects untouched) and files, then checks every count against the
+   export's `manifest.txt` and that every stored file exists.
+4. Open each course on the Pi and click **Index missing items** in its settings (embeddings are not exported).
 
 The import inserts rows with their original ids, so running the same export twice fails on duplicates rather than
 doubling anything. To re-import, delete the course on the Pi first.
