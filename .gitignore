@@ -20,3 +20,6 @@ apps/web/public/mathjax/
 
 # Uploaded files in local dev (FILES_DIR)
 apps/web/data/
+
+# Local hosting data lives outside the repo; the env file next to it is per machine
+infra/local/local.env

@@ -1,0 +1,58 @@
+# Local hosting on a laptop: the production image (built from this repo), Postgres and Gotenberg, all restarting
+# with Docker Desktop. Data lives in one folder so it can be backed up and migrated to the Pi:
+#   $QUIRE_LOCAL_DIR (default ~/Desktop/current-uni/quire-local)
+#     files/    uploaded decks, PDFs, slide images, test PDFs   (FILES_DIR)
+#     pgdata/   the Postgres data directory
+#     dumps/    exports made by `pnpm local:export` (see infra/local/README.md)
+#     local.env OPENAI_API_KEY, AI_MOCK, …
+# Start: pnpm local:up   Stop: pnpm local:down   Logs: pnpm local:logs
+name: quire-local
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quire
+      POSTGRES_PASSWORD: quire
+      POSTGRES_DB: quire
+    volumes:
+      - ${QUIRE_LOCAL_DIR:-${HOME}/Desktop/current-uni/quire-local}/pgdata:/var/lib/postgresql/data
+      - ${QUIRE_LOCAL_DIR:-${HOME}/Desktop/current-uni/quire-local}/dumps:/dumps
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quire -d quire"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=240s
+      - --libreoffice-auto-start=false
+      - --libreoffice-idle-shutdown-timeout=5m
+
+  app:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    image: quire-local:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://quire:quire@db:5432/quire
+      FILES_DIR: /data/files
+      AUTH_MODE: none
+      GOTENBERG_URL: http://gotenberg:3000
+    env_file:
+      - path: ${QUIRE_LOCAL_DIR:-${HOME}/Desktop/current-uni/quire-local}/local.env
+        required: false
+    volumes:
+      - ${QUIRE_LOCAL_DIR:-${HOME}/Desktop/current-uni/quire-local}/files:/data/files
+    ports:
+      # All interfaces, so an iPad on the same Wi-Fi can open http://<laptop-ip>:3000.
+      - "3000:3000"
