@@ -38,7 +38,7 @@ function insertLabelIn(view: EditorView, kind: TermKind) {
   const line = view.state.doc.lineAt(from);
   const atLineStart = from === line.from;
   const lineBlank = line.text.trim() === '';
-  const prefix = lineBlank || atLineStart ? '' : '\n\n';
+  const prefix = lineBlank || atLineStart ? '' : '\n';
   const text = `${prefix}${termMarkdown(kind)}`;
   view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
   view.focus();
@@ -125,13 +125,15 @@ export function MarkdownEditor({
               return true;
             },
           },
-          ...TERM_SHORTCUTS.map((t) => ({
-            key: t.key,
-            run: (v: EditorView) => {
-              insertLabelIn(v, t.kind);
-              return true;
-            },
-          })),
+          ...TERM_SHORTCUTS.flatMap((t) =>
+            t.keys.map((key) => ({
+              key,
+              run: (v: EditorView) => {
+                insertLabelIn(v, t.kind);
+                return true;
+              },
+            })),
+          ),
           indentWithTab,
           ...defaultKeymap,
           ...historyKeymap,

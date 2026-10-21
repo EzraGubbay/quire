@@ -61,6 +61,8 @@ import { ReaderChrome } from './reader-chrome';
 
 const PANEL_KEY = 'quire.annotations.open';
 const PANE_KEY = 'quire.session.pane';
+const PANE_WIDTH_KEY = 'quire.session.paneWidth';
+const PANE_MIN = 320;
 const FONT_KEY = 'quire.reader.fontScale';
 const STATUSES = ['unread', 'reading', 'done'] as const;
 
@@ -125,6 +127,40 @@ export function DocumentView({
     try {
       window.localStorage.setItem(PANE_KEY, p);
     } catch {}
+  };
+  // The note pane's width is dragged at its left edge and remembered per device.
+  const [asideWidth, setAsideWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!aside) return;
+    try {
+      const v = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
+      if (v >= PANE_MIN) setAsideWidth(v);
+    } catch {}
+  }, [aside]);
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const el = e.currentTarget.parentElement;
+    const startWidth = el?.getBoundingClientRect().width ?? asideWidth ?? 520;
+    const maxWidth = Math.max(PANE_MIN, window.innerWidth * 0.75);
+    let width = startWidth;
+    const move = (ev: PointerEvent) => {
+      width = Math.min(maxWidth, Math.max(PANE_MIN, startWidth + (startX - ev.clientX)));
+      setAsideWidth(width);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try {
+        window.localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(width)));
+      } catch {}
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
   const viewer = useRef<PdfViewerHandle>(null);
   const mdView = useRef<MarkdownViewHandle>(null);
@@ -577,7 +613,41 @@ export function DocumentView({
           )}
         </div>
         {aside && pane === 'aside' ? (
-          <aside className={s.asideCol} aria-label={aside.label} data-testid="document-aside">
+          <aside
+            className={s.asideCol}
+            aria-label={aside.label}
+            data-testid="document-aside"
+            style={asideWidth ? { width: asideWidth } : undefined}
+          >
+            {/* biome-ignore lint/a11y/useSemanticElements: a drag handle on the pane's edge, not a form control */}
+            <div
+              className={s.resizer}
+              role="separator"
+              tabIndex={0}
+              aria-orientation="vertical"
+              aria-label="Resize the note pane (drag, or arrow keys; double-click to reset)"
+              aria-valuemin={PANE_MIN}
+              aria-valuenow={Math.round(asideWidth ?? 0) || undefined}
+              title="Drag to resize · double-click to reset"
+              onPointerDown={startResize}
+              onKeyDown={(e) => {
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                e.preventDefault();
+                const el = e.currentTarget.parentElement;
+                const cur = el?.getBoundingClientRect().width ?? asideWidth ?? 520;
+                const next = Math.max(PANE_MIN, cur + (e.key === 'ArrowLeft' ? 24 : -24));
+                setAsideWidth(next);
+                try {
+                  window.localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(next)));
+                } catch {}
+              }}
+              onDoubleClick={() => {
+                setAsideWidth(null);
+                try {
+                  window.localStorage.removeItem(PANE_WIDTH_KEY);
+                } catch {}
+              }}
+            />
             {aside.node}
           </aside>
         ) : (

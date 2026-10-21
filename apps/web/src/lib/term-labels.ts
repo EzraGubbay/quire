@@ -1,6 +1,6 @@
 /**
- * Term labels: a bold label at the start of a paragraph (`**Theorem:**`) that renders with a tinted highlight.
- * Shared by the editor (buttons, shortcuts) and the Markdown renderer (which tags matching <strong> elements).
+ * Term labels: a bold label at the start of a paragraph or line (`**Theorem:**`) that renders with a tinted
+ * highlight. Shared by the editor (buttons, shortcuts) and the Markdown renderer (which tags matching <strong>).
  */
 export const TERM_KINDS = [
   'definition',
@@ -25,11 +25,14 @@ export const TERM_LABEL: Record<TermKind, string> = {
   remark: 'Remark',
 };
 
-/** The three with a button and a shortcut; the rest only get the rendering. Ctrl+Alt is free on macOS and in browsers. */
-export const TERM_SHORTCUTS: { kind: TermKind; key: string; display: string }[] = [
-  { kind: 'definition', key: 'Ctrl-Alt-d', display: '⌃⌥D' },
-  { kind: 'claim', key: 'Ctrl-Alt-c', display: '⌃⌥C' },
-  { kind: 'theorem', key: 'Ctrl-Alt-t', display: '⌃⌥T' },
+/**
+ * The three with a button and a shortcut; the rest only get the rendering. Option (Alt) + letter is the primary
+ * binding; Control+Option is kept as an alternate for keyboards where Option+letter is taken.
+ */
+export const TERM_SHORTCUTS: { kind: TermKind; keys: string[]; display: string }[] = [
+  { kind: 'definition', keys: ['Alt-d', 'Ctrl-Alt-d'], display: '⌥D' },
+  { kind: 'claim', keys: ['Alt-c', 'Ctrl-Alt-c'], display: '⌥C' },
+  { kind: 'theorem', keys: ['Alt-t', 'Ctrl-Alt-t'], display: '⌥T' },
 ];
 
 /** The Markdown inserted for a label, e.g. `**Theorem:** `. */

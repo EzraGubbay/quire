@@ -2,7 +2,6 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import { ExternalLink, Quote, Sparkles } from 'lucide-react';
-import NextLink from 'next/link';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { saveSessionNoteAction, sessionNoteAction } from '@/app/actions/sessions';
 import { MarkdownEditor, type MarkdownEditorHandle } from '@/components/editor/markdown-editor';
@@ -126,14 +125,16 @@ export function SessionNotePane({
           <SynthesizeButton slug={slug} note={note} size="sm" onStarted={() => start(() => {})} />
         )}
         {note && (
-          <NextLink
+          <a
             href={`${base}/notes/${note.slug}`}
+            target="_blank"
+            rel="noopener"
             className={s.paneLink}
-            title="Open in Notes"
-            aria-label="Open in Notes"
+            title="Open in Notes (new tab)"
+            aria-label="Open in Notes in a new tab"
           >
             <Icon icon={ExternalLink} />
-          </NextLink>
+          </a>
         )}
         {!note && canSynthesize && (
           <span className={s.paneHint} title="Start typing to create the note">

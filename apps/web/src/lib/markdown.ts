@@ -4,6 +4,7 @@ import type { BlockContent, Blockquote, Paragraph, PhrasingContent, Root } from 
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeStringify from 'rehype-stringify';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
@@ -212,17 +213,33 @@ function rehypeBlocks() {
   };
 }
 
-/** Bold labels like `**Theorem:**` at the start of a paragraph (or list item) get a kind for the tinted highlight. */
+/**
+ * Bold labels like `**Theorem:**` at the start of a paragraph, list item or cell, or right after a line break,
+ * get a kind for the tinted highlight.
+ */
 function rehypeTermLabels() {
+  const tag = (el: Element) => {
+    const kind = termKindOf(textOf(el));
+    if (!kind) return;
+    el.properties = { ...el.properties, className: [...classesOf(el), 'term-label'], 'data-kind': kind };
+  };
   return (tree: HastRoot) => {
     visit(tree, 'element', (node) => {
       if (node.tagName !== 'p' && node.tagName !== 'li' && node.tagName !== 'td') return;
-      const first = node.children.find((c) => !(c.type === 'text' && c.value.trim() === ''));
-      if (!first || first.type !== 'element' || first.tagName !== 'strong') return;
-      const kind = termKindOf(textOf(first));
-      if (!kind) return;
-      const cls = classesOf(first);
-      first.properties = { ...first.properties, className: [...cls, 'term-label'], 'data-kind': kind };
+      let lineStart = true;
+      for (const c of node.children) {
+        if (c.type === 'text') {
+          if (c.value.trim() !== '') lineStart = false;
+          continue;
+        }
+        if (c.type !== 'element') continue;
+        if (c.tagName === 'br') {
+          lineStart = true;
+          continue;
+        }
+        if (lineStart && c.tagName === 'strong') tag(c);
+        lineStart = false;
+      }
     });
   };
 }
@@ -244,6 +261,8 @@ const processor = unified()
   .use(remarkMath)
   .use(remarkCallouts)
   .use(remarkWikiLinks)
+  // A typed newline is a rendered newline (no two-space or blank-line dance), as in Obsidian's default.
+  .use(remarkBreaks)
   .use(remarkRehype)
   .use(rehypeSlug)
   .use(rehypeMathDelimiters)

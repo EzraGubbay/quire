@@ -153,6 +153,7 @@
 /* Lecture page: the right column holds the raw note instead of the annotations panel. */
 .asideCol {
   width: min(46vw, 680px);
+  position: relative;
   border-left: 1px solid var(--eg-rule);
   background: var(--eg-surface);
   display: flex;
@@ -199,4 +200,24 @@
   margin: 0;
   font: 400 11.5px / 1.4 var(--eg-font-ui);
   color: var(--eg-muted);
+}
+/* Drag handle on the note pane's left edge (double-click resets the width). */
+.resizer {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 3;
+  transition: background-color var(--eg-duration-fast) var(--eg-ease-standard);
+}
+.resizer:hover,
+.resizer:active {
+  background: var(--eg-accent-soft);
+}
+.resizer:focus-visible {
+  outline: 2px solid var(--eg-accent);
+  outline-offset: -2px;
 }

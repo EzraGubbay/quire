@@ -109,7 +109,7 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await editor.click();
     await page.keyboard.type('Race condition: two threads touch shared state without a lock.');
     await page.keyboard.press('Enter');
-    await page.keyboard.press('Control+Alt+t');
+    await page.keyboard.press('Alt+t');
     await page.keyboard.type('Associative reductions parallelise.');
     await expect(editor).toContainText('**Theorem:** Associative reductions parallelise.');
     await pane.getByRole('button', { name: /Cite slide/ }).click();

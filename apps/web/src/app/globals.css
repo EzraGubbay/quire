@@ -78,9 +78,9 @@ a {
 }
 
 /* App-bar search: the design system sizes it for a short placeholder; give it room at wide widths and
-   hide it below laptop-wide, where it would overlap the tabs (⌘K still opens search). */
+   hide it below laptop-wide, where it would take the tabs' room (⌘K still opens search). */
 .folio header label:has(> input[type="search"]) {
-  width: clamp(200px, 20vw, 340px);
+  width: clamp(160px, 14vw, 320px);
   min-width: 0;
 }
 .folio header > div:first-child {
@@ -90,7 +90,7 @@ a {
 .folio header > div:last-child {
   flex-shrink: 0;
 }
-@media (max-width: 1400px) {
+@media (max-width: 1300px) {
   .folio header label:has(> input[type="search"]) {
     display: none;
   }
@@ -335,13 +335,14 @@ strong.term-label[data-kind="remark"] {
 .folio header [class*="AppBar-module__crumb"] {
   flex-shrink: 0;
 }
-@media (max-width: 1100px) {
+/* The crumb name is also the page heading, so it goes first; the eight course tabs come before the search. */
+@media (max-width: 1500px) {
   .quire-crumb-name,
   .quire-crumb-slash {
     display: none;
   }
 }
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .folio header [class*="AppBar-module__left"] {
     gap: 14px;
   }
