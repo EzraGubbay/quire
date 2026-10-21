@@ -33,7 +33,7 @@ export default async function SettingsPage() {
     <AppShell>
       <div className={s.wrap}>
         <NextLink href="/" className={s.crumb}>
-          ← Projects
+          ← Home
         </NextLink>
         <h1 className={s.title}>Settings</h1>
         <ThemePanel />

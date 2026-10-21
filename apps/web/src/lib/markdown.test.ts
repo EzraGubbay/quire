@@ -34,3 +34,27 @@ describe('normalizeMathDelimiters', () => {
     expect(html).toContain('class="math math-inline">\\(E = mc^2\\)');
   });
 });
+
+describe('course rendering', () => {
+  it('keeps single newlines as line breaks and labels after them', async () => {
+    const html = await renderMarkdown(
+      'Some text\nSome more text: and then some more\n**Theorem:** It holds.',
+    );
+    expect(html).toContain('Some text<br>');
+    expect(html).toMatch(/<br>\s*<strong class="term-label" data-kind="theorem">Theorem:<\/strong>/);
+  });
+  it('tags labels at the start of a paragraph and leaves other bold alone', async () => {
+    const html = await renderMarkdown('**Definition:** A thing.\n\nThis is **bold** but not a label.');
+    expect(html).toContain('<strong class="term-label" data-kind="definition">Definition:</strong>');
+    expect(html).toContain('<strong>bold</strong>');
+  });
+  it('renders callouts and algorithm blocks', async () => {
+    const html = await renderMarkdown(
+      '> [!theorem] Compactness\n> Every bounded sequence has a limit point.\n\n```algorithm\nfor i in 1..n\n  if a[i] > m then m = a[i]\n```',
+    );
+    expect(html).toContain('class="callout" data-kind="theorem"');
+    expect(html).toContain('callout-title');
+    expect(html).toContain('class="algorithm"');
+    expect(html).toContain('<span class="kw">for</span>');
+  });
+});

@@ -1,7 +1,7 @@
 'use client';
 
 import { Icon } from '@ezragubbay/folio';
-import { BookOpen, FileText, FolderIcon, FolderOpen, Inbox, Trash2 } from 'lucide-react';
+import { BookOpen, FileText, FolderIcon, FolderOpen, Inbox, Lock, StickyNote, Trash2 } from 'lucide-react';
 import type { Folder } from '@/db/schema';
 import s from './documents.module.css';
 
@@ -36,65 +36,82 @@ export function folderLabel(id: FolderSelection, folders: Folder[]): string {
 type DragProps = (key: string, target: string | null) => Record<string, unknown>;
 const noDrag: DragProps = () => ({});
 
+/** A fixed row above the hierarchy: All documents, Active Reading, Unfiled (documents) or All notes, Unfiled (notes). */
+export interface FixedRow {
+  id: FolderSelection;
+  label: string;
+  count: number;
+  title?: string;
+}
+
+const FIXED_ICON: Record<string, typeof FileText> = {
+  all: FileText,
+  reading: BookOpen,
+  null: Inbox,
+};
+
 export interface FolderTreeProps {
   tree: TreeNode[];
   activeId: FolderSelection;
   counts: Map<string | null, number>;
-  total: number;
-  /** Documents with status reading (the Active Reading folder). */
-  reading: number;
+  /** Fixed rows shown before the folders; the Documents explorer passes All / Active Reading / Unfiled. */
+  fixed?: FixedRow[];
+  /** Legacy props for the documents explorer (All documents / Active Reading / Unfiled rows). */
+  total?: number;
+  reading?: number;
   onSelect: (id: FolderSelection) => void;
   onDelete: (id: string) => void;
-  /** Drop-target props for moving documents by drag; omitted on touch devices. */
+  /** Drop-target props for moving items by drag; omitted on touch devices. */
   dragProps?: DragProps;
+  /** Icon for folders holding notes rather than documents. */
+  kind?: 'documents' | 'notes';
 }
 
-/** All documents, Unfiled, then the folder hierarchy. Used by the desktop rail and the phone folder sheet. */
+/** Fixed rows, then the folder hierarchy. Used by the desktop rails and the phone folder sheet. */
 export function FolderTree({
   tree,
   activeId,
   counts,
-  total,
-  reading,
+  fixed,
+  total = 0,
+  reading = 0,
   onSelect,
   onDelete,
   dragProps = noDrag,
+  kind = 'documents',
 }: FolderTreeProps) {
+  const rows: FixedRow[] = fixed ?? [
+    { id: 'all', label: 'All documents', count: total },
+    {
+      id: 'reading',
+      label: 'Active Reading',
+      count: reading,
+      title: 'Every document marked as reading. Drop a document here to start reading it.',
+    },
+    { id: null, label: 'Unfiled', count: counts.get(null) ?? 0 },
+  ];
   return (
     <div className={s.tree}>
-      <button
-        type="button"
-        className={s.node}
-        data-active={activeId === 'all'}
-        onClick={() => onSelect('all')}
-      >
-        <Icon icon={FileText} />
-        <span className={s.nodeLabel}>All documents</span>
-        <span className={s.nodeMeta}>{total}</span>
-      </button>
-      <button
-        type="button"
-        className={s.node}
-        data-active={activeId === 'reading'}
-        onClick={() => onSelect('reading')}
-        title="Every document marked as reading. Drop a document here to start reading it."
-        {...dragProps('reading', 'reading')}
-      >
-        <Icon icon={BookOpen} />
-        <span className={s.nodeLabel}>Active Reading</span>
-        <span className={s.nodeMeta}>{reading}</span>
-      </button>
-      <button
-        type="button"
-        className={s.node}
-        data-active={activeId === null}
-        onClick={() => onSelect(null)}
-        {...dragProps('root', null)}
-      >
-        <Icon icon={Inbox} />
-        <span className={s.nodeLabel}>Unfiled</span>
-        <span className={s.nodeMeta}>{counts.get(null) ?? 0}</span>
-      </button>
+      {rows.map((r) => {
+        const key = r.id === null ? 'root' : String(r.id);
+        const target = r.id === 'all' ? undefined : r.id === 'reading' ? 'reading' : null;
+        const IconFor = FIXED_ICON[String(r.id)] ?? (kind === 'notes' ? StickyNote : FileText);
+        return (
+          <button
+            key={key}
+            type="button"
+            className={s.node}
+            data-active={activeId === r.id}
+            onClick={() => onSelect(r.id)}
+            title={r.title}
+            {...(target === undefined ? {} : dragProps(key, target))}
+          >
+            <Icon icon={IconFor} />
+            <span className={s.nodeLabel}>{r.label}</span>
+            <span className={s.nodeMeta}>{r.count}</span>
+          </button>
+        );
+      })}
       {tree.map((n) => (
         <FolderNode
           key={n.folder.id}
@@ -129,6 +146,7 @@ function FolderNode({
   onDelete: (id: string) => void;
 }) {
   const active = activeId === node.folder.id;
+  const name = node.folder.name;
   return (
     <>
       <button
@@ -136,18 +154,24 @@ function FolderNode({
         className={s.node}
         style={{ '--depth': depth } as React.CSSProperties}
         data-active={active}
+        data-builtin={node.folder.builtin ?? undefined}
         onClick={() => onSelect(node.folder.id)}
         {...dragProps(node.folder.id, node.folder.id)}
       >
         <Icon icon={active ? FolderOpen : FolderIcon} />
-        <span className={s.nodeLabel}>{node.folder.name.length <= 30 ? node.folder.name: node.folder.name.slice(0, 29).concat('...')}</span>
+        <span className={s.nodeLabel}>{name.length <= 30 ? name : `${name.slice(0, 29)}…`}</span>
         <span className={s.nodeMeta}>{counts.get(node.folder.id) ?? 0}</span>
-        {active && (
+        {active && node.folder.builtin && (
+          <span title="Built-in folder" style={{ display: 'inline-flex', color: 'var(--eg-muted)' }}>
+            <Icon icon={Lock} size={16} />
+          </span>
+        )}
+        {active && !node.folder.builtin && (
           <span
             role="button"
             tabIndex={0}
-            aria-label={`Delete folder ${node.folder.name}`}
-            title="Delete folder (documents move up one level)"
+            aria-label={`Delete folder ${name}`}
+            title="Delete folder (contents move up one level)"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(node.folder.id);

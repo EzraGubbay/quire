@@ -8,6 +8,31 @@ export async function listNotes(projectId: string): Promise<Note[]> {
   return db.select().from(notes).where(eq(notes.projectId, projectId)).orderBy(desc(notes.updatedAt));
 }
 
+/** The raw note taken in a lecture or recitation, if one exists. */
+export async function sessionNote(projectId: string, sessionId: string): Promise<Note | undefined> {
+  const rows = await db
+    .select()
+    .from(notes)
+    .where(and(eq(notes.projectId, projectId), eq(notes.sessionId, sessionId)))
+    .orderBy(asc(notes.createdAt))
+    .limit(1);
+  return rows[0];
+}
+
+export async function moveNote(projectId: string, id: string, folderId: string | null): Promise<void> {
+  await db
+    .update(notes)
+    .set({ folderId, updatedAt: new Date() })
+    .where(and(eq(notes.id, id), eq(notes.projectId, projectId)));
+}
+
+/** Splits "Name#anchor" into the link target name and its optional anchor (heading slug or slide number). */
+export function splitWikiName(name: string): { name: string; anchor: string | null } {
+  const i = name.indexOf('#');
+  if (i < 0) return { name: name.trim(), anchor: null };
+  return { name: name.slice(0, i).trim(), anchor: name.slice(i + 1).trim() || null };
+}
+
 export async function getNote(projectId: string, id: string): Promise<Note | undefined> {
   const rows = await db
     .select()
@@ -67,10 +92,32 @@ async function freeSlug(projectId: string, base: string, excludeId?: string): Pr
   for (let i = 2; ; i++) if (!taken.has(`${base}-${i}`)) return `${base}-${i}`;
 }
 
-export async function createNote(projectId: string, title: string, body = ''): Promise<Note> {
+export interface CreateNoteOptions {
+  folderId?: string | null;
+  sessionId?: string | null;
+  status?: Note['status'];
+}
+
+export async function createNote(
+  projectId: string,
+  title: string,
+  body = '',
+  opts: CreateNoteOptions = {},
+): Promise<Note> {
   const clean = title.trim() || 'Untitled';
   const slug = await freeSlug(projectId, slugify(clean));
-  const [row] = await db.insert(notes).values({ projectId, title: clean, slug, body }).returning();
+  const [row] = await db
+    .insert(notes)
+    .values({
+      projectId,
+      title: clean,
+      slug,
+      body,
+      folderId: opts.folderId ?? null,
+      sessionId: opts.sessionId ?? null,
+      status: opts.status ?? 'ready',
+    })
+    .returning();
   if (!row) throw new Error('insert returned no row');
   await syncLinks(projectId, 'note', row.id, body);
   await adoptUnresolved(projectId, row.id, clean);
@@ -80,7 +127,15 @@ export async function createNote(projectId: string, title: string, body = ''): P
 export async function updateNote(
   projectId: string,
   id: string,
-  patch: { title?: string; body?: string; tags?: string[] },
+  patch: {
+    title?: string;
+    body?: string;
+    tags?: string[];
+    folderId?: string | null;
+    sessionId?: string | null;
+    status?: Note['status'];
+    error?: string | null;
+  },
 ): Promise<Note | undefined> {
   const current = await getNote(projectId, id);
   if (!current) return undefined;
@@ -91,6 +146,10 @@ export async function updateNote(
   }
   if (patch.body !== undefined) values.body = patch.body;
   if (patch.tags !== undefined) values.tags = patch.tags;
+  if (patch.folderId !== undefined) values.folderId = patch.folderId;
+  if (patch.sessionId !== undefined) values.sessionId = patch.sessionId;
+  if (patch.status !== undefined) values.status = patch.status;
+  if (patch.error !== undefined) values.error = patch.error;
   const [row] = await db.update(notes).set(values).where(eq(notes.id, id)).returning();
   if (patch.body !== undefined) await syncLinks(projectId, 'note', id, patch.body);
   if (values.title) await adoptUnresolved(projectId, id, values.title);
@@ -111,7 +170,14 @@ export async function syncLinks(
   fromId: string,
   body: string,
 ): Promise<void> {
-  const names = extractWikiLinks(body);
+  // "[[Lecture 2#14]]" and "[[Lecture 2]]" are the same edge; anchors are only used when following the link.
+  const names = [
+    ...new Set(
+      extractWikiLinks(body)
+        .map((n) => splitWikiName(n).name)
+        .filter(Boolean),
+    ),
+  ];
   await db
     .delete(links)
     .where(

@@ -6,6 +6,9 @@ Built on the [Folio](https://github.com/ezragubbay/design) research design regis
 
 ## What it does
 
+Quire has two sides, switched from the app bar: **Research** (projects, below) and **Courses** (one workspace per university course: lectures and recitations with their decks, raw notes taken beside the slides and AI-synthesized study notes, homework tracking with a hint-first tutor chat, self-tests generated from your material, and a re-read list from what you missed). Both share the viewer, notes, chat, math and the AI budget.
+
+
 - **Documents**: PDFs (upload, URL, arXiv, DOI) and Markdown documents you write, in one viewer with a pull-out annotations panel. Five annotation types: Note, Insight, Idea, Question, Todo. Highlight text to annotate, or add general notes.
 - **Notes**: short linked Markdown pages with `[[wiki links]]`, backlinks, math macros, read/edit modes, and a graph of notes, documents, sources, and ideas. Annotations can `[[link]]` documents and notes too, and then join the graph.
 - **Sources**: any non-paper reference, catalogued and linkable.

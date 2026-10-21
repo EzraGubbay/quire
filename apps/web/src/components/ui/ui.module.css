@@ -136,3 +136,7 @@
     background-position: -200% 0;
   }
 }
+.dialogForm {
+  display: grid;
+  gap: 14px;
+}

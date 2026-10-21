@@ -3,6 +3,7 @@
 import { Icon } from '@ezragubbay/folio';
 import { ChevronLeft, MessageSquareText, MoreHorizontal } from 'lucide-react';
 import NextLink from 'next/link';
+import { useProject } from '@/components/project-context';
 import s from './reader-chrome.module.css';
 
 export interface ReaderChromeProps {
@@ -23,7 +24,6 @@ export interface ReaderChromeProps {
  * reachable by assistive tech.
  */
 export function ReaderChrome({
-  slug,
   title,
   position,
   annotationCount,
@@ -32,9 +32,10 @@ export function ReaderChrome({
   onMore,
   onTitleTap,
 }: ReaderChromeProps) {
+  const { base } = useProject();
   return (
     <div className={s.bar} data-visible={visible ? 'true' : 'false'} data-testid="reader-chrome">
-      <NextLink href={`/p/${slug}/documents`} className={s.btn} aria-label="Back to documents">
+      <NextLink href={`${base}/documents`} className={s.btn} aria-label="Back to documents">
         <Icon icon={ChevronLeft} />
       </NextLink>
       <button type="button" className={s.title} onClick={onTitleTap} title="Scroll to top">

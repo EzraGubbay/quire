@@ -78,9 +78,9 @@ a {
 }
 
 /* App-bar search: the design system sizes it for a short placeholder; give it room at wide widths and
-   hide it below laptop-wide, where it would overlap the tabs (⌘K still opens search). */
+   hide it below laptop-wide, where it would take the tabs' room (⌘K still opens search). */
 .folio header label:has(> input[type="search"]) {
-  width: clamp(200px, 20vw, 340px);
+  width: clamp(160px, 14vw, 320px);
   min-width: 0;
 }
 .folio header > div:first-child {
@@ -90,7 +90,7 @@ a {
 .folio header > div:last-child {
   flex-shrink: 0;
 }
-@media (max-width: 1400px) {
+@media (max-width: 1300px) {
   .folio header label:has(> input[type="search"]) {
     display: none;
   }
@@ -146,6 +146,28 @@ a {
 .folio header .eg-mark {
   cursor: pointer;
 }
+/* The crumb slot carries the Courses | Research switch; the design system's own slash is replaced by ours so the
+   switch sits directly after the mark. */
+.folio header [class*="AppBar-module__crumb"] > [class*="AppBar-module__slash"] {
+  display: none;
+}
+.quire-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.quire-crumb-slash {
+  color: var(--eg-rule);
+}
+.quire-crumb-name {
+  color: var(--eg-text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+}
 
 /* Phones: single-column layouts. The header is the PhoneBar and tabs live in the bottom TabBar. */
 @media (max-width: 640px) {
@@ -155,7 +177,7 @@ a {
   [class*="experiments-module"][class*="wrap"],
   [class*="discover-module"][class*="wrap"],
   [class*="graph-page-module"][class*="wrap"],
-  [class*="home-module"][class*="wrap"] {
+  [class*="workspace-module"][class*="wrap"] {
     width: calc(100% - 24px) !important;
     margin: 16px auto !important;
   }
@@ -202,5 +224,131 @@ a {
   }
   [class*="chat-module"][class*="msg"] {
     max-width: 100%;
+  }
+}
+
+/* Term labels: `**Theorem:**` and friends at the start of a paragraph get a tinted highlight behind the bold
+   label; the text keeps its colour. Theorem purple, definition a medium blue, claim dark orange; the rest neutral. */
+.folio {
+  --quire-term-theorem: #e6d9f5;
+  --quire-term-theorem-ink: #5b3a9a;
+  --quire-term-definition: #d6e4f7;
+  --quire-term-definition-ink: #2a5aa0;
+  --quire-term-claim: #f9dcc4;
+  --quire-term-claim-ink: #a3530f;
+  --quire-term-lemma: #e2e8f0;
+  --quire-term-lemma-ink: #3f4c5c;
+  --quire-term-proof: #e8e4dc;
+  --quire-term-proof-ink: #4b443b;
+  --quire-term-corollary: #ece3f2;
+  --quire-term-corollary-ink: #5b3a9a;
+  --quire-term-example: #dcebe0;
+  --quire-term-example-ink: #2b5e3a;
+  --quire-term-remark: #efe8da;
+  --quire-term-remark-ink: #6e665a;
+}
+.folio[data-theme="dark"] {
+  --quire-term-theorem: #3a2a5c;
+  --quire-term-theorem-ink: #cdb6f2;
+  --quire-term-definition: #1f3a5e;
+  --quire-term-definition-ink: #a9c8f2;
+  --quire-term-claim: #5a3313;
+  --quire-term-claim-ink: #f2bf8f;
+  --quire-term-lemma: #2b3440;
+  --quire-term-lemma-ink: #b8c4d1;
+  --quire-term-proof: #2e2923;
+  --quire-term-proof-ink: #c9c0b2;
+  --quire-term-corollary: #35294a;
+  --quire-term-corollary-ink: #cdb6f2;
+  --quire-term-example: #1f3a28;
+  --quire-term-example-ink: #a9d8b5;
+  --quire-term-remark: #2e2923;
+  --quire-term-remark-ink: #b3a898;
+}
+@media (prefers-color-scheme: dark) {
+  .folio:not([data-theme="light"]):not([data-theme="dark"]) {
+    --quire-term-theorem: #3a2a5c;
+    --quire-term-theorem-ink: #cdb6f2;
+    --quire-term-definition: #1f3a5e;
+    --quire-term-definition-ink: #a9c8f2;
+    --quire-term-claim: #5a3313;
+    --quire-term-claim-ink: #f2bf8f;
+    --quire-term-lemma: #2b3440;
+    --quire-term-lemma-ink: #b8c4d1;
+    --quire-term-proof: #2e2923;
+    --quire-term-proof-ink: #c9c0b2;
+    --quire-term-corollary: #35294a;
+    --quire-term-corollary-ink: #cdb6f2;
+    --quire-term-example: #1f3a28;
+    --quire-term-example-ink: #a9d8b5;
+    --quire-term-remark: #2e2923;
+    --quire-term-remark-ink: #b3a898;
+  }
+}
+strong.term-label {
+  background: var(--quire-term-bg, var(--eg-surface-2));
+  box-shadow: 0 0 0 3px var(--quire-term-bg, var(--eg-surface-2));
+  border-radius: 3px;
+  padding: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+strong.term-label[data-kind="theorem"] {
+  --quire-term-bg: var(--quire-term-theorem);
+}
+strong.term-label[data-kind="definition"] {
+  --quire-term-bg: var(--quire-term-definition);
+}
+strong.term-label[data-kind="claim"] {
+  --quire-term-bg: var(--quire-term-claim);
+}
+strong.term-label[data-kind="lemma"] {
+  --quire-term-bg: var(--quire-term-lemma);
+}
+strong.term-label[data-kind="proof"] {
+  --quire-term-bg: var(--quire-term-proof);
+}
+strong.term-label[data-kind="corollary"] {
+  --quire-term-bg: var(--quire-term-corollary);
+}
+strong.term-label[data-kind="example"] {
+  --quire-term-bg: var(--quire-term-example);
+}
+strong.term-label[data-kind="remark"] {
+  --quire-term-bg: var(--quire-term-remark);
+}
+
+/* App bar at tablet widths: the side switch shares the left section with the crumb and the tabs. Drop the crumb
+   name first, then tighten the tabs; eight course tabs scroll inside their nav rather than leaving the viewport. */
+.folio header [class*="AppBar-module__left"] {
+  flex: 1 1 auto;
+}
+.folio header nav[aria-label="Sections"] {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.folio header nav[aria-label="Sections"]::-webkit-scrollbar {
+  display: none;
+}
+.folio header [class*="AppBar-module__crumb"] {
+  flex-shrink: 0;
+}
+/* The crumb name is also the page heading, so it goes first; the eight course tabs come before the search. */
+@media (max-width: 1500px) {
+  .quire-crumb-name,
+  .quire-crumb-slash {
+    display: none;
+  }
+}
+@media (max-width: 1200px) {
+  .folio header [class*="AppBar-module__left"] {
+    gap: 14px;
+  }
+  .folio header nav[aria-label="Sections"] a,
+  .folio header nav[aria-label="Sections"] button {
+    padding: 0 6px;
+    font-size: 13px;
   }
 }

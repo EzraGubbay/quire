@@ -184,6 +184,44 @@ export const MarkdownView = memo(function MarkdownView({
     }
   };
 
+  // Mermaid diagrams: load the renderer only when the HTML has a diagram, themed to the current register.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const blocks = root.querySelectorAll<HTMLElement>('pre.mermaid');
+    if (blocks.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { default: mermaid } = await import('mermaid');
+      if (cancelled) return;
+      const dark =
+        document.documentElement.closest('[data-theme="dark"]') !== null ||
+        root.closest('[data-theme="dark"]') !== null;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? 'dark' : 'neutral',
+        securityLevel: 'strict',
+        fontFamily: 'var(--eg-font-ui)',
+      });
+      let i = 0;
+      for (const el of blocks) {
+        if (el.dataset.rendered) continue;
+        const src = el.textContent ?? '';
+        try {
+          const { svg } = await mermaid.render(`quire-mmd-${Date.now()}-${i++}`, src);
+          if (cancelled) return;
+          el.innerHTML = svg;
+          el.dataset.rendered = 'true';
+        } catch {
+          el.dataset.rendered = 'error';
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [html]);
+
   const body = useMemo(
     () => (
       <div ref={rootRef} className={s.body} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />

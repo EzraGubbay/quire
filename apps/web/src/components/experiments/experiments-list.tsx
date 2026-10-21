@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import NextLink from 'next/link';
 import { useActionState, useState } from 'react';
 import { type ActionState, createExperimentAction } from '@/app/actions/experiments';
+import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/field';
 import type { ExperimentWithCounts } from '@/lib/experiments';
@@ -21,6 +22,7 @@ export function ExperimentsList({
   apiHint: string;
   readOnly?: boolean;
 }) {
+  const { base } = useProject();
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<ActionState, FormData>(createExperimentAction, {});
   return (
@@ -54,7 +56,7 @@ export function ExperimentsList({
             {experiments.map((e) => (
               <tr key={e.id}>
                 <td>
-                  <NextLink href={`/p/${slug}/experiments/${e.id}`}>{e.name}</NextLink>
+                  <NextLink href={`${base}/experiments/${e.id}`}>{e.name}</NextLink>
                   {e.description && <div className={s.mono}>{e.description}</div>}
                 </td>
                 <td className={s.mono}>{e.runCount}</td>

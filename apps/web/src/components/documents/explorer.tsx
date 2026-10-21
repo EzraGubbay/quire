@@ -17,18 +17,12 @@ import {
 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useMemo, useState, useTransition } from 'react';
-import {
-  type ActionState,
-  createFolderAction,
-  deleteFolderAction,
-  moveDocumentAction,
-  updateDocumentAction,
-} from '@/app/actions/documents';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { deleteFolderAction, moveDocumentAction, updateDocumentAction } from '@/app/actions/documents';
 import { usePlatform } from '@/components/platform';
+import { useProject } from '@/components/project-context';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
-import { Dialog, DialogActions } from '@/components/ui/dialog';
-import { Field, Input } from '@/components/ui/field';
+import { NewFolderDialog } from '@/components/ui/new-folder-dialog';
 import type { Document, Folder } from '@/db/schema';
 import { AddDocumentDialog } from './add-document-dialog';
 import s from './documents.module.css';
@@ -48,6 +42,7 @@ export interface ExplorerProps {
 
 export function Explorer({ slug, folders, documents, activeDocumentId, openAdd = false }: ExplorerProps) {
   const router = useRouter();
+  const { base } = useProject();
   const { platform } = usePlatform();
   const phone = platform === 'phone';
   // The built-in Active Reading folder is where a session starts.
@@ -177,7 +172,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
           <h1 className={s.title}>{title}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
             <NextLink
-              href={`/p/${slug}/discover`}
+              href={`${base}/discover`}
               className={s.chip}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
@@ -232,7 +227,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
               >
                 <Icon icon={d.kind === 'pdf' ? FileText : FolderIcon} />
                 <span>
-                  <NextLink href={`/p/${slug}/documents/${d.id}`} className={s.rowLink}>
+                  <NextLink href={`${base}/documents/${d.id}`} className={s.rowLink}>
                     <div className={s.rowTitle}>{d.title}</div>
                   </NextLink>
                   <div className={s.rowMeta}>
@@ -263,7 +258,7 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
                   <Icon icon={Download} />
                 </a>
                 <NextLink
-                  href={`/p/${slug}/chat?doc=${d.id}`}
+                  href={`${base}/chat?doc=${d.id}`}
                   className={s.rowChat}
                   aria-label={`Chats about ${d.title}`}
                   title="Chats about this document"
@@ -309,54 +304,5 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
       />
       <NewFolderDialog slug={slug} folders={folders} open={folderOpen} onClose={() => setFolderOpen(false)} />
     </div>
-  );
-}
-
-function NewFolderDialog({
-  slug,
-  folders,
-  open,
-  onClose,
-}: {
-  slug: string;
-  folders: Folder[];
-  open: boolean;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [state, action, pending] = useActionState<ActionState, FormData>(createFolderAction, {});
-  useEffect(() => {
-    if (state.ok) {
-      onClose();
-      router.refresh();
-    }
-  }, [state.ok, onClose, router]);
-  return (
-    <Dialog open={open} title="New folder" onClose={onClose}>
-      <form action={action} className={s.form}>
-        <input type="hidden" name="slug" value={slug} />
-        <Field label="Name" error={state.error}>
-          <Input name="name" required maxLength={80} autoFocus />
-        </Field>
-        <Field label="Inside">
-          <select name="parentId" className={s.chip} defaultValue="">
-            <option value="">Top level</option>
-            {folders.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <DialogActions>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={pending}>
-            Create folder
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
   );
 }

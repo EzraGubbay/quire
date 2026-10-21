@@ -34,10 +34,23 @@ services:
       ALLOWED_GITHUB_LOGIN: ${ALLOWED_GITHUB_LOGIN:?set in .env}
       QUIRE_API_KEY: ${QUIRE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOTENBERG_URL: http://gotenberg:3000
     volumes:
       - files:/data/files
     ports:
       - "127.0.0.1:3000:3000"
+
+  gotenberg:
+    # Converts lecture decks (.pptx) to PDF and renders test PDFs. LibreOffice starts on first use and stops when
+    # idle, so it costs little memory between conversions.
+    image: ${QUIRE_GOTENBERG_IMAGE:-ghcr.io/ezragubbay/quire-gotenberg:latest}
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=240s
+      - --libreoffice-auto-start=false
+      - --libreoffice-idle-shutdown-timeout=5m
+      - --libreoffice-restart-after=5
 
   cloudflared:
     # Enabled by COMPOSE_PROFILES=tunnel in .env once CF_TUNNEL_TOKEN is set.

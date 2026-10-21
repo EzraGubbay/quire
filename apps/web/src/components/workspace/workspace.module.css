@@ -1,0 +1,132 @@
+.wrap {
+  width: min(960px, 100% - 48px);
+  margin: 40px auto;
+  display: grid;
+  gap: 24px;
+}
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title {
+  font-family: var(--folio-font-serif, "Source Serif 4", Georgia, serif);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.sub {
+  margin: 0;
+  color: var(--eg-text-2);
+}
+.count {
+  font-family: var(--folio-font-mono, "IBM Plex Mono", monospace);
+  color: var(--eg-muted);
+  font-size: 13px;
+}
+.empty {
+  margin: 0;
+  color: var(--eg-muted);
+}
+.form {
+  display: grid;
+  gap: 14px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.iconBtn {
+  border: 0;
+  background: none;
+  color: var(--eg-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--eg-radius-control);
+  display: inline-flex;
+  min-width: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+}
+.iconBtn:hover {
+  color: var(--eg-text);
+  background: var(--eg-surface-2);
+}
+.archived {
+  display: grid;
+  gap: 12px;
+}
+.archivedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--eg-text-2);
+  font: 600 13px / 1 var(--eg-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 6px 4px;
+  border-radius: var(--eg-radius-control);
+  justify-self: start;
+}
+.archivedToggle:hover {
+  color: var(--eg-text);
+  background: var(--eg-surface-2);
+}
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.legend {
+  font: 500 13px / 1.3 var(--eg-font-ui);
+  color: var(--eg-text-2);
+  padding: 0;
+  margin-bottom: 4px;
+}
+.radios {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.radio {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-control);
+  background: var(--eg-bg);
+  cursor: pointer;
+  font: 500 13.5px / 1.2 var(--eg-font-ui);
+}
+.radio[data-active="true"] {
+  border-color: var(--eg-accent);
+  background: var(--eg-accent-soft);
+}
+.hint {
+  margin: 0;
+  font: 400 12px / 1.4 var(--eg-font-ui);
+  color: var(--eg-muted);
+}
+@media (max-width: 640px) {
+  .wrap {
+    width: calc(100% - 24px);
+    margin: 16px auto;
+  }
+  .row,
+  .radios {
+    grid-template-columns: 1fr;
+  }
+  .head {
+    flex-wrap: wrap;
+  }
+}

@@ -1,8 +1,60 @@
-.host {
+.wrap {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--eg-bg);
   border-right: 1px solid var(--eg-rule);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--eg-rule-2);
+  background: var(--eg-surface-2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.termBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--eg-text-2);
+  font: 500 12px / 1 var(--eg-font-ui);
+  padding: 5px 8px;
+  border-radius: var(--eg-radius-control);
+  cursor: pointer;
+}
+.termBtn:hover {
+  background: var(--eg-surface);
+  color: var(--eg-text);
+  border-color: var(--eg-rule);
+}
+.termDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--quire-term-bg);
+  box-shadow: inset 0 0 0 1px var(--quire-term-ink);
+}
+.termBtn[data-kind="definition"] {
+  --quire-term-bg: var(--quire-term-definition);
+  --quire-term-ink: var(--quire-term-definition-ink);
+}
+.termBtn[data-kind="claim"] {
+  --quire-term-bg: var(--quire-term-claim);
+  --quire-term-ink: var(--quire-term-claim-ink);
+}
+.termBtn[data-kind="theorem"] {
+  --quire-term-bg: var(--quire-term-theorem);
+  --quire-term-ink: var(--quire-term-theorem-ink);
+}
+.host {
+  flex: 1;
+  min-height: 0;
+  background: var(--eg-bg);
 }
 .host :global(.cm-editor) {
   height: 100%;

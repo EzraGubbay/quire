@@ -1,15 +1,27 @@
+import type { BuiltinFolder, FolderScope } from '@quire/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { type Document, documentPages, documents, type Folder, folders } from '@/db/schema';
+import { type Document, documentPages, documents, type Folder, folders, notes } from '@/db/schema';
+import { ConvertUnavailable, officeToPdf } from './convert';
 import { removeStoredFile, storeFile } from './files';
 import { extractPdf, guessTitle } from './pdf';
 
-export async function listFolders(projectId: string): Promise<Folder[]> {
+export async function listFolders(projectId: string, scope: FolderScope = 'documents'): Promise<Folder[]> {
   return db
     .select()
     .from(folders)
-    .where(eq(folders.projectId, projectId))
+    .where(and(eq(folders.projectId, projectId), eq(folders.scope, scope)))
     .orderBy(asc(folders.position), asc(folders.name));
+}
+
+/** The course's builtin folder of that kind (Raw, Synthesized, Practice Exams), if it exists. */
+export async function builtinFolder(projectId: string, builtin: BuiltinFolder): Promise<Folder | undefined> {
+  const [row] = await db
+    .select()
+    .from(folders)
+    .where(and(eq(folders.projectId, projectId), eq(folders.builtin, builtin)))
+    .limit(1);
+  return row;
 }
 
 export async function listDocuments(projectId: string): Promise<Document[]> {
@@ -41,8 +53,9 @@ export async function createFolder(
   projectId: string,
   name: string,
   parentId: string | null,
+  scope: FolderScope = 'documents',
 ): Promise<Folder> {
-  const [row] = await db.insert(folders).values({ projectId, name, parentId }).returning();
+  const [row] = await db.insert(folders).values({ projectId, name, parentId, scope }).returning();
   if (!row) throw new Error('insert returned no row');
   return row;
 }
@@ -54,14 +67,16 @@ export async function renameFolder(projectId: string, id: string, name: string):
     .where(and(eq(folders.id, id), eq(folders.projectId, projectId)));
 }
 
-/** Deletes a folder; its documents and subfolders move to its parent. */
+/** Deletes a folder; its documents or notes and its subfolders move to its parent. Builtin folders stay. */
 export async function deleteFolder(projectId: string, id: string): Promise<void> {
   const [folder] = await db
     .select()
     .from(folders)
     .where(and(eq(folders.id, id), eq(folders.projectId, projectId)));
-  if (!folder) return;
-  await db.update(documents).set({ folderId: folder.parentId }).where(eq(documents.folderId, id));
+  if (!folder || folder.builtin) return;
+  if (folder.scope === 'notes')
+    await db.update(notes).set({ folderId: folder.parentId }).where(eq(notes.folderId, id));
+  else await db.update(documents).set({ folderId: folder.parentId }).where(eq(documents.folderId, id));
   await db.update(folders).set({ parentId: folder.parentId }).where(eq(folders.parentId, id));
   await db.delete(folders).where(eq(folders.id, id));
 }
@@ -122,6 +137,70 @@ export async function createPdfDocument(projectId: string, upload: PdfUpload): P
   return { ...row, filePath: rel };
 }
 
+export interface DeckUpload {
+  fileName: string;
+  data: Uint8Array;
+  sessionId?: string | null;
+  folderId?: string | null;
+  title?: string;
+}
+
+const isPdfName = (name: string) => /\.pdf$/i.test(name);
+
+/**
+ * A lecture deck: PDFs are stored as-is; .pptx/.key/.odp files keep the original and get a PDF rendering through
+ * the conversion service. Without it (or on failure) the document is created without a file, with the reason in
+ * conversion_error, and the viewer offers "Add rendering" (a PDF exported from PowerPoint).
+ */
+export async function createDeckDocument(projectId: string, upload: DeckUpload): Promise<Document> {
+  if (isPdfName(upload.fileName)) {
+    const doc = await createPdfDocument(projectId, {
+      fileName: upload.fileName,
+      data: upload.data,
+      folderId: upload.folderId ?? null,
+      meta: upload.title ? { title: upload.title } : undefined,
+    });
+    if (upload.sessionId) {
+      await db.update(documents).set({ sessionId: upload.sessionId }).where(eq(documents.id, doc.id));
+    }
+    return { ...doc, sessionId: upload.sessionId ?? null };
+  }
+  const title =
+    upload.title ??
+    upload.fileName
+      .replace(/\.[A-Za-z0-9]{1,5}$/, '')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+  const [row] = await db
+    .insert(documents)
+    .values({
+      projectId,
+      folderId: upload.folderId ?? null,
+      sessionId: upload.sessionId ?? null,
+      kind: 'pdf',
+      title: title || 'Untitled deck',
+      originalName: upload.fileName,
+      fileSize: upload.data.byteLength,
+    })
+    .returning();
+  if (!row) throw new Error('insert returned no row');
+  const ext = upload.fileName.split('.').pop()?.toLowerCase() || 'pptx';
+  const originalPath = await storeFile(projectId, `${row.id}.original`, ext, upload.data);
+  await db.update(documents).set({ originalPath }).where(eq(documents.id, row.id));
+  try {
+    const pdf = await officeToPdf(upload.data, upload.fileName);
+    await attachPdf(projectId, row.id, pdf);
+    return { ...row, originalPath, filePath: `${projectId}/${row.id}.pdf` };
+  } catch (err) {
+    const message =
+      err instanceof ConvertUnavailable
+        ? 'No conversion service: export the deck to PDF from PowerPoint and add it as the rendering.'
+        : `Conversion failed: ${(err as Error).message}`;
+    await db.update(documents).set({ conversionError: message }).where(eq(documents.id, row.id));
+    return { ...row, originalPath, conversionError: message };
+  }
+}
+
 /** A paper we know about (metadata from arXiv/Crossref) whose PDF is not available yet. */
 export async function createPaperStub(
   projectId: string,
@@ -160,7 +239,13 @@ export async function attachPdf(projectId: string, id: string, data: Uint8Array)
   }
   await db
     .update(documents)
-    .set({ filePath: rel, fileSize: data.byteLength, pageCount: extracted.pageCount, updatedAt: new Date() })
+    .set({
+      filePath: rel,
+      fileSize: data.byteLength,
+      pageCount: extracted.pageCount,
+      conversionError: null,
+      updatedAt: new Date(),
+    })
     .where(eq(documents.id, id));
 }
 
@@ -194,6 +279,8 @@ export async function updateDocument(
       | 'progress'
       | 'markdownBody'
       | 'folderId'
+      | 'sessionId'
+      | 'examMeta'
     >
   >,
 ): Promise<void> {
@@ -208,6 +295,21 @@ export async function deleteDocument(projectId: string, id: string): Promise<voi
   if (!doc) return;
   await db.delete(documents).where(eq(documents.id, id));
   await removeStoredFile(doc.filePath);
+  await removeStoredFile(doc.originalPath);
+}
+
+/** Documents in the course's Practice Exams folder, with those used as solutions marked. */
+export async function listPracticeExams(
+  projectId: string,
+): Promise<{ exams: Document[]; folderId: string | null }> {
+  const folder = await builtinFolder(projectId, 'practice_exams');
+  if (!folder) return { exams: [], folderId: null };
+  const exams = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.projectId, projectId), eq(documents.folderId, folder.id)))
+    .orderBy(asc(documents.title));
+  return { exams, folderId: folder.id };
 }
 
 export async function countDocuments(projectId: string): Promise<number> {

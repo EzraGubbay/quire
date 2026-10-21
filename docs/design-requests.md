@@ -27,3 +27,8 @@ Build these in Folio so Claude Design keeps the source of truth; Quire ships a l
 
 ## 6. Screens for Claude Design (when refining visuals)
 Notes editor (read/edit modes), full-page graph, Sources tab, Experiments tab and run detail, Chat tab and Ask slide-over, project switcher and home, command palette, annotation popover and composer, add-document dialog, empty states, iPad width for the reader. Light and dark for each.
+
+## 7. Courses side (2026-10-21)
+- `AppBar` needs a `leading` slot (rendered between the mark and the crumb) for the `Courses | Research` segmented switch. Quire currently passes a ReactNode through the `project` prop, which the component happens to render as children; a typed slot would make that intentional.
+- `Segmented` (radio-group segmented control, sizes sm/md) and `Toast` (bottom-centre, one action such as Undo) now exist as local Quire components (`components/ui/segmented.tsx`, `components/ui/toast.tsx`) and are candidates for Folio.
+- Term-label tokens: `--quire-term-{theorem,definition,claim,lemma,proof,corollary,example,remark}` and their `-ink` pairs (light and dark) in `globals.css` tint `**Theorem:**`-style labels and the matching callouts. Folio could own these as `--folio-term-*`.

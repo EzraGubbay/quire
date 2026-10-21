@@ -1,14 +1,11 @@
-import { AppShell } from '@/components/app-shell';
-import { listProjects } from '@/lib/projects';
-import { HomeView } from './home-view';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { homeOfSide, isSide, SIDE_COOKIE } from '@/lib/side';
 
 export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
-  const projects = await listProjects();
-  return (
-    <AppShell>
-      <HomeView projects={projects} />
-    </AppShell>
-  );
+/** `/` opens whichever side this device used last; research until a side is chosen. */
+export default async function Home() {
+  const side = (await cookies()).get(SIDE_COOKIE)?.value;
+  redirect(homeOfSide(isSide(side) ? side : 'research'));
 }

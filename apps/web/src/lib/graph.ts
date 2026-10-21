@@ -14,7 +14,7 @@ export interface GraphNodeData {
 export interface GraphEdgeData {
   from: string;
   to: string;
-  kind: 'wiki' | 'belongs' | 'mention' | 'suggested';
+  kind: 'wiki' | 'belongs' | 'mention' | 'suggested' | 'synthesized';
 }
 export interface GraphData {
   nodes: GraphNodeData[];
@@ -23,7 +23,7 @@ export interface GraphData {
 
 /** Notes, documents, sources, and annotations that are Ideas/Insights or author a resolved [[wiki link]],
  *  with wiki edges and annotation→document `belongs` edges. */
-export async function getGraph(projectId: string, slug: string): Promise<GraphData> {
+export async function getGraph(projectId: string, base: string): Promise<GraphData> {
   const [ns, ds, all, ls, ss] = await Promise.all([
     db
       .select({ id: notes.id, title: notes.title, slug: notes.slug })
@@ -77,28 +77,28 @@ export async function getGraph(projectId: string, slug: string): Promise<GraphDa
       kind: 'note' as const,
       label: n.title,
       hue: 'note' as const,
-      href: `/p/${slug}/notes/${n.slug}`,
+      href: `${base}/notes/${n.slug}`,
     })),
     ...ds.map((d) => ({
       id: d.id,
       kind: 'document' as const,
       label: d.title,
       hue: docHue.get(d.id) ?? ('note' as const),
-      href: `/p/${slug}/documents/${d.id}`,
+      href: `${base}/documents/${d.id}`,
     })),
     ...ss.map((x) => ({
       id: x.id,
       kind: 'source' as const,
       label: x.title,
       hue: 'note' as const,
-      href: `/p/${slug}/sources`,
+      href: `${base}/sources`,
     })),
     ...ideas.map((a) => ({
       id: a.id,
       kind: 'annotation' as const,
       label: (a.body || a.quote || a.type).slice(0, 60),
       hue: a.type,
-      href: a.documentId ? `/p/${slug}/documents/${a.documentId}` : `/p/${slug}/documents`,
+      href: a.documentId ? `${base}/documents/${a.documentId}` : `${base}/documents`,
     })),
   ];
   const known = new Set(nodes.map((n) => n.id));

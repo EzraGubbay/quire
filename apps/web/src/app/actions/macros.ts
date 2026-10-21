@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { deleteMacro, parseMacroLine, upsertMacro } from '@/lib/macros';
-import { getProjectBySlug } from '@/lib/projects';
+import { baseFromSlug, getProjectBySlug } from '@/lib/projects';
 
 export interface ActionState {
   error?: string;
@@ -40,7 +40,7 @@ export async function addMacrosAction(_prev: ActionState, formData: FormData): P
     added++;
   }
   revalidatePath('/settings');
-  if (parsed.data.slug) revalidatePath(`/p/${parsed.data.slug}`, 'layout');
+  if (parsed.data.slug) revalidatePath(await baseFromSlug(parsed.data.slug), 'layout');
   if (bad.length) return { error: `Could not parse: ${bad.slice(0, 3).join(' · ')}`, added };
   return { ok: true, added };
 }
@@ -48,5 +48,5 @@ export async function addMacrosAction(_prev: ActionState, formData: FormData): P
 export async function deleteMacroAction(id: string, slug?: string): Promise<void> {
   await deleteMacro(id);
   revalidatePath('/settings');
-  if (slug) revalidatePath(`/p/${slug}`, 'layout');
+  if (slug) revalidatePath(await baseFromSlug(slug), 'layout');
 }

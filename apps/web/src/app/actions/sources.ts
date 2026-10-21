@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { z } from 'zod';
 import { indexOwner, removeOwner } from '@/lib/ai/index';
-import { getProjectBySlug } from '@/lib/projects';
+import { getProjectBySlug, projectBase } from '@/lib/projects';
 import { createSource, deleteSource, snapshotUrl, updateSource } from '@/lib/sources';
 
 export interface ActionState {
@@ -86,7 +86,7 @@ export async function saveSourceAction(_prev: ActionState, formData: FormData): 
   else sourceId = (await createSource(project.id, input)).id;
   const sid = sourceId;
   if (sid) after(() => indexOwner(project.id, 'source', sid).catch(() => {}));
-  revalidatePath(`/p/${slug}/sources`);
+  revalidatePath(`${projectBase(project)}/sources`);
   return { ok: true };
 }
 
@@ -94,5 +94,5 @@ export async function deleteSourceAction(slug: string, id: string): Promise<void
   const project = await projectOr404(slug);
   await deleteSource(project.id, id);
   await removeOwner(project.id, 'source', id);
-  revalidatePath(`/p/${slug}/sources`);
+  revalidatePath(`${projectBase(project)}/sources`);
 }

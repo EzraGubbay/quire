@@ -6,17 +6,22 @@ import { documents } from '@/db/schema';
 import type { Citation } from '../chat';
 import { indexedCounts, retrieve } from './index';
 import { assertBudget, BudgetError, estimateTokens, markProviderBlocked, recordUsage } from './ledger';
-import { type ChatMessageIn, chatStream, ProviderError } from './provider';
+import { type ChatMessageIn, chatStream, messageText, ProviderError } from './provider';
 import { costFor, getAiSettings } from './settings';
 
 export interface AnswerInput {
   projectId: string;
-  slug: string;
+  /** URL prefix of the workspace, for citation hrefs. */
+  base: string;
   projectName: string;
   question: string;
   history: { role: 'user' | 'assistant'; content: string }[];
   /** Restrict retrieval to one document. */
   documentId?: string | null;
+  /** default | tutor-hint | tutor-full (homework question chats). */
+  mode?: string;
+  /** Course workspace: the material is lectures and notes rather than papers. */
+  course?: boolean;
   onDelta: (delta: string) => void;
   signal?: AbortSignal;
 }
@@ -55,8 +60,18 @@ const KIND_LABEL: Record<string, string> = {
   run: 'Run',
 };
 
-const SYSTEM = (projectName: string, scope: string | null, counts: string) =>
-  `You are Quire, a research assistant inside the user's research project “${projectName}”. The numbered context below is drawn from the user's own material in this project: their notes, the documents (papers and write-ups) they added, their annotations, and their sources. Each passage is labelled with its kind and title. Treat notes and annotations as the user's own thinking and refer to them as such. Answer from the context when it is relevant, citing passages inline as [n]. When the context does not cover the question, say so plainly, then answer from general knowledge and mark it as such. Use Markdown; write math in TeX between $ or $$. Be precise and concise.${scope ? ` The user is asking about the document “${scope}”; keep to it unless they broaden the question.` : ''}${counts ? ` Indexed in this project: ${counts}.` : ''}`;
+const SYSTEM = (projectName: string, scope: string | null, counts: string, course: boolean) =>
+  course
+    ? `You are Quire, a study assistant inside the student's course workspace “${projectName}”. The numbered context below is drawn from the student's own material: lecture and recitation slides (page text; often Hebrew), their raw and synthesized notes, annotations, and homework sheets. Each passage is labelled with its kind and title. Treat notes and annotations as the student's own thinking. Answer from the context when it is relevant, citing passages inline as [n]; slides are cited by number. When the context does not cover the question, say so plainly, then answer from general knowledge and mark it as such. Answer in English; keep key Hebrew terms in parentheses when they appear in the slides. Use Markdown; write math in TeX between $ or $$; mark definitions and theorems with **Definition:** / **Theorem:** labels. Be precise and concise.${scope ? ` The student is asking about “${scope}”; keep to it unless they broaden the question.` : ''}${counts ? ` Indexed in this course: ${counts}.` : ''}`
+    : `You are Quire, a research assistant inside the user's research project “${projectName}”. The numbered context below is drawn from the user's own material in this project: their notes, the documents (papers and write-ups) they added, their annotations, and their sources. Each passage is labelled with its kind and title. Treat notes and annotations as the user's own thinking and refer to them as such. Answer from the context when it is relevant, citing passages inline as [n]. When the context does not cover the question, say so plainly, then answer from general knowledge and mark it as such. Use Markdown; write math in TeX between $ or $$. Be precise and concise.${scope ? ` The user is asking about the document “${scope}”; keep to it unless they broaden the question.` : ''}${counts ? ` Indexed in this project: ${counts}.` : ''}`;
+
+const TUTOR_HINT = `
+
+Tutor mode (hints). The student is working on a graded homework question and has chosen NOT to be given the solution. Do not solve the question, write the final code, or state the final answer, even if asked directly; if they ask, remind them the "Full solution" toggle exists. Instead: ask what they have tried; point at the relevant definition, theorem, lecture or slide; give the next small hint rather than the whole path; check the reasoning they show and say precisely where it is right or wrong; work through an analogous, different example if that helps. Keep answers short so they do the thinking.`;
+
+const TUTOR_FULL = `
+
+Tutor mode (full solution allowed). The student has switched this chat to full solutions: you may give complete worked solutions and code when asked. Still show the reasoning step by step, name the lecture material each step rests on, and point out the common mistakes a grader looks for.`;
 
 export async function answer(input: AnswerInput): Promise<AnswerResult> {
   const s = await getAiSettings();
@@ -71,7 +86,7 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
   }
   // Documents named as [[Title]] in the question get their own retrieval so the answer can lean on them.
   const mentions = await resolveMentions(input.projectId, input.question);
-  const general = await retrieve(input.projectId, input.slug, input.question, {
+  const general = await retrieve(input.projectId, input.base, input.question, {
     k: input.documentId ? 10 : 8,
     documentId: input.documentId ?? null,
   });
@@ -79,7 +94,7 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
     await Promise.all(
       mentions
         .filter((m) => m.id !== input.documentId)
-        .map((m) => retrieve(input.projectId, input.slug, input.question, { k: 5, documentId: m.id })),
+        .map((m) => retrieve(input.projectId, input.base, input.question, { k: 5, documentId: m.id })),
     )
   ).flat();
   const seen = new Set<string>();
@@ -107,16 +122,16 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
   const messages: ChatMessageIn[] = [
     {
       role: 'system',
-      content: `${SYSTEM(input.projectName, scopeTitle, counts)}${
+      content: `${SYSTEM(input.projectName, scopeTitle, counts, input.course ?? false)}${
         mentions.length
           ? ` The user names documents as [[Title]]; in this question ${mentions.map((m) => `[[${m.title}]]`).join(', ')} ${mentions.length === 1 ? 'is a document' : 'are documents'} in the project, and passages from ${mentions.length === 1 ? 'it' : 'them'} are included in the context.`
           : ''
-      }\n\nContext:\n${context || '(nothing indexed matches this question; say so)'}`,
+      }${input.mode === 'tutor-hint' ? TUTOR_HINT : input.mode === 'tutor-full' ? TUTOR_FULL : ''}\n\nContext:\n${context || '(nothing indexed matches this question; say so)'}`,
     },
     ...input.history.slice(-12),
     { role: 'user', content: input.question },
   ];
-  const promptTokens = messages.reduce((n, m) => n + estimateTokens(m.content), 0);
+  const promptTokens = messages.reduce((n, m) => n + estimateTokens(messageText(m)), 0);
   const estimate = costFor(s.prices, model, { input: promptTokens, cached: 0, output: 1200 });
   await assertBudget(estimate, s);
   try {

@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { ArrowUpRight, Check, Pencil, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Check, Pencil, RotateCw, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
@@ -9,14 +9,26 @@ import {
   deleteNoteAction,
   followWikiLinkAction,
   promoteNoteAction,
+  retrySynthesisAction,
+  setSynthesizedFromAction,
   updateNoteAction,
 } from '@/app/actions/notes';
 import { MarkdownView } from '@/components/documents/markdown-view';
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
+import { useProject } from '@/components/project-context';
+import { PollWhile } from '@/components/ui/poll-while';
 import type { Note } from '@/db/schema';
 import { renderMarkdownClient } from '@/lib/markdown-client';
 import type { Backlink } from '@/lib/notes';
 import s from './notes.module.css';
+import { SynthesizeButton } from './synthesize-button';
+
+export interface NoteRef {
+  id?: string;
+  title: string;
+  slug: string;
+  status?: Note['status'];
+}
 
 export function NoteView({
   backHref,
@@ -29,6 +41,11 @@ export function NoteView({
   editing,
   macros,
   editLevel = 'on',
+  course = false,
+  canSynthesize = false,
+  synthesizedFrom = null,
+  synthesizedInto = [],
+  rawCandidates = [],
 }: {
   /** Phone: link back to the notes list, shown in the bar. */
   backHref?: string;
@@ -42,10 +59,53 @@ export function NoteView({
   macros: string[];
   /** notes.edit feature level: 'lite' = plain textarea without the split preview. */
   editLevel?: 'on' | 'lite' | 'off';
+  course?: boolean;
+  /** Raw notes in a course get a Synthesize button. */
+  canSynthesize?: boolean;
+  synthesizedFrom?: NoteRef | null;
+  /** Synthesized notes made from this raw note, oldest first. */
+  synthesizedInto?: NoteRef[];
+  /** For hand-written synthesized notes: notes that can be set as the source. */
+  rawCandidates?: { id: string; title: string }[];
 }) {
   const router = useRouter();
+  const { base } = useProject();
   const [pending, start] = useTransition();
   const follow = useCallback((name: string) => start(() => followWikiLinkAction(slug, name)), [slug]);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  if (note.status === 'generating')
+    return (
+      <div className={s.main} data-testid="note-generating">
+        <PollWhile active />
+        <div className={s.bar}>
+          {backHref && (
+            <NextLink href={backHref} className={s.back}>
+              ← Notes
+            </NextLink>
+          )}
+          <h1 className={s.title} style={{ color: 'var(--eg-muted)' }}>
+            {note.title}
+          </h1>
+          <span className={s.status}>Synthesizing…</span>
+        </div>
+        {synthesizedFrom && (
+          <p className={s.sourceLine}>
+            Synthesized from{' '}
+            <NextLink href={`${base}/notes/${synthesizedFrom.slug}`}>{synthesizedFrom.title}</NextLink>
+          </p>
+        )}
+        <div className={s.generating} role="status" aria-busy="true" aria-label="Synthesizing">
+          <div className={s.skelLine} style={{ width: '42%' }} />
+          <div className={s.skelLine} style={{ width: '92%' }} />
+          <div className={s.skelLine} style={{ width: '86%' }} />
+          <div className={s.skelLine} style={{ width: '64%' }} />
+          <div className={s.skelLine} style={{ width: '30%', marginTop: 12 }} />
+          <div className={s.skelLine} style={{ width: '88%' }} />
+          <div className={s.skelLine} style={{ width: '71%' }} />
+        </div>
+      </div>
+    );
 
   if (editing)
     return (
@@ -71,18 +131,21 @@ export function NoteView({
         <span className={s.status}>
           edited {note.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
         </span>
-        <NextLink href={`/p/${slug}/notes/${note.slug}?edit=1`} className={s.chip}>
+        {canSynthesize && note.status === 'ready' && <SynthesizeButton slug={slug} note={note} />}
+        <NextLink href={`${base}/notes/${note.slug}?edit=1`} className={s.chip}>
           <Icon icon={Pencil} /> Edit
         </NextLink>
-        <button
-          type="button"
-          className={s.chip}
-          disabled={pending}
-          onClick={() => start(() => promoteNoteAction(slug, note.id))}
-          title="Turn this note into a Markdown document"
-        >
-          <Icon icon={ArrowUpRight} /> Promote to document
-        </button>
+        {!course && (
+          <button
+            type="button"
+            className={s.chip}
+            disabled={pending}
+            onClick={() => start(() => promoteNoteAction(slug, note.id))}
+            title="Turn this note into a Markdown document"
+          >
+            <Icon icon={ArrowUpRight} /> Promote to document
+          </button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -95,6 +158,81 @@ export function NoteView({
           Delete
         </Button>
       </div>
+      {(synthesizedFrom || synthesizedInto.length > 0 || rawCandidates.length > 0) && (
+        <p className={s.sourceLine} data-testid="synth-lines">
+          {synthesizedFrom && (
+            <>
+              Synthesized from{' '}
+              <NextLink href={`${base}/notes/${synthesizedFrom.slug}`}>{synthesizedFrom.title}</NextLink>
+              {'. '}
+            </>
+          )}
+          {synthesizedInto.length > 0 && (
+            <>
+              Synthesized into{' '}
+              {synthesizedInto.map((n, i) => (
+                <span key={n.slug}>
+                  {i > 0 && ', '}
+                  <NextLink href={`${base}/notes/${n.slug}`}>{n.title}</NextLink>
+                  {i < synthesizedInto.length - 1 && ' (older)'}
+                  {n.status === 'generating' && ' (generating)'}
+                  {n.status === 'failed' && ' (failed)'}
+                </span>
+              ))}
+              .
+            </>
+          )}
+          {!synthesizedFrom && rawCandidates.length > 0 && (
+            <>
+              {' '}
+              <label>
+                Source note:{' '}
+                <select
+                  className={s.chip}
+                  defaultValue=""
+                  onChange={(e) =>
+                    start(async () => {
+                      await setSynthesizedFromAction(slug, note.id, e.target.value || null);
+                      router.refresh();
+                    })
+                  }
+                >
+                  <option value="">none</option>
+                  {rawCandidates.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+        </p>
+      )}
+      {note.status === 'failed' && (
+        <div className={s.failed} role="alert" data-testid="note-failed">
+          <strong>Synthesis failed.</strong>
+          <span>{note.error}</span>
+          {retryError && <span>{retryError}</span>}
+          <div>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Icon icon={RotateCw} />}
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  const res = await retrySynthesisAction(slug, note.id);
+                  if (res.error) setRetryError(res.error);
+                  else router.refresh();
+                })
+              }
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
       <div className={s.read}>
         <MarkdownView html={html || '<p></p>'} onWikiLink={follow} />
         <aside className={s.aside} aria-label="Links">
@@ -108,10 +246,10 @@ export function NoteView({
                   key={`${b.fromKind}:${b.fromId}`}
                   href={
                     b.href
-                      ? `/p/${slug}/${b.href}`
+                      ? `${base}/${b.href}`
                       : b.fromKind === 'note'
-                        ? `/p/${slug}/notes/${b.fromId}`
-                        : `/p/${slug}/documents/${b.fromId}`
+                        ? `${base}/notes/${b.fromId}`
+                        : `${base}/documents/${b.fromId}`
                   }
                 >
                   {b.title}
@@ -157,6 +295,7 @@ function NoteEditor({
   backHref?: string;
 }) {
   const router = useRouter();
+  const { base } = useProject();
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [html, setHtml] = useState('');
@@ -180,12 +319,12 @@ function NoteEditor({
         const res = await updateNoteAction(slug, note.id, { title, body });
         if (res.error) return;
         setDirty(false);
-        const target = `/p/${slug}/notes/${res.noteSlug ?? note.slug}`;
+        const target = `${base}/notes/${res.noteSlug ?? note.slug}`;
         if (thenClose) router.push(target);
         else if (res.noteSlug && res.noteSlug !== note.slug) router.replace(`${target}?edit=1`);
         else router.refresh();
       }),
-    [slug, note.id, note.slug, title, body, router],
+    [slug, note.id, note.slug, title, body, router, base],
   );
 
   useEffect(() => {
@@ -221,7 +360,7 @@ function NoteEditor({
           size="sm"
           icon={<Icon icon={Check} />}
           disabled={pending}
-          onClick={() => (dirty ? save(true) : router.push(`/p/${slug}/notes/${note.slug}`))}
+          onClick={() => (dirty ? save(true) : router.push(`${base}/notes/${note.slug}`))}
         >
           Done
         </Button>
@@ -230,6 +369,7 @@ function NoteEditor({
         <textarea
           className={s.liteEditor}
           aria-label="Note body"
+          dir="auto"
           value={body}
           onChange={(e) => {
             setBody(e.target.value);

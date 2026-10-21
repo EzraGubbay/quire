@@ -1,0 +1,51 @@
+.root {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--eg-rule);
+  border-radius: var(--eg-radius-control);
+  background: var(--eg-bg);
+}
+.seg {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border: 0;
+  background: none;
+  color: var(--eg-text-2);
+  font: 500 13px / 1 var(--eg-font-ui);
+  padding: 0 10px;
+  height: 28px;
+  border-radius: calc(var(--eg-radius-control) - 2px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--eg-duration-fast) var(--eg-ease-standard),
+    color var(--eg-duration-fast) var(--eg-ease-standard);
+}
+.root[data-size="sm"] .seg {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.seg:hover {
+  color: var(--eg-text);
+}
+.seg[aria-checked="true"] {
+  background: var(--eg-surface);
+  color: var(--eg-text);
+  box-shadow: 0 1px 2px rgba(20, 16, 12, 0.12);
+  font-weight: 600;
+}
+.seg:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.seg:focus-visible {
+  outline: var(--eg-focus-width, 2px) solid var(--eg-accent);
+  outline-offset: 1px;
+}
+.seg[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

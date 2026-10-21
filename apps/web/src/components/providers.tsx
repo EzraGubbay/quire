@@ -3,6 +3,7 @@
 import { FolioProvider } from '@ezragubbay/folio';
 import { MathJaxContext } from 'better-react-mathjax';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ToastProvider } from '@/components/ui/toast';
 import type { ThemeSetting } from '@/lib/theme';
 
 type Theme = 'light' | 'dark';
@@ -57,6 +58,10 @@ function resolve(setting: ThemeSetting): Theme {
 export function Providers({ children, themeSetting }: { children: ReactNode; themeSetting: ThemeSetting }) {
   const [setting, setSetting] = useState<ThemeSetting>(themeSetting);
   const [theme, setTheme] = useState<Theme>(themeSetting === 'system' ? 'light' : themeSetting);
+  // Marks the document once React is live; tests (and anything that must not click pre-hydration) wait for it.
+  useEffect(() => {
+    document.documentElement.dataset.hydrated = 'true';
+  }, []);
   useEffect(() => {
     setTheme(resolve(setting));
     if (setting !== 'system') return;
@@ -93,7 +98,7 @@ export function Providers({ children, themeSetting }: { children: ReactNode; the
     <ThemeContext.Provider value={value}>
       <FolioProvider theme={theme}>
         <MathJaxContext version={3} src="/mathjax/tex-mml-chtml.js" config={MATHJAX}>
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </MathJaxContext>
       </FolioProvider>
     </ThemeContext.Provider>

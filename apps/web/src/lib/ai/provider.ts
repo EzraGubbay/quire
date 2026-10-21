@@ -3,9 +3,14 @@ import OpenAI from 'openai';
 import { aiMock, mockChat, mockEmbedding } from './mock';
 import { type AiSettings, getAiSettings } from './settings';
 
+/** A message part: text, or an image (data URL or https URL) for vision-capable models. */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
+
 export interface ChatMessageIn {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | ContentPart[];
 }
 export interface Usage {
   input: number;
@@ -16,6 +21,13 @@ export interface ChatResult {
   text: string;
   usage: Usage;
   model: string;
+}
+
+/** The text of a message, ignoring images (for logging, mocks and token estimates). */
+export function messageText(m: ChatMessageIn): string {
+  return typeof m.content === 'string'
+    ? m.content
+    : m.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
 }
 
 export class ProviderError extends Error {
@@ -89,19 +101,30 @@ function usageOf(
   };
 }
 
-export async function chat(
-  messages: ChatMessageIn[],
-  opts: { model: string; maxTokens?: number; settings?: AiSettings },
-): Promise<ChatResult> {
-  if (aiMock()) return mockChat(messages, opts.model);
+export interface ChatOptions {
+  model: string;
+  maxTokens?: number;
+  settings?: AiSettings;
+  /** Ask for a JSON object (response_format json_object); the prompt must still say "JSON". */
+  json?: boolean;
+  /** Long one-shot jobs (synthesis, tests) can wait longer than a chat turn. */
+  timeoutMs?: number;
+}
+
+export async function chat(messages: ChatMessageIn[], opts: ChatOptions): Promise<ChatResult> {
+  if (aiMock()) return mockChat(messages, opts.model, { json: opts.json });
   const s = opts.settings ?? (await getAiSettings());
   const client = getClient(s);
   try {
-    const res = await client.chat.completions.create({
-      model: opts.model,
-      messages,
-      max_completion_tokens: opts.maxTokens ?? 4000,
-    });
+    const res = await client.chat.completions.create(
+      {
+        model: opts.model,
+        messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
+        max_completion_tokens: opts.maxTokens ?? 4000,
+        ...(opts.json ? { response_format: { type: 'json_object' as const } } : {}),
+      },
+      opts.timeoutMs ? { timeout: opts.timeoutMs } : undefined,
+    );
     return {
       text: res.choices[0]?.message?.content ?? '',
       usage: usageOf(res.usage),
@@ -146,7 +169,7 @@ export async function chatStream(
       const stream = await client.chat.completions.create(
         {
           model: opts.model,
-          messages,
+          messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
           max_completion_tokens: opts.maxTokens ?? 4000,
           stream: true,
           stream_options: { include_usage: true },
@@ -198,7 +221,7 @@ export async function embed(
 
 /** Lists model ids the provider offers, for the settings page. */
 export async function listModels(s?: AiSettings): Promise<string[]> {
-  if (aiMock()) return ['gpt-5.6-sol', 'gpt-5.6-terra', 'text-embedding-3-small'];
+  if (aiMock()) return ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'text-embedding-3-small'];
   const st = s ?? (await getAiSettings());
   const client = getClient(st);
   try {
