@@ -7,8 +7,10 @@ import {
   Download,
   FileUp,
   GraduationCap,
+  Maximize2,
   MessageSquare,
   MessageSquarePlus,
+  Minimize2,
   Minus,
   Pencil,
   Plus,
@@ -137,6 +139,17 @@ export function DocumentView({
       if (v >= PANE_MIN) setAsideWidth(v);
     } catch {}
   }, [aside]);
+  // Lecture page: browser fullscreen (no tabs or address bar). Esc leaves it, as the browser enforces.
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+  };
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -504,6 +517,22 @@ export function DocumentView({
               ]}
               onChange={choosePane}
             />
+          )}
+          {aside && (
+            <button
+              type="button"
+              className={s.chip}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title={
+                fullscreen ? 'Leave fullscreen (Esc)' : 'Fullscreen: hide the browser chrome (Esc to leave)'
+              }
+              aria-pressed={fullscreen}
+              onClick={toggleFullscreen}
+              data-testid="fullscreen-toggle"
+            >
+              <Icon icon={fullscreen ? Minimize2 : Maximize2} />{' '}
+              {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            </button>
           )}
           {doc.originalPath && (
             <a
