@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Segmented } from '@/components/ui/segmented';
-import { SIDE_COOKIE, type Side, sideFromPath } from '@/lib/side';
+import { homeOfSide, SIDE_COOKIE, type Side, sideFromPath } from '@/lib/side';
 
 function writeSide(side: Side) {
   try {
@@ -21,11 +21,14 @@ export function useRememberSide() {
 }
 
 const OPTIONS = [
-  { value: 'courses', label: 'Courses' },
-  { value: 'research', label: 'Research' },
+  { value: 'courses', label: 'Courses', href: homeOfSide('courses') },
+  { value: 'research', label: 'Research', href: homeOfSide('research') },
 ] as const;
 
-/** Courses | Research. Sits in the app bar next to the mark (and at the top of the phone More sheet). */
+/**
+ * Courses | Research. Sits in the app bar next to the mark (and at the top of the phone More sheet). The segments
+ * are links, so the switch works before hydration; once hydrated, clicks go through the client router.
+ */
 export function SideSwitch({ size = 'sm', className }: { size?: 'sm' | 'md'; className?: string }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -37,9 +40,11 @@ export function SideSwitch({ size = 'sm', className }: { size?: 'sm' | 'md'; cla
       className={className}
       value={current ?? 'research'}
       options={OPTIONS}
-      onChange={(side) => {
+      onChange={(side, e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // let the browser open a new tab
+        e.preventDefault();
         writeSide(side);
-        router.push(side === 'courses' ? '/courses' : '/research');
+        router.push(homeOfSide(side));
       }}
     />
   );

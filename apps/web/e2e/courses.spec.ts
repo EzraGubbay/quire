@@ -17,15 +17,20 @@ async function createCourse(page: Page, name: string) {
   return slug;
 }
 
+/** React is live (clicks before that are dropped during hydration, noticeably on a dev server). */
+const hydrated = (page: Page) => page.locator('html[data-hydrated="true"]').waitFor({ state: 'attached' });
+
 test('two sides: / remembers the last side, the switch moves between them', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/research$/);
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+  await hydrated(page);
   await page.getByRole('radio', { name: 'Courses' }).click();
   await expect(page).toHaveURL(/\/courses$/);
   await expect(page.getByRole('heading', { name: 'Courses' })).toBeVisible();
   await page.goto('/');
   await expect(page).toHaveURL(/\/courses$/);
+  await hydrated(page);
   await page.getByRole('radio', { name: 'Research' }).click();
   await expect(page).toHaveURL(/\/research$/);
 });

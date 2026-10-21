@@ -58,6 +58,10 @@ function resolve(setting: ThemeSetting): Theme {
 export function Providers({ children, themeSetting }: { children: ReactNode; themeSetting: ThemeSetting }) {
   const [setting, setSetting] = useState<ThemeSetting>(themeSetting);
   const [theme, setTheme] = useState<Theme>(themeSetting === 'system' ? 'light' : themeSetting);
+  // Marks the document once React is live; tests (and anything that must not click pre-hydration) wait for it.
+  useEffect(() => {
+    document.documentElement.dataset.hydrated = 'true';
+  }, []);
   useEffect(() => {
     setTheme(resolve(setting));
     if (setting !== 'system') return;

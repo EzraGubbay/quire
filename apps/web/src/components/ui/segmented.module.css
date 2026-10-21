@@ -7,6 +7,9 @@
   background: var(--eg-bg);
 }
 .seg {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
   border: 0;
   background: none;
   color: var(--eg-text-2);
@@ -41,4 +44,8 @@
 .seg:focus-visible {
   outline: var(--eg-focus-width, 2px) solid var(--eg-accent);
   outline-offset: 1px;
+}
+.seg[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
