@@ -177,7 +177,7 @@ export interface RetrievedChunk {
 /** Cosine top-k over the project (or one document), with titles and links resolved for citations. */
 export async function retrieve(
   projectId: string,
-  slug: string,
+  base: string,
   query: string,
   opts: { k?: number; documentId?: string | null } = {},
 ): Promise<RetrievedChunk[]> {
@@ -216,14 +216,14 @@ export async function retrieve(
       .select({ id: documents.id, title: documents.title })
       .from(documents)
       .where(inArray(documents.id, docIds)))
-      titles.set(`document:${d.id}`, { title: d.title, href: `/p/${slug}/documents/${d.id}` });
+      titles.set(`document:${d.id}`, { title: d.title, href: `${base}/documents/${d.id}` });
   const noteIds = byKind.get('note') ?? [];
   if (noteIds.length)
     for (const n of await db
       .select({ id: notes.id, title: notes.title, slug: notes.slug })
       .from(notes)
       .where(inArray(notes.id, noteIds)))
-      titles.set(`note:${n.id}`, { title: n.title, href: `/p/${slug}/notes/${n.slug}` });
+      titles.set(`note:${n.id}`, { title: n.title, href: `${base}/notes/${n.slug}` });
   const annIds = byKind.get('annotation') ?? [];
   if (annIds.length)
     for (const a of await db
@@ -237,7 +237,7 @@ export async function retrieve(
       .where(inArray(annotations.id, annIds)))
       titles.set(`annotation:${a.id}`, {
         title: `Annotation: ${(a.body || a.quote).slice(0, 60)}`,
-        href: a.documentId ? `/p/${slug}/documents/${a.documentId}` : `/p/${slug}/documents`,
+        href: a.documentId ? `${base}/documents/${a.documentId}` : `${base}/documents`,
       });
   const srcIds = byKind.get('source') ?? [];
   if (srcIds.length)
@@ -245,9 +245,9 @@ export async function retrieve(
       .select({ id: sources.id, title: sources.title })
       .from(sources)
       .where(inArray(sources.id, srcIds)))
-      titles.set(`source:${x.id}`, { title: x.title, href: `/p/${slug}/sources` });
+      titles.set(`source:${x.id}`, { title: x.title, href: `${base}/sources` });
   return rows.map((r) => {
-    const t = titles.get(`${r.kind}:${r.id}`) ?? { title: r.kind, href: `/p/${slug}` };
+    const t = titles.get(`${r.kind}:${r.id}`) ?? { title: r.kind, href: `${base}` };
     return { ...r, score: Number(r.score), title: t.title, href: t.href };
   });
 }

@@ -3,7 +3,7 @@ import { db } from '@/db/client';
 import { annotations, documentPages, documents, notes, sources } from '@/db/schema';
 
 export interface SearchHit {
-  kind: 'document' | 'note' | 'annotation' | 'source';
+  kind: 'document' | 'note' | 'annotation' | 'source' | 'session' | 'assignment';
   id: string;
   title: string;
   snippet: string;
@@ -14,7 +14,7 @@ export interface SearchHit {
 /** Substring search across a project's documents (title, authors, abstract, page text), notes, and annotations. */
 export async function searchProject(
   projectId: string,
-  slug: string,
+  base: string,
   query: string,
   limit = 24,
 ): Promise<SearchHit[]> {
@@ -111,7 +111,7 @@ export async function searchProject(
       id: d.id,
       title: d.title,
       snippet: excerpt(d.abstract || d.authors.join(', '), q),
-      href: `/p/${slug}/documents/${d.id}`,
+      href: `${base}/documents/${d.id}`,
       meta: d.kind === 'pdf' ? 'PDF' : 'Markdown',
     });
   }
@@ -123,7 +123,7 @@ export async function searchProject(
       id: p.id,
       title: p.title,
       snippet: excerpt(p.text, q),
-      href: `/p/${slug}/documents/${p.id}`,
+      href: `${base}/documents/${p.id}`,
       meta: `p.${p.pageNo}`,
     });
   }
@@ -133,7 +133,7 @@ export async function searchProject(
       id: n.id,
       title: n.title,
       snippet: excerpt(n.body, q),
-      href: `/p/${slug}/notes/${n.slug}`,
+      href: `${base}/notes/${n.slug}`,
       meta: 'Note',
     });
   for (const a of anns) {
@@ -142,7 +142,7 @@ export async function searchProject(
       id: a.id,
       title: a.body ? excerpt(a.body, q, 80) : `“${excerpt(a.quote, q, 80)}”`,
       snippet: a.documentTitle ?? '',
-      href: a.documentId ? `/p/${slug}/documents/${a.documentId}` : `/p/${slug}/documents`,
+      href: a.documentId ? `${base}/documents/${a.documentId}` : `${base}/documents`,
       meta: [a.type, a.pageNo ? `p.${a.pageNo}` : null].filter(Boolean).join(' · '),
     });
   }
@@ -152,7 +152,7 @@ export async function searchProject(
       id: x.id,
       title: x.title,
       snippet: excerpt(x.description || x.url || '', q),
-      href: `/p/${slug}/sources`,
+      href: `${base}/sources`,
       meta: x.type,
     });
   return hits.slice(0, limit);

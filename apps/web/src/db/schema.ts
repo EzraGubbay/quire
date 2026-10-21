@@ -1,16 +1,27 @@
 import {
   ANNOTATION_TYPES,
+  ASSIGNMENT_STATUSES,
   DOCUMENT_KINDS,
   ENTITY_KINDS,
+  FOLDER_SCOPES,
   LINK_KINDS,
+  NOTE_STATUSES,
+  PROJECT_KINDS,
   PROJECT_STATUSES,
+  type ProjectMeta,
+  QUESTION_STATUSES,
   READING_STATUSES,
   RUN_STATUSES,
+  SESSION_KINDS,
   SOURCE_TYPES,
+  TEST_KINDS,
+  TEST_RESULTS,
+  TEST_STATUSES,
 } from '@quire/shared';
 import { relations } from 'drizzle-orm';
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -25,6 +36,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const projectStatus = pgEnum('project_status', PROJECT_STATUSES);
+export const projectKind = pgEnum('project_kind', PROJECT_KINDS);
 export const documentKind = pgEnum('document_kind', DOCUMENT_KINDS);
 export const readingStatus = pgEnum('reading_status', READING_STATUSES);
 export const annotationType = pgEnum('annotation_type', ANNOTATION_TYPES);
@@ -32,21 +44,34 @@ export const entityKind = pgEnum('entity_kind', ENTITY_KINDS);
 export const linkKind = pgEnum('link_kind', LINK_KINDS);
 export const sourceType = pgEnum('source_type', SOURCE_TYPES);
 export const runStatus = pgEnum('run_status', RUN_STATUSES);
+export const folderScope = pgEnum('folder_scope', FOLDER_SCOPES);
+export const noteStatus = pgEnum('note_status', NOTE_STATUSES);
+export const sessionKind = pgEnum('session_kind', SESSION_KINDS);
+export const assignmentStatus = pgEnum('assignment_status', ASSIGNMENT_STATUSES);
+export const questionStatus = pgEnum('question_status', QUESTION_STATUSES);
+export const testKind = pgEnum('test_kind', TEST_KINDS);
+export const testStatus = pgEnum('test_status', TEST_STATUSES);
+export const testResult = pgEnum('test_result', TEST_RESULTS);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 };
 
+/** A workspace: a research project (kind research) or a university course (kind course). */
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   status: projectStatus('status').notNull().default('active'),
+  kind: projectKind('kind').notNull().default('research'),
+  /** Course details (type, code, semester, links); {} for research projects. */
+  meta: jsonb('meta').$type<Partial<ProjectMeta>>().notNull().default({}),
   ...timestamps,
 });
 
+/** Folders for documents or notes (scope). Builtin rows (raw, synthesized, practice_exams) cannot be deleted. */
 export const folders = pgTable(
   'folders',
   {
@@ -57,9 +82,28 @@ export const folders = pgTable(
     parentId: uuid('parent_id'),
     name: text('name').notNull(),
     position: integer('position').notNull().default(0),
+    scope: folderScope('scope').notNull().default('documents'),
+    builtin: text('builtin'),
     ...timestamps,
   },
   (t) => [index('folders_project_idx').on(t.projectId, t.parentId)],
+);
+
+/** A lecture or recitation: an ordered session with attached decks and a raw note. */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    kind: sessionKind('kind').notNull(),
+    number: integer('number').notNull().default(1),
+    title: text('title').notNull(),
+    date: date('date', { mode: 'string' }),
+    ...timestamps,
+  },
+  (t) => [index('sessions_project_idx').on(t.projectId, t.kind, t.number)],
 );
 
 export const documents = pgTable(
@@ -88,11 +132,21 @@ export const documents = pgTable(
     lastPage: integer('last_page').notNull().default(1),
     progress: real('progress').notNull().default(0),
     tags: text('tags').array().notNull().default([]),
+    /** Lecture or recitation this deck belongs to. */
+    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+    /** The uploaded .pptx (relative to FILES_DIR) when file_path is its PDF rendering. */
+    originalPath: text('original_path'),
+    originalName: text('original_name'),
+    /** Why the deck has no PDF yet (conversion unavailable or failed). */
+    conversionError: text('conversion_error'),
+    /** For documents in the Practice Exams folder: { term?, solutionDocumentId? }. */
+    examMeta: jsonb('exam_meta').$type<{ term?: string; solutionDocumentId?: string | null }>(),
     ...timestamps,
   },
   (t) => [
     index('documents_project_idx').on(t.projectId, t.folderId),
     index('documents_arxiv_idx').on(t.arxivId),
+    index('documents_session_idx').on(t.sessionId),
   ],
 );
 
@@ -144,11 +198,18 @@ export const notes = pgTable(
     slug: text('slug').notNull(),
     body: text('body').notNull().default(''),
     tags: text('tags').array().notNull().default([]),
+    folderId: uuid('folder_id').references(() => folders.id, { onDelete: 'set null' }),
+    /** The lecture or recitation a raw note was taken in. */
+    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'set null' }),
+    /** generating while the model writes a synthesized note; failed keeps the error for Retry. */
+    status: noteStatus('status').notNull().default('ready'),
+    error: text('error'),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('notes_project_slug').on(t.projectId, t.slug),
     index('notes_project_idx').on(t.projectId),
+    index('notes_folder_idx').on(t.folderId),
   ],
 );
 
@@ -322,6 +383,9 @@ export const chatThreads = pgTable(
     title: text('title').notNull().default('New chat'),
     /** Optional scope: restrict retrieval to one document. */
     documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
+    /** default | tutor-hint | tutor-full (homework question chats). */
+    mode: text('mode').notNull().default('default'),
+    assignmentQuestionId: uuid('assignment_question_id'),
     ...timestamps,
   },
   (t) => [index('chat_threads_project_idx').on(t.projectId, t.updatedAt)],
@@ -413,6 +477,130 @@ export const settings = pgTable('settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Homework: tracked and stored here, solved elsewhere. */
+export const assignments = pgTable(
+  'assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    number: integer('number').notNull().default(1),
+    title: text('title').notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    status: assignmentStatus('status').notNull().default('not_started'),
+    /** The problem sheet (annotatable) and the returned, graded PDF. */
+    sheetDocumentId: uuid('sheet_document_id').references(() => documents.id, { onDelete: 'set null' }),
+    returnedDocumentId: uuid('returned_document_id').references(() => documents.id, {
+      onDelete: 'set null',
+    }),
+    repoUrl: text('repo_url'),
+    score: real('score'),
+    maxScore: real('max_score'),
+    /** "What I lost points on": feeds test generation. */
+    lostPoints: text('lost_points').notNull().default(''),
+    notes: text('notes').notNull().default(''),
+    ...timestamps,
+  },
+  (t) => [index('assignments_project_idx').on(t.projectId, t.dueAt)],
+);
+
+export const assignmentQuestions = pgTable(
+  'assignment_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assignmentId: uuid('assignment_id')
+      .notNull()
+      .references(() => assignments.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    status: questionStatus('status').notNull().default('todo'),
+    /** Working notes (Markdown + math). */
+    notes: text('notes').notNull().default(''),
+    position: integer('position').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index('assignment_questions_idx').on(t.assignmentId, t.position)],
+);
+
+/** Submitted files, stored under FILES_DIR/<project>/assignments/<assignment>/. */
+export const assignmentFiles = pgTable(
+  'assignment_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assignmentId: uuid('assignment_id')
+      .notNull()
+      .references(() => assignments.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    filePath: text('file_path').notNull(),
+    size: integer('size').notNull().default(0),
+    contentType: text('content_type').notNull().default('application/octet-stream'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('assignment_files_idx').on(t.assignmentId)],
+);
+
+/** Generated self-tests: weekly (recall, chosen sessions) and tri-weekly (exam style, everything so far). */
+export const tests = pgTable(
+  'tests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    kind: testKind('kind').notNull(),
+    status: testStatus('status').notNull().default('generating'),
+    title: text('title').notNull(),
+    /** Sessions a weekly test covers; empty for tri-weekly. */
+    sessionIds: uuid('session_ids').array().notNull().default([]),
+    /** Relative to FILES_DIR; null when no PDF renderer was available (print view instead). */
+    pdfPath: text('pdf_path'),
+    model: text('model'),
+    error: text('error'),
+    markedAt: timestamp('marked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index('tests_project_idx').on(t.projectId, t.createdAt)],
+);
+
+export const testQuestions = pgTable(
+  'test_questions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    testId: uuid('test_id')
+      .notNull()
+      .references(() => tests.id, { onDelete: 'cascade' }),
+    n: integer('n').notNull(),
+    body: text('body').notNull(),
+    modelAnswer: text('model_answer').notNull().default(''),
+    /** The concept the question checks; failed concepts feed the next weekly test. */
+    concept: text('concept').notNull().default(''),
+    points: real('points').notNull().default(1),
+    result: testResult('result'),
+  },
+  (t) => [index('test_questions_idx').on(t.testId, t.n)],
+);
+
+/** AI-picked note sections and slides to revisit after a failed or partial question. */
+export const rereadItems = pgTable(
+  'reread_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    testId: uuid('test_id')
+      .notNull()
+      .references(() => tests.id, { onDelete: 'cascade' }),
+    testQuestionId: uuid('test_question_id').references(() => testQuestions.id, { onDelete: 'cascade' }),
+    targetKind: entityKind('target_kind').notNull(),
+    targetId: uuid('target_id').notNull(),
+    /** Heading slug for notes, page number for documents. */
+    anchor: text('anchor'),
+    title: text('title').notNull().default(''),
+    reason: text('reason').notNull().default(''),
+    done: boolean('done').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('reread_items_idx').on(t.testId)],
+);
+
 export const projectRelations = relations(projects, ({ many }) => ({
   folders: many(folders),
   documents: many(documents),
@@ -457,3 +645,10 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type AiUsage = typeof aiUsage.$inferSelect;
 export type ClientLog = typeof clientLogs.$inferSelect;
 export type NewAnnotation = typeof annotations.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type Assignment = typeof assignments.$inferSelect;
+export type AssignmentQuestion = typeof assignmentQuestions.$inferSelect;
+export type AssignmentFile = typeof assignmentFiles.$inferSelect;
+export type Test = typeof tests.$inferSelect;
+export type TestQuestion = typeof testQuestions.$inferSelect;
+export type RereadItem = typeof rereadItems.$inferSelect;

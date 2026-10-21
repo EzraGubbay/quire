@@ -4,11 +4,13 @@ import { Icon, Mark } from '@ezragubbay/folio';
 import { Moon, Settings, Sun } from 'lucide-react';
 import NextLink from 'next/link';
 import { AskLauncher } from '@/components/chat/ask-launcher';
+import { baseFor } from '@/lib/side';
+import type { ShellProject } from './app-shell';
 import s from './phone-bar.module.css';
 import { useTheme } from './providers';
 
 /** One-row phone header: mark (home), project name, Ask, theme, settings. Tabs live in the bottom TabBar. */
-export function PhoneBar({ project }: { project?: { slug: string; name: string } }) {
+export function PhoneBar({ project }: { project?: ShellProject }) {
   const { theme, toggle } = useTheme();
   return (
     <header className={s.bar} data-testid="phone-bar">
@@ -16,11 +18,11 @@ export function PhoneBar({ project }: { project?: { slug: string; name: string }
         <Mark variant="monogram" size={18} />
       </NextLink>
       {project ? (
-        <NextLink href={`/p/${project.slug}/overview`} className={s.project}>
+        <NextLink href={`${baseFor(project.kind, project.slug)}/overview`} className={s.project}>
           {project.name}
         </NextLink>
       ) : (
-        <span className={s.project}>Folio</span>
+        <span className={s.project}>Quire</span>
       )}
       <div className={s.actions}>
         {project && <AskLauncher slug={project.slug} />}

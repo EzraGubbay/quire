@@ -43,6 +43,13 @@
       "when": 1788501026492,
       "tag": "0005_living_smiling_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792566648992,
+      "tag": "0006_salty_zaran",
+      "breakpoints": true
     }
   ]
 }

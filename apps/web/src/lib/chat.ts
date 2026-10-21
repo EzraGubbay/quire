@@ -52,14 +52,30 @@ export async function getThread(projectId: string, id: string): Promise<ChatThre
 
 export async function createThread(
   projectId: string,
-  opts: { title?: string; documentId?: string | null } = {},
+  opts: {
+    title?: string;
+    documentId?: string | null;
+    mode?: string;
+    assignmentQuestionId?: string | null;
+  } = {},
 ): Promise<ChatThread> {
   const [row] = await db
     .insert(chatThreads)
-    .values({ projectId, title: opts.title ?? 'New chat', documentId: opts.documentId ?? null })
+    .values({
+      projectId,
+      title: opts.title ?? 'New chat',
+      documentId: opts.documentId ?? null,
+      mode: opts.mode ?? 'default',
+      assignmentQuestionId: opts.assignmentQuestionId ?? null,
+    })
     .returning();
   if (!row) throw new Error('insert returned no row');
   return row;
+}
+
+/** Tutor chats toggle between hints and full solutions. */
+export async function setThreadMode(id: string, mode: string): Promise<void> {
+  await db.update(chatThreads).set({ mode, updatedAt: new Date() }).where(eq(chatThreads.id, id));
 }
 
 export async function renameThread(id: string, title: string): Promise<void> {

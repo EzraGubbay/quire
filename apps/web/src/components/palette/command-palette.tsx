@@ -1,11 +1,25 @@
 'use client';
 
 import { Icon } from '@ezragubbay/folio';
-import { FileText, Link2, MessageSquare, Plus, Search, StickyNote, Waypoints } from 'lucide-react';
+import {
+  ClipboardList,
+  FileText,
+  GraduationCap,
+  Link2,
+  MessageSquare,
+  Plus,
+  Presentation,
+  Search,
+  StickyNote,
+  Users,
+  Waypoints,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { searchAction } from '@/app/actions/search';
 import type { SearchHit } from '@/lib/search';
+import { baseFor } from '@/lib/side';
+import type { ShellProject } from '../app-shell';
 import s from './palette.module.css';
 
 interface Command {
@@ -17,13 +31,22 @@ interface Command {
 }
 
 export interface CommandPaletteProps {
-  slug?: string;
+  project?: ShellProject;
   open: boolean;
   onClose: () => void;
 }
 
-/** ⌘K: search the project and run quick commands. */
-export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
+const HIT_ICON: Record<SearchHit['kind'], typeof Search> = {
+  document: FileText,
+  note: StickyNote,
+  source: Link2,
+  annotation: MessageSquare,
+  session: Presentation,
+  assignment: ClipboardList,
+};
+
+/** ⌘K: search the workspace and run quick commands. */
+export function CommandPalette({ project, open, onClose }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -31,6 +54,7 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
+  const slug = project?.slug;
 
   const go = useCallback(
     (href: string) => {
@@ -40,39 +64,53 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
     [onClose, router],
   );
 
-  const commands: Command[] = slug
-    ? [
-        { id: 'overview', label: 'Overview', icon: Waypoints, run: () => go(`/p/${slug}/overview`) },
-        { id: 'documents', label: 'Documents', icon: FileText, run: () => go(`/p/${slug}/documents`) },
-        { id: 'notes', label: 'Notes', icon: StickyNote, run: () => go(`/p/${slug}/notes`) },
-        { id: 'sources', label: 'Sources', icon: Link2, run: () => go(`/p/${slug}/sources`) },
-        { id: 'experiments', label: 'Experiments', icon: Waypoints, run: () => go(`/p/${slug}/experiments`) },
-        { id: 'graph', label: 'Graph', icon: Waypoints, run: () => go(`/p/${slug}/notes/graph`) },
-        { id: 'chat', label: 'Chat', icon: MessageSquare, run: () => go(`/p/${slug}/chat`) },
-        {
-          id: 'discover',
-          label: 'Discover sources',
-          hint: 'AI search',
-          icon: Search,
-          run: () => go(`/p/${slug}/discover`),
-        },
-        {
-          id: 'new-note',
-          label: 'New note',
-          hint: 'Notes tab',
-          icon: Plus,
-          run: () => go(`/p/${slug}/notes?new=1`),
-        },
-        {
-          id: 'add-doc',
-          label: 'Add document',
-          hint: 'Documents tab',
-          icon: Plus,
-          run: () => go(`/p/${slug}/documents?add=1`),
-        },
-        { id: 'settings', label: 'Project settings', icon: Search, run: () => go(`/p/${slug}/settings`) },
-      ]
-    : [{ id: 'settings', label: 'Settings', icon: Search, run: () => go('/settings') }];
+  let commands: Command[];
+  if (!project) {
+    commands = [{ id: 'settings', label: 'Settings', icon: Search, run: () => go('/settings') }];
+  } else {
+    const base = baseFor(project.kind, project.slug);
+    const common: Command[] = [
+      { id: 'overview', label: 'Overview', icon: Waypoints, run: () => go(`${base}/overview`) },
+      { id: 'documents', label: 'Documents', icon: FileText, run: () => go(`${base}/documents`) },
+      { id: 'notes', label: 'Notes', icon: StickyNote, run: () => go(`${base}/notes`) },
+      { id: 'graph', label: 'Graph', icon: Waypoints, run: () => go(`${base}/notes/graph`) },
+      { id: 'chat', label: 'Chat', icon: MessageSquare, run: () => go(`${base}/chat`) },
+      {
+        id: 'new-note',
+        label: 'New note',
+        hint: 'Notes tab',
+        icon: Plus,
+        run: () => go(`${base}/notes?new=1`),
+      },
+      {
+        id: 'add-doc',
+        label: 'Add document',
+        hint: 'Documents tab',
+        icon: Plus,
+        run: () => go(`${base}/documents?add=1`),
+      },
+    ];
+    const research: Command[] = [
+      { id: 'sources', label: 'Sources', icon: Link2, run: () => go(`${base}/sources`) },
+      { id: 'experiments', label: 'Experiments', icon: Waypoints, run: () => go(`${base}/experiments`) },
+      {
+        id: 'discover',
+        label: 'Discover sources',
+        hint: 'AI search',
+        icon: Search,
+        run: () => go(`${base}/discover`),
+      },
+      { id: 'settings', label: 'Project settings', icon: Search, run: () => go(`${base}/settings`) },
+    ];
+    const course: Command[] = [
+      { id: 'lectures', label: 'Lectures', icon: Presentation, run: () => go(`${base}/lectures`) },
+      { id: 'recitations', label: 'Recitations', icon: Users, run: () => go(`${base}/recitations`) },
+      { id: 'homework', label: 'Homework', icon: ClipboardList, run: () => go(`${base}/homework`) },
+      { id: 'tests', label: 'Tests', icon: GraduationCap, run: () => go(`${base}/tests`) },
+      { id: 'settings', label: 'Course settings', icon: Search, run: () => go(`${base}/settings`) },
+    ];
+    commands = [...common, ...(project.kind === 'course' ? course : research)];
+  }
   const q = query.trim().toLowerCase();
   const matchedCommands = q ? commands.filter((c) => c.label.toLowerCase().includes(q)) : commands;
   const items: { key: string; render: () => React.ReactNode; run: () => void }[] = [
@@ -92,17 +130,7 @@ export function CommandPalette({ slug, open, onClose }: CommandPaletteProps) {
       run: () => go(h.href),
       render: () => (
         <>
-          <Icon
-            icon={
-              h.kind === 'document'
-                ? FileText
-                : h.kind === 'note'
-                  ? StickyNote
-                  : h.kind === 'source'
-                    ? Link2
-                    : MessageSquare
-            }
-          />
+          <Icon icon={HIT_ICON[h.kind] ?? MessageSquare} />
           <span className={s.text}>
             <span className={s.label}>{h.title}</span>
             {h.snippet && <span className={s.snippet}>{h.snippet}</span>}

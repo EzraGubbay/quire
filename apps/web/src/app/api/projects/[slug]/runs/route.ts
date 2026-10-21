@@ -2,6 +2,7 @@ import { RUN_STATUSES } from '@quire/shared';
 import { z } from 'zod';
 import { apiError, json, projectFromSlug, readJson } from '@/lib/api';
 import { createRun, ensureExperiment } from '@/lib/experiments';
+import { projectBase } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string }
       id: run.id,
       name: run.name,
       experimentId: experiment.id,
-      url: `/p/${slug}/experiments/${experiment.id}/runs/${run.id}`,
+      url: `${projectBase(project)}/experiments/${experiment.id}/runs/${run.id}`,
     },
     201,
   );

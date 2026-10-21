@@ -22,8 +22,80 @@ export function mockEmbedding(text: string, dims = 1536): number[] {
 
 const failedOnce = new Set<string>();
 
-export function mockChat(messages: ChatMessageIn[], model: string): ChatResult {
-  const last = messages[messages.length - 1]?.content ?? '';
+const textOf = (m: ChatMessageIn | undefined): string =>
+  !m
+    ? ''
+    : typeof m.content === 'string'
+      ? m.content
+      : m.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
+
+/** One-shot jobs mark their system prompt with `[task:synthesis]` etc. so the mock can answer in the right shape. */
+function taskOf(system: string): string | null {
+  return system.match(/\[task:([a-z-]+)\]/)?.[1] ?? null;
+}
+
+const MOCK_SYNTHESIS = `> **Course**: mock · **Source**: raw notes
+
+## Overview
+
+**Definition:** A *mock synthesis* is the deterministic output used when \`AI_MOCK=1\`.
+
+**Theorem:** Every raw note has a synthesized counterpart.
+
+The raw note was read in full and expanded with context, filled tables and inline math such as $O(n \\log n)$.
+
+> **Q: What does the synthesized note add?**
+> Definitions, worked examples and a Q&A block for revision.
+
+> **Q: Where do slide references point?**
+> *(See slide 3)* markers name the slide a figure came from.
+`;
+
+const MOCK_TEST = JSON.stringify({
+  title: 'Mock test',
+  questions: [
+    {
+      n: 1,
+      body: 'Define a **race condition** and give one example from the lectures.',
+      modelAnswer:
+        'Two threads access shared state without synchronisation and the result depends on timing.',
+      concept: 'race conditions',
+      points: 2,
+    },
+    {
+      n: 2,
+      body: 'State the condition under which a reduction is parallelisable and justify it in two sentences.',
+      modelAnswer: 'The operator must be associative; then partial results can be combined in any order.',
+      concept: 'reductions',
+      points: 3,
+    },
+  ],
+});
+
+/** Points at the first note and heading listed in the prompt's index, so the e2e re-read list has one real target. */
+function mockReread(prompt: string): string {
+  const note = prompt.match(/note "[^"]*" id=([0-9a-f-]{36})/);
+  const heading = prompt.match(/\(slug: ([^)]+)\)/);
+  const items = note
+    ? [
+        {
+          questionN: 1,
+          kind: 'note',
+          noteId: note[1],
+          heading: heading?.[1] ?? '',
+          reason: 'The missed definition is in this section. (AI_MOCK)',
+        },
+      ]
+    : [];
+  return JSON.stringify({ items });
+}
+
+export function mockChat(
+  messages: ChatMessageIn[],
+  model: string,
+  opts: { json?: boolean } = {},
+): ChatResult {
+  const last = textOf(messages[messages.length - 1]);
   // Test hook: the first attempt at a question containing MOCK_FAIL_ONCE fails like an OpenAI 500; the next succeeds.
   if (last.includes('MOCK_FAIL_ALWAYS')) {
     const err = new Error('The server had an error processing your request. (mock)') as Error & {
@@ -40,11 +112,19 @@ export function mockChat(messages: ChatMessageIn[], model: string): ChatResult {
     err.status = 500;
     throw err;
   }
-  const system = messages.find((m) => m.role === 'system')?.content ?? '';
-  const cites = [...system.matchAll(/^\[(\d+)\]/gm)].map((m) => m[1]).slice(0, 2);
-  const text = `Mock answer to “${last.slice(0, 60)}”.${cites.length ? ` Based on ${cites.map((c) => `[${c}]`).join(' and ')}.` : ''} (AI_MOCK)`;
+  const system = textOf(messages.find((m) => m.role === 'system'));
+  const task = taskOf(system);
+  let text: string;
+  if (task === 'synthesis') text = MOCK_SYNTHESIS;
+  else if (task === 'test') text = MOCK_TEST;
+  else if (task === 'reread') text = mockReread(last);
+  else if (opts.json) text = '{}';
+  else {
+    const cites = [...system.matchAll(/^\[(\d+)\]/gm)].map((m) => m[1]).slice(0, 2);
+    text = `Mock answer to “${last.slice(0, 60)}”.${cites.length ? ` Based on ${cites.map((c) => `[${c}]`).join(' and ')}.` : ''} (AI_MOCK)`;
+  }
   const usage: Usage = {
-    input: Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4),
+    input: Math.ceil(messages.reduce((n, m) => n + textOf(m).length, 0) / 4),
     cached: 0,
     output: Math.ceil(text.length / 4),
   };

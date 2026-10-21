@@ -20,7 +20,7 @@ import {
 } from '@/lib/documents';
 import { downloadPdf, type PaperMeta, parseReference, resolveReference } from '@/lib/ingest';
 import { syncLinks } from '@/lib/notes';
-import { getProjectBySlug } from '@/lib/projects';
+import { getProjectBySlug, projectBase } from '@/lib/projects';
 
 export interface ActionState {
   error?: string;
@@ -62,8 +62,8 @@ export async function uploadPdfAction(_prev: ActionState, formData: FormData): P
     return { error: `Could not read that PDF: ${(err as Error).message}` };
   }
   after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
-  revalidatePath(`/p/${slug}/documents`);
-  redirect(`/p/${slug}/documents/${doc.id}`);
+  revalidatePath(`${projectBase(project)}/documents`);
+  redirect(`${projectBase(project)}/documents/${doc.id}`);
 }
 
 const markdownSchema = z.object({
@@ -87,8 +87,8 @@ export async function createMarkdownAction(_prev: ActionState, formData: FormDat
     parsed.data.folderId,
   );
   after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
-  revalidatePath(`/p/${parsed.data.slug}/documents`);
-  redirect(`/p/${parsed.data.slug}/documents/${doc.id}`);
+  revalidatePath(`${projectBase(project)}/documents`);
+  redirect(`${projectBase(project)}/documents/${doc.id}`);
 }
 
 const folderSchema = z.object({
@@ -106,7 +106,7 @@ export async function createFolderAction(_prev: ActionState, formData: FormData)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(parsed.data.slug);
   await createFolder(project.id, parsed.data.name, parsed.data.parentId);
-  revalidatePath(`/p/${parsed.data.slug}/documents`);
+  revalidatePath(`${projectBase(project)}/documents`);
   return { ok: true };
 }
 
@@ -115,13 +115,13 @@ export async function renameFolderAction(slug: string, folderId: string, name: s
   const clean = name.trim().slice(0, 80);
   if (!clean) return;
   await renameFolder(project.id, folderId, clean);
-  revalidatePath(`/p/${slug}/documents`);
+  revalidatePath(`${projectBase(project)}/documents`);
 }
 
 export async function deleteFolderAction(slug: string, folderId: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteFolder(project.id, folderId);
-  revalidatePath(`/p/${slug}/documents`);
+  revalidatePath(`${projectBase(project)}/documents`);
 }
 
 export async function moveDocumentAction(
@@ -131,15 +131,15 @@ export async function moveDocumentAction(
 ): Promise<void> {
   const project = await projectOr404(slug);
   await moveDocument(project.id, documentId, folderId);
-  revalidatePath(`/p/${slug}/documents`);
+  revalidatePath(`${projectBase(project)}/documents`);
 }
 
 export async function deleteDocumentAction(slug: string, documentId: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteDocument(project.id, documentId);
   await removeOwner(project.id, 'document', documentId);
-  revalidatePath(`/p/${slug}/documents`);
-  redirect(`/p/${slug}/documents`);
+  revalidatePath(`${projectBase(project)}/documents`);
+  redirect(`${projectBase(project)}/documents`);
 }
 
 const patchSchema = z.object({
@@ -152,6 +152,14 @@ const patchSchema = z.object({
   lastPage: z.number().int().min(1).optional(),
   progress: z.number().min(0).max(1).optional(),
   markdownBody: z.string().max(2_000_000).optional(),
+  sessionId: z.string().uuid().nullable().optional(),
+  examMeta: z
+    .object({
+      term: z.string().trim().max(60).optional(),
+      solutionDocumentId: z.string().uuid().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export async function updateDocumentAction(
@@ -167,7 +175,7 @@ export async function updateDocumentAction(
     await syncLinks(project.id, 'document', documentId, parsed.data.markdownBody);
     after(() => indexOwner(project.id, 'document', documentId).catch(() => {}));
   }
-  revalidatePath(`/p/${slug}/documents/${documentId}`);
+  revalidatePath(`${projectBase(project)}/documents/${documentId}`);
   return { ok: true };
 }
 
@@ -216,8 +224,8 @@ export async function importReferenceAction(_prev: ActionState, formData: FormDa
     doc = await createPaperStub(project.id, base);
   }
   after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
-  revalidatePath(`/p/${slug}/documents`);
-  redirect(`/p/${slug}/documents/${doc.id}`);
+  revalidatePath(`${projectBase(project)}/documents`);
+  redirect(`${projectBase(project)}/documents/${doc.id}`);
 }
 
 /** Upload a PDF into a paper record that has metadata but no file yet. */
@@ -234,6 +242,6 @@ export async function attachPdfAction(_prev: ActionState, formData: FormData): P
   } catch (err) {
     return { error: `Could not read that PDF: ${(err as Error).message}` };
   }
-  revalidatePath(`/p/${slug}/documents/${documentId}`);
+  revalidatePath(`${projectBase(project)}/documents/${documentId}`);
   return { ok: true };
 }

@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import NextLink from 'next/link';
 import { useActionState, useState, useTransition } from 'react';
 import { type ActionState, createRunAction, deleteExperimentAction } from '@/app/actions/experiments';
+import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/field';
 import type { Experiment, Run } from '@/db/schema';
@@ -22,6 +23,7 @@ export function ExperimentView({
   runs: Run[];
   readOnly?: boolean;
 }) {
+  const { base } = useProject();
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState<ActionState, FormData>(createRunAction, {});
   const [, start] = useTransition();
@@ -30,7 +32,7 @@ export function ExperimentView({
   ].slice(0, 6);
   return (
     <div className={s.wrap}>
-      <NextLink href={`/p/${slug}/experiments`} className={s.crumb}>
+      <NextLink href={`${base}/experiments`} className={s.crumb}>
         <Icon icon={ArrowLeft} /> Experiments
       </NextLink>
       <div className={s.head}>
@@ -77,7 +79,7 @@ export function ExperimentView({
             {runs.map((r) => (
               <tr key={r.id}>
                 <td>
-                  <NextLink href={`/p/${slug}/experiments/${experiment.id}/runs/${r.id}`}>{r.name}</NextLink>
+                  <NextLink href={`${base}/experiments/${experiment.id}/runs/${r.id}`}>{r.name}</NextLink>
                   <div className={s.mono}>{paramsLine(r.params as Record<string, unknown>)}</div>
                 </td>
                 <td>

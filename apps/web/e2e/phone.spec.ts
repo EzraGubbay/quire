@@ -145,3 +145,35 @@ test('phone: flags, immersive reader (bar, zoom, sheets), folder sheet, theme se
   await page.getByRole('radio', { name: 'Light' }).check();
   await expect(page.locator('.folio')).toHaveAttribute('data-theme', 'light');
 });
+
+test('phone: course shell (tab bar, More sheet with the side switch), lecture reader without the split pane', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await context.addCookies([
+    { name: 'quire.platform', value: 'phone', url: baseURL ?? 'http://localhost:3000' },
+  ]);
+  await page.goto('/courses');
+  await page.getByRole('button', { name: 'New course' }).click();
+  await page.getByLabel('Name').fill(`Phone course ${Date.now()}`);
+  await page.getByRole('button', { name: 'Create course' }).click();
+  await page.waitForURL(/\/c\/([^/]+)\/overview$/);
+  const slug = page.url().match(/\/c\/([^/]+)\//)?.[1] as string;
+  const tabs = page.getByTestId('tab-bar');
+  await expect(tabs.getByRole('link', { name: 'Lectures' })).toBeVisible();
+  await tabs.getByRole('button', { name: 'More' }).click();
+  const more = page.getByTestId('more-nav');
+  await expect(more.getByRole('link', { name: 'Homework' })).toBeVisible();
+  await expect(more.getByRole('link', { name: 'Tests' })).toBeVisible();
+  await expect(more.getByRole('radio', { name: 'Courses' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Lectures is a list only on phones (no drop zone); a lecture with a deck opens as the plain reader.
+  await tabs.getByRole('link', { name: 'Lectures' }).click();
+  await page.waitForURL(/\/lectures$/);
+  await expect(page.getByRole('button', { name: 'Add decks' })).toHaveCount(0);
+  await page.goto(`/c/${slug}/homework`);
+  await expect(page.getByRole('heading', { name: 'Homework' })).toBeVisible();
+  await page.goto(`/c/${slug}/tests`);
+  await expect(page.getByRole('button', { name: 'Weekly test', exact: true })).toHaveCount(0);
+});

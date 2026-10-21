@@ -343,3 +343,18 @@
 .scope a {
   color: inherit;
 }
+
+/* Homework tutor: the labelled full-solution toggle under the chat switcher. */
+.tutorToggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--eg-rule);
+  font: 400 12.5px / 1.4 var(--eg-font-ui);
+  color: var(--eg-text-2);
+  cursor: pointer;
+}
+.tutorToggle input {
+  margin-top: 3px;
+}

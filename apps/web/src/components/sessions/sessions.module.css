@@ -1,0 +1,261 @@
+.wrap {
+  position: relative;
+  width: min(1000px, 100% - 48px);
+  margin: 32px auto;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  min-height: 60vh;
+}
+.wrap[data-dragging] {
+  outline: 2px dashed var(--eg-accent);
+  outline-offset: 12px;
+  border-radius: var(--eg-radius-card);
+}
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title {
+  margin: 0;
+  font: 600 28px / 1.15 var(--eg-font-heading);
+  letter-spacing: -0.01em;
+}
+.sub {
+  margin: 4px 0 0;
+  color: var(--eg-text-2);
+  max-width: 60ch;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.hiddenForm {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+.error {
+  margin: 0;
+  color: var(--eg-accent-text);
+}
+.progress {
+  margin: 0;
+  color: var(--eg-muted);
+  font: 400 13px / 1.4 var(--eg-font-ui);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  border: 1px solid var(--eg-rule-2);
+  border-radius: var(--eg-radius-card);
+  background: var(--eg-surface);
+  overflow: hidden;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 0;
+  border-top: 1px solid var(--eg-rule-2);
+  min-height: 56px;
+}
+.row:first-child {
+  border-top: 0;
+}
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  color: inherit;
+  text-decoration: none;
+}
+.rowMain:hover {
+  background: var(--eg-surface-2);
+}
+.num {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 52px;
+  font: 500 14px / 1 var(--eg-font-mono);
+  color: var(--eg-muted);
+}
+.rowText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rowTitle {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowMeta {
+  color: var(--eg-muted);
+  font-size: 12.5px;
+}
+.rowActions {
+  display: inline-flex;
+  gap: 2px;
+}
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--eg-radius-control);
+  color: var(--eg-muted);
+}
+.iconBtn:hover {
+  color: var(--eg-text);
+  background: var(--eg-surface-2);
+}
+.dropHint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  font: 600 18px / 1 var(--eg-font-heading);
+  color: var(--eg-accent-text);
+  background: color-mix(in srgb, var(--eg-bg) 70%, transparent);
+  border-radius: var(--eg-radius-card);
+}
+.form {
+  display: grid;
+  gap: 14px;
+}
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .wrap {
+    width: calc(100% - 24px);
+    margin: 16px auto;
+  }
+  .head {
+    flex-wrap: wrap;
+  }
+  .formRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Side-by-side note pane on the lecture page. */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.paneBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--eg-rule);
+  background: var(--eg-surface);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.paneTitle {
+  font: 600 13px / 1.2 var(--eg-font-ui);
+  color: var(--eg-text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.paneStatus {
+  font: 400 12px / 1 var(--eg-font-mono);
+  color: var(--eg-muted);
+}
+.paneLink {
+  display: inline-flex;
+  padding: 6px;
+  color: var(--eg-text-2);
+  border-radius: var(--eg-radius-control);
+}
+.paneLink:hover {
+  background: var(--eg-surface-2);
+  color: var(--eg-text);
+}
+.paneHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 400 12px / 1 var(--eg-font-ui);
+  color: var(--eg-muted);
+}
+.paneEditor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.paneEditor > * {
+  flex: 1;
+  min-height: 0;
+}
+.emptyDeck {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+.deckSwitch {
+  display: flex;
+  gap: 6px;
+  padding: 6px 16px 0;
+  flex-wrap: wrap;
+}
+.deckChip {
+  font: 500 12px / 1 var(--eg-font-ui);
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--eg-rule);
+  color: var(--eg-text-2);
+  text-decoration: none;
+}
+.deckChip[data-active] {
+  background: var(--eg-accent-soft);
+  color: var(--eg-accent-text);
+  border-color: var(--eg-accent);
+}
+.noteLink {
+  position: fixed;
+  right: 16px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  font: 600 13px / 1 var(--eg-font-ui);
+  color: var(--eg-accent-ink);
+  background: var(--eg-accent);
+  padding: 10px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(20, 16, 12, 0.2);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--eg-text-2);
+  text-decoration: none;
+  font: 500 13px / 1 var(--eg-font-ui);
+  margin-bottom: 6px;
+}

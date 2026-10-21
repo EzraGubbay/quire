@@ -1,23 +1,52 @@
 'use client';
 
 import { Icon } from '@ezragubbay/folio';
+import type { ThreadMode } from '@quire/shared';
 import { MessageSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { type AskContext, askContextAction } from '@/app/actions/chat';
 import { AskSlideover } from './ask-slideover';
 
-/** App-bar "Ask" button plus the slide-over. Other components can open it by dispatching `quire:ask` with {documentId, documentTitle}. */
+export interface AskDetail {
+  documentId?: string;
+  documentTitle?: string;
+  /** Homework: tutor-hint opens a hints-only chat scoped to a question. */
+  mode?: ThreadMode;
+  questionId?: string;
+  questionLabel?: string;
+}
+
+interface Scope {
+  documentId: string | null;
+  documentTitle: string | null;
+  mode: ThreadMode;
+  questionId: string | null;
+  questionLabel: string | null;
+}
+
+const EMPTY: Scope = {
+  documentId: null,
+  documentTitle: null,
+  mode: 'default',
+  questionId: null,
+  questionLabel: null,
+};
+
+/** App-bar "Ask" button plus the slide-over. Other components open it by dispatching `quire:ask` with an AskDetail. */
 export function AskLauncher({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<{ documentId: string | null; documentTitle: string | null }>({
-    documentId: null,
-    documentTitle: null,
-  });
+  const [scope, setScope] = useState<Scope>(EMPTY);
   const [context, setContext] = useState<AskContext | null>(null);
   useEffect(() => {
     const onAsk = (e: Event) => {
-      const d = (e as CustomEvent<{ documentId?: string; documentTitle?: string }>).detail ?? {};
-      setScope({ documentId: d.documentId ?? null, documentTitle: d.documentTitle ?? null });
+      const d = (e as CustomEvent<AskDetail>).detail ?? {};
+      setScope({
+        documentId: d.documentId ?? null,
+        documentTitle: d.documentTitle ?? null,
+        mode: d.mode ?? 'default',
+        questionId: d.questionId ?? null,
+        questionLabel: d.questionLabel ?? null,
+      });
       setContext(null);
       setOpen(true);
     };
@@ -26,16 +55,19 @@ export function AskLauncher({ slug }: { slug: string }) {
   }, []);
   // Fresh context every time the panel opens: the chats in scope may have changed elsewhere.
   useEffect(() => {
-    if (open) askContextAction(slug, scope.documentId).then(setContext);
-  }, [open, slug, scope.documentId]);
+    if (open)
+      askContextAction(slug, scope.documentId, { mode: scope.mode, questionId: scope.questionId }).then(
+        setContext,
+      );
+  }, [open, slug, scope.documentId, scope.mode, scope.questionId]);
   return (
     <>
       <button
         type="button"
         aria-label="Ask"
-        title="Ask this project (AI)"
+        title="Ask (AI)"
         onClick={() => {
-          setScope({ documentId: null, documentTitle: null });
+          setScope(EMPTY);
           setContext(null);
           setOpen(true);
         }}
@@ -57,6 +89,9 @@ export function AskLauncher({ slug }: { slug: string }) {
           onClose={() => setOpen(false)}
           documentId={scope.documentId}
           documentTitle={scope.documentTitle}
+          mode={scope.mode}
+          questionId={scope.questionId}
+          questionLabel={scope.questionLabel}
           context={context}
         />
       )}

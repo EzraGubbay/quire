@@ -1,10 +1,17 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
+import type { ThreadMode } from '@quire/shared';
 import { ExternalLink, Plus, X } from 'lucide-react';
 import NextLink from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { type AskContext, newThreadAction, threadMessagesAction } from '@/app/actions/chat';
+import {
+  type AskContext,
+  newThreadAction,
+  setThreadModeAction,
+  threadMessagesAction,
+} from '@/app/actions/chat';
+import { useProject } from '@/components/project-context';
 import type { ChatMessage } from '@/db/schema';
 import s from './chat.module.css';
 import { SpendBanner } from './spend-banner';
@@ -12,8 +19,8 @@ import { ThreadView } from './thread-view';
 
 /**
  * "Ask" from anywhere in a project, in a right-hand panel. Opens on the most recent chat in scope (the document's
- * chats, or the project-wide ones) rather than creating a new one; a new chat is created only when asked for, or
- * silently when the first question is sent and there is no chat yet.
+ * chats, a homework question's chats, or the project-wide ones) rather than creating a new one; a new chat is created
+ * only when asked for, or silently when the first question is sent and there is no chat yet.
  */
 export function AskSlideover({
   slug,
@@ -21,6 +28,9 @@ export function AskSlideover({
   onClose,
   documentId,
   documentTitle,
+  mode = 'default',
+  questionId,
+  questionLabel,
   context,
 }: {
   slug: string;
@@ -28,8 +38,12 @@ export function AskSlideover({
   onClose: () => void;
   documentId?: string | null;
   documentTitle?: string | null;
+  mode?: ThreadMode;
+  questionId?: string | null;
+  questionLabel?: string | null;
   context: AskContext;
 }) {
+  const { base } = useProject();
   const [threads, setThreads] = useState(context.threads);
   const [threadId, setThreadId] = useState<string | null>(context.threads[0]?.id ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>(context.messages);
@@ -49,11 +63,21 @@ export function AskSlideover({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  const tutor = mode !== 'default' || Boolean(questionId);
+  const current = threads.find((t) => t.id === threadId);
+  const currentMode: ThreadMode = (current?.mode as ThreadMode | undefined) ?? mode;
+
   // `reset` clears the view (New chat button); the first-question path keeps the optimistic messages in place.
   const create = useCallback(
     async (reset: boolean) => {
-      const id = await newThreadAction(slug, documentId ?? null);
-      setThreads((t) => [{ id, title: 'New chat', updatedAt: new Date() }, ...t]);
+      const id = await newThreadAction(slug, documentId ?? null, {
+        mode: tutor ? 'tutor-hint' : 'default',
+        questionId,
+      });
+      setThreads((t) => [
+        { id, title: 'New chat', updatedAt: new Date(), mode: tutor ? 'tutor-hint' : 'default' },
+        ...t,
+      ]);
       setThreadId(id);
       if (reset) {
         setMessages([]);
@@ -61,7 +85,7 @@ export function AskSlideover({
       }
       return id;
     },
-    [slug, documentId],
+    [slug, documentId, tutor, questionId],
   );
   const ensure = useCallback(() => create(false), [create]);
   const switchTo = async (id: string) => {
@@ -70,18 +94,27 @@ export function AskSlideover({
     setMessages(msgs);
     setView((v) => v + 1);
   };
+  const toggleMode = async () => {
+    if (!threadId) return;
+    const next: ThreadMode = currentMode === 'tutor-full' ? 'tutor-hint' : 'tutor-full';
+    await setThreadModeAction(slug, threadId, next);
+    setThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, mode: next } : t)));
+  };
 
   if (!open) return null;
   const { summary, configured } = context;
   const disabled = !configured || summary.state === 'capped' || summary.state === 'blocked';
+  const title = questionLabel
+    ? `Tutor · ${questionLabel}`
+    : documentTitle
+      ? `Ask about “${documentTitle}”`
+      : 'Ask this project';
   return (
     <>
       <div className={s.slideBackdrop} onClick={onClose} role="presentation" />
       <aside className={s.slide} role="dialog" aria-label="Ask">
         <div className={s.bar}>
-          <span className={s.title}>
-            {documentTitle ? `Ask about “${documentTitle}”` : 'Ask this project'}
-          </span>
+          <span className={s.title}>{title}</span>
           <Button variant="ghost" size="sm" aria-label="Close" icon={<Icon icon={X} />} onClick={onClose} />
         </div>
         <div className={s.switcher}>
@@ -104,7 +137,7 @@ export function AskSlideover({
           </Button>
           {threadId && (
             <NextLink
-              href={`/p/${slug}/chat/${threadId}`}
+              href={`${base}/chat/${threadId}`}
               className={s.switcherLink}
               aria-label="Open in Chat"
               title="Open in Chat"
@@ -113,6 +146,22 @@ export function AskSlideover({
             </NextLink>
           )}
         </div>
+        {tutor && (
+          <label className={s.tutorToggle} data-testid="tutor-toggle">
+            <input
+              type="checkbox"
+              checked={currentMode === 'tutor-full'}
+              disabled={!threadId}
+              onChange={() => void toggleMode()}
+            />
+            <span>
+              <strong>Full solution</strong>
+              {currentMode === 'tutor-full'
+                ? ' — on: the tutor may give complete solutions and code.'
+                : ' — off: hints, pointers to lectures and checks of your reasoning only.'}
+            </span>
+          </label>
+        )}
         <SpendBanner summary={summary} configured={configured} />
         <ThreadView
           slug={slug}
@@ -120,10 +169,11 @@ export function AskSlideover({
           initial={messages}
           disabled={disabled}
           compact
-          scopeTitle={documentTitle ?? null}
+          scopeTitle={questionLabel ?? documentTitle ?? null}
           mentionTargets={context.titles}
           onEnsureThread={ensure}
           resetKey={view}
+          tutor={tutor}
         />
       </aside>
     </>

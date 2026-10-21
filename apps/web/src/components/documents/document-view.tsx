@@ -2,18 +2,47 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { Anchor, AnnotationType, MarkdownAnchor, PdfAnchor } from '@quire/shared';
-import { ArrowLeft, MessageSquare, MessageSquarePlus, Minus, Pencil, Plus, Scan, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Download,
+  FileUp,
+  GraduationCap,
+  MessageSquare,
+  MessageSquarePlus,
+  Minus,
+  Pencil,
+  Plus,
+  Scan,
+  Trash2,
+} from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react';
+import {
+  type ReactNode,
+  useActionState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 import {
   createAnnotationAction,
   deleteAnnotationAction,
   updateAnnotationAction,
 } from '@/app/actions/annotations';
-import { deleteDocumentAction, updateDocumentAction } from '@/app/actions/documents';
+import {
+  type ActionState,
+  attachPdfAction,
+  deleteDocumentAction,
+  updateDocumentAction,
+} from '@/app/actions/documents';
 import { followWikiLinkAction } from '@/app/actions/notes';
+import { useProject } from '@/components/project-context';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Segmented } from '@/components/ui/segmented';
 import type { Annotation, Document } from '@/db/schema';
 import a11y from './annotations.module.css';
 import { AnnotationsList } from './annotations-list';
@@ -31,8 +60,17 @@ import { type PdfSelection, PdfViewer, type PdfViewerHandle } from './pdf-viewer
 import { ReaderChrome } from './reader-chrome';
 
 const PANEL_KEY = 'quire.annotations.open';
+const PANE_KEY = 'quire.session.pane';
 const FONT_KEY = 'quire.reader.fontScale';
 const STATUSES = ['unread', 'reading', 'done'] as const;
+
+export interface DocumentAside {
+  /** Label on the Note | Annotations toggle. */
+  label: string;
+  node: ReactNode;
+  /** Called with the current page so the aside can cite slides. */
+  onPage?: (page: number) => void;
+}
 
 export function DocumentView({
   slug,
@@ -43,6 +81,11 @@ export function DocumentView({
   canAnnotate = true,
   lite = false,
   platform = 'desktop',
+  aside,
+  backHref,
+  backLabel,
+  initialPage,
+  practiceExam,
 }: {
   slug: string;
   document: Document;
@@ -55,10 +98,34 @@ export function DocumentView({
   /** Memory-safe rendering and a simplified panel (feature documents.viewer = lite). */
   lite?: boolean;
   platform?: 'phone' | 'tablet' | 'desktop';
+  /** Lecture page: a second right-hand pane (the raw note) toggled against the annotations panel. */
+  aside?: DocumentAside;
+  backHref?: string;
+  backLabel?: string;
+  /** Open at this page (slide citations). */
+  initialPage?: number;
+  /** Practice Exams folder: term and solution picker. */
+  practiceExam?: { candidates: { id: string; title: string }[] };
 }) {
   const phone = platform === 'phone';
   const router = useRouter();
+  const { base } = useProject();
   const [pending, start] = useTransition();
+  // Lecture page: which pane the right column shows. The stored choice is applied after mount.
+  const [pane, setPane] = useState<'aside' | 'annotations'>('aside');
+  useEffect(() => {
+    if (!aside) return;
+    try {
+      const stored = window.localStorage.getItem(PANE_KEY);
+      if (stored === 'annotations' || stored === 'aside') setPane(stored);
+    } catch {}
+  }, [aside]);
+  const choosePane = (p: 'aside' | 'annotations') => {
+    setPane(p);
+    try {
+      window.localStorage.setItem(PANE_KEY, p);
+    } catch {}
+  };
   const viewer = useRef<PdfViewerHandle>(null);
   const mdView = useRef<MarkdownViewHandle>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,9 +212,11 @@ export function DocumentView({
     });
 
   // Save reading position at most every 1.5s and only when it changed.
+  const onPage = aside?.onPage;
   const onProgress = useCallback(
     (page: number, pageCount: number) => {
       setPos({ page, count: pageCount });
+      onPage?.(page);
       const progress = pageCount > 0 ? Math.max(lastSaved.current.progress, page / pageCount) : 0;
       if (page === lastSaved.current.page && progress === lastSaved.current.progress) return;
       if (progressTimer.current) clearTimeout(progressTimer.current);
@@ -161,13 +230,14 @@ export function DocumentView({
         void updateDocumentAction(slug, doc.id, patch);
       }, 1500);
     },
-    [slug, doc.id, doc.readingStatus],
+    [slug, doc.id, doc.readingStatus, onPage],
   );
 
   const addAnnotation = (anchor: Anchor | null) => {
     setSelection(null);
     window.getSelection()?.removeAllRanges();
     setCollapsed(false);
+    if (aside) choosePane('annotations');
     if (phone) setSheet('annotations');
     start(async () => {
       const row = await createAnnotationAction(slug, { documentId: doc.id, anchor, type: 'note', body: '' });
@@ -230,7 +300,7 @@ export function DocumentView({
       <PdfViewer
         ref={viewer}
         fileUrl={`/api/projects/${slug}/documents/${doc.id}/file`}
-        initialPage={doc.lastPage}
+        initialPage={initialPage ?? doc.lastPage}
         highlights={pdfHighlights}
         activeHighlightId={activeId}
         onProgress={onProgress}
@@ -382,11 +452,37 @@ export function DocumentView({
   return (
     <div className={s.wrap}>
       <div className={s.bar}>
-        <NextLink href={`/p/${slug}/documents`} className={s.back}>
-          <Icon icon={ArrowLeft} /> Documents
+        <NextLink href={backHref ?? `${base}/documents`} className={s.back}>
+          <Icon icon={ArrowLeft} /> {backLabel ?? 'Documents'}
         </NextLink>
         <span className={s.barTitle}>{doc.title}</span>
         <div className={s.barRight}>
+          {aside && (
+            <Segmented<'aside' | 'annotations'>
+              aria-label="Right pane"
+              size="sm"
+              value={pane}
+              options={[
+                { value: 'aside', label: aside.label },
+                { value: 'annotations', label: `Annotations · ${annotations.length}` },
+              ]}
+              onChange={choosePane}
+            />
+          )}
+          {doc.originalPath && (
+            <a
+              href={`/api/projects/${slug}/documents/${doc.id}/original`}
+              className={s.chip}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title={`Download ${doc.originalName ?? 'the original deck'} (opens in PowerPoint/Keynote with animations)`}
+            >
+              <Icon icon={Download} /> .{doc.originalPath.split('.').pop()}
+            </a>
+          )}
+          {doc.kind === 'pdf' && doc.filePath && doc.originalPath && (
+            <ReplaceRendering slug={slug} documentId={doc.id} />
+          )}
+          {practiceExam && <ExamDetails slug={slug} doc={doc} candidates={practiceExam.candidates} />}
           {doc.kind === 'pdf' && doc.filePath && (
             <span className={s.zoom} role="group" aria-label="Zoom">
               <button
@@ -438,7 +534,7 @@ export function DocumentView({
           </button>
           {doc.kind === 'markdown' && (
             <NextLink
-              href={`/p/${slug}/documents/${doc.id}/edit`}
+              href={`${base}/documents/${doc.id}/edit`}
               className={s.chip}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
@@ -480,22 +576,130 @@ export function DocumentView({
             </div>
           )}
         </div>
-        <AnnotationsPanel
-          annotations={annotations}
-          collapsed={collapsed}
-          onToggle={togglePanel}
-          activeId={activeId}
-          onHover={setActiveId}
-          onScrollTo={scrollToAnnotation}
-          onAddGeneral={() => addAnnotation(null)}
-          onChangeType={changeType}
-          onChangeBody={changeBody}
-          onDelete={remove}
-          onFollowLink={followLink}
-          linkTargets={linkTargets}
-          focusId={focusId}
-        />
+        {aside && pane === 'aside' ? (
+          <aside className={s.asideCol} aria-label={aside.label} data-testid="document-aside">
+            {aside.node}
+          </aside>
+        ) : (
+          <AnnotationsPanel
+            annotations={annotations}
+            collapsed={collapsed}
+            onToggle={togglePanel}
+            activeId={activeId}
+            onHover={setActiveId}
+            onScrollTo={scrollToAnnotation}
+            onAddGeneral={() => addAnnotation(null)}
+            onChangeType={changeType}
+            onChangeBody={changeBody}
+            onDelete={remove}
+            onFollowLink={followLink}
+            linkTargets={linkTargets}
+            focusId={focusId}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+/** Swap the PDF rendering of a deck (e.g. one exported from PowerPoint) while keeping the original file. */
+function ReplaceRendering({ slug, documentId }: { slug: string; documentId: string }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState<ActionState, FormData>(attachPdfAction, {});
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (state.ok) router.refresh();
+  }, [state.ok, router]);
+  return (
+    <form action={action} style={{ display: 'contents' }}>
+      <input type="hidden" name="slug" value={slug} />
+      <input type="hidden" name="documentId" value={documentId} />
+      <input
+        ref={input}
+        type="file"
+        name="file"
+        accept="application/pdf,.pdf"
+        className={s.replace}
+        aria-label="Replace rendering (PDF)"
+        onChange={() => input.current?.form?.requestSubmit()}
+      />
+      <button
+        type="button"
+        className={s.chip}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        disabled={pending}
+        title={state.error ?? 'Replace the PDF rendering with one exported from PowerPoint'}
+        onClick={() => input.current?.click()}
+      >
+        <Icon icon={FileUp} /> {pending ? 'Replacing…' : 'Replace rendering'}
+      </button>
+    </form>
+  );
+}
+
+/** Practice Exams folder: the exam's term and which document holds its solutions. */
+function ExamDetails({
+  slug,
+  doc,
+  candidates,
+}: {
+  slug: string;
+  doc: Document;
+  candidates: { id: string; title: string }[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [, start] = useTransition();
+  const meta = doc.examMeta ?? {};
+  const save = (patch: { term?: string; solutionDocumentId?: string | null }) =>
+    start(async () => {
+      await updateDocumentAction(slug, doc.id, { examMeta: { ...meta, ...patch } });
+      router.refresh();
+    });
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button"
+        className={s.chip}
+        data-active={open || undefined}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+        onClick={() => setOpen((o) => !o)}
+        title="Exam details (term, solutions)"
+      >
+        <Icon icon={GraduationCap} /> {meta.term ? meta.term : 'Exam details'}
+      </button>
+      {open && (
+        <div className={s.popover} data-testid="exam-details">
+          <label className={s.popoverField}>
+            <span>Term</span>
+            <input
+              className={s.popoverInput}
+              defaultValue={meta.term ?? ''}
+              placeholder="2024 A, Moed B"
+              onBlur={(e) => e.target.value !== (meta.term ?? '') && save({ term: e.target.value })}
+            />
+          </label>
+          <label className={s.popoverField}>
+            <span>Solutions</span>
+            <select
+              className={s.popoverInput}
+              value={meta.solutionDocumentId ?? ''}
+              onChange={(e) => save({ solutionDocumentId: e.target.value || null })}
+            >
+              <option value="">none</option>
+              {candidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className={s.popoverHint}>
+            Exams with a solutions document attached calibrate tri-weekly tests; a document chosen as
+            solutions does not count as an exam.
+          </p>
+        </div>
+      )}
+    </span>
   );
 }

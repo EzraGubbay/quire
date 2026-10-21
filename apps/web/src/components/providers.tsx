@@ -3,6 +3,7 @@
 import { FolioProvider } from '@ezragubbay/folio';
 import { MathJaxContext } from 'better-react-mathjax';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ToastProvider } from '@/components/ui/toast';
 import type { ThemeSetting } from '@/lib/theme';
 
 type Theme = 'light' | 'dark';
@@ -93,7 +94,7 @@ export function Providers({ children, themeSetting }: { children: ReactNode; the
     <ThemeContext.Provider value={value}>
       <FolioProvider theme={theme}>
         <MathJaxContext version={3} src="/mathjax/tex-mml-chtml.js" config={MATHJAX}>
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </MathJaxContext>
       </FolioProvider>
     </ThemeContext.Provider>

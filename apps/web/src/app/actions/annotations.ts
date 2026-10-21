@@ -8,7 +8,7 @@ import type { Annotation } from '@/db/schema';
 import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { createAnnotation, deleteAnnotation, updateAnnotation } from '@/lib/annotations';
 import { syncLinks } from '@/lib/notes';
-import { getProjectBySlug } from '@/lib/projects';
+import { getProjectBySlug, projectBase } from '@/lib/projects';
 
 const createSchema = z.object({
   documentId: z.string().uuid(),
@@ -27,7 +27,7 @@ export async function createAnnotationAction(
   const row = await createAnnotation(project.id, parsed);
   if (parsed.body) await syncLinks(project.id, 'annotation', row.id, parsed.body);
   after(() => indexOwner(project.id, 'annotation', row.id).catch(() => {}));
-  revalidatePath(`/p/${slug}/documents/${parsed.documentId}`);
+  revalidatePath(`${projectBase(project)}/documents/${parsed.documentId}`);
   return row;
 }
 
@@ -48,7 +48,7 @@ export async function updateAnnotationAction(
   await updateAnnotation(project.id, id, parsed);
   if (parsed.body !== undefined) await syncLinks(project.id, 'annotation', id, parsed.body);
   after(() => indexOwner(project.id, 'annotation', id).catch(() => {}));
-  revalidatePath(`/p/${slug}/documents/${documentId}`);
+  revalidatePath(`${projectBase(project)}/documents/${documentId}`);
 }
 
 export async function deleteAnnotationAction(slug: string, documentId: string, id: string): Promise<void> {
@@ -56,5 +56,5 @@ export async function deleteAnnotationAction(slug: string, documentId: string, i
   if (!project) throw new Error('project not found');
   await deleteAnnotation(project.id, id);
   await removeOwner(project.id, 'annotation', id);
-  revalidatePath(`/p/${slug}/documents/${documentId}`);
+  revalidatePath(`${projectBase(project)}/documents/${documentId}`);
 }

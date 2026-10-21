@@ -14,6 +14,7 @@ import {
   updateRunNotesAction,
 } from '@/app/actions/experiments';
 import { MarkdownView } from '@/components/documents/markdown-view';
+import { useProject } from '@/components/project-context';
 import type { Experiment, Observation, Run, RunArtifact, RunLog, RunMetric } from '@/db/schema';
 import s from './experiments.module.css';
 import { MetricChart } from './metric-chart';
@@ -38,6 +39,7 @@ export function RunView({
   observationHtml: Record<string, string>;
 }) {
   const router = useRouter();
+  const { base } = useProject();
   const [pending, start] = useTransition();
   const [obs, setObs] = useState('');
   const [notes, setNotes] = useState(run.notes);
@@ -47,7 +49,7 @@ export function RunView({
   const refresh = () => router.refresh();
   return (
     <div className={s.wrap}>
-      <NextLink href={`/p/${slug}/experiments/${experiment.id}`} className={s.crumb}>
+      <NextLink href={`${base}/experiments/${experiment.id}`} className={s.crumb}>
         <Icon icon={ArrowLeft} /> {experiment.name}
       </NextLink>
       <div className={s.head}>

@@ -11,6 +11,7 @@ import {
   renameThread,
   touchThread,
 } from '@/lib/chat';
+import { projectBase } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,11 +60,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
       try {
         const res = await answer({
           projectId: project.id,
-          slug,
+          base: projectBase(project),
           projectName: project.name,
           question,
           history,
           documentId: thread.documentId,
+          mode: thread.mode,
+          course: project.kind === 'course',
           onDelta: (text) => send({ type: 'delta', text }),
           signal: req.signal,
         });

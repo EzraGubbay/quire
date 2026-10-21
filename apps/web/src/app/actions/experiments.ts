@@ -15,7 +15,7 @@ import {
   updateExperiment,
   updateRun,
 } from '@/lib/experiments';
-import { getProjectBySlug } from '@/lib/projects';
+import { getProjectBySlug, projectBase } from '@/lib/projects';
 
 export interface ActionState {
   error?: string;
@@ -45,15 +45,15 @@ export async function createExperimentAction(_prev: ActionState, formData: FormD
   const exp = await ensureExperiment(project.id, parsed.data.name, parsed.data.description);
   if (parsed.data.description && !exp.description)
     await updateExperiment(project.id, exp.id, { description: parsed.data.description });
-  revalidatePath(`/p/${parsed.data.slug}/experiments`);
-  redirect(`/p/${parsed.data.slug}/experiments/${exp.id}`);
+  revalidatePath(`${projectBase(project)}/experiments`);
+  redirect(`${projectBase(project)}/experiments/${exp.id}`);
 }
 
 export async function deleteExperimentAction(slug: string, id: string): Promise<void> {
   const project = await projectOr404(slug);
   await deleteExperiment(project.id, id);
-  revalidatePath(`/p/${slug}/experiments`);
-  redirect(`/p/${slug}/experiments`);
+  revalidatePath(`${projectBase(project)}/experiments`);
+  redirect(`${projectBase(project)}/experiments`);
 }
 
 const runSchema = z.object({
@@ -82,8 +82,8 @@ export async function createRunAction(_prev: ActionState, formData: FormData): P
     status: parsed.data.status,
     params,
   });
-  revalidatePath(`/p/${parsed.data.slug}/experiments/${parsed.data.experimentId}`);
-  redirect(`/p/${parsed.data.slug}/experiments/${parsed.data.experimentId}/runs/${run.id}`);
+  revalidatePath(`${projectBase(project)}/experiments/${parsed.data.experimentId}`);
+  redirect(`${projectBase(project)}/experiments/${parsed.data.experimentId}/runs/${run.id}`);
   void project;
 }
 
@@ -119,7 +119,7 @@ export async function setRunStatusAction(
   const found = await getRun(project.id, runId);
   if (!found) return;
   await updateRun(runId, { status });
-  revalidatePath(`/p/${slug}/experiments/${found.experiment.id}/runs/${runId}`);
+  revalidatePath(`${projectBase(project)}/experiments/${found.experiment.id}/runs/${runId}`);
 }
 
 export async function updateRunNotesAction(slug: string, runId: string, notes: string): Promise<void> {
@@ -127,7 +127,7 @@ export async function updateRunNotesAction(slug: string, runId: string, notes: s
   const found = await getRun(project.id, runId);
   if (!found) return;
   await updateRun(runId, { notes: notes.slice(0, 20000) });
-  revalidatePath(`/p/${slug}/experiments/${found.experiment.id}/runs/${runId}`);
+  revalidatePath(`${projectBase(project)}/experiments/${found.experiment.id}/runs/${runId}`);
 }
 
 export async function deleteRunAction(slug: string, runId: string): Promise<void> {
@@ -135,8 +135,8 @@ export async function deleteRunAction(slug: string, runId: string): Promise<void
   const found = await getRun(project.id, runId);
   if (!found) return;
   await deleteRun(runId);
-  revalidatePath(`/p/${slug}/experiments/${found.experiment.id}`);
-  redirect(`/p/${slug}/experiments/${found.experiment.id}`);
+  revalidatePath(`${projectBase(project)}/experiments/${found.experiment.id}`);
+  redirect(`${projectBase(project)}/experiments/${found.experiment.id}`);
 }
 
 export async function addObservationAction(slug: string, runId: string, body: string): Promise<void> {
@@ -144,7 +144,7 @@ export async function addObservationAction(slug: string, runId: string, body: st
   const found = await getRun(project.id, runId);
   if (!found || !body.trim()) return;
   await addObservation(runId, body.trim().slice(0, 20000));
-  revalidatePath(`/p/${slug}/experiments/${found.experiment.id}/runs/${runId}`);
+  revalidatePath(`${projectBase(project)}/experiments/${found.experiment.id}/runs/${runId}`);
 }
 
 export async function deleteObservationAction(slug: string, runId: string, id: string): Promise<void> {
@@ -152,5 +152,5 @@ export async function deleteObservationAction(slug: string, runId: string, id: s
   const found = await getRun(project.id, runId);
   if (!found) return;
   await deleteObservation(id);
-  revalidatePath(`/p/${slug}/experiments/${found.experiment.id}/runs/${runId}`);
+  revalidatePath(`${projectBase(project)}/experiments/${found.experiment.id}/runs/${runId}`);
 }

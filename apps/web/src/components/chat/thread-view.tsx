@@ -30,6 +30,7 @@ export function ThreadView({
   mentionTargets = [],
   onEnsureThread,
   resetKey,
+  tutor = false,
 }: {
   slug: string;
   /** Null until the first question creates the thread (see onEnsureThread). */
@@ -45,6 +46,8 @@ export function ThreadView({
   onEnsureThread?: () => Promise<string>;
   /** Bumped by the owner when a different chat is shown; `initial` is re-read only then. */
   resetKey?: number;
+  /** Homework tutor chat: different empty-state copy. */
+  tutor?: boolean;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Msg[]>(initial);
@@ -73,8 +76,8 @@ export function ThreadView({
   }, [resetKey]);
 
   useEffect(() => {
-    if(isAtBottomRef) {
-        bottom.current?.scrollIntoView({ block: 'end' });
+    if (isAtBottomRef.current) {
+      bottom.current?.scrollIntoView({ block: 'end' });
     }
   }, [messages]);
 
@@ -83,7 +86,7 @@ export function ThreadView({
     if (!lmnt) return;
     const atBottom = lmnt.scrollHeight - lmnt.scrollTop - lmnt.clientHeight <= 40;
     isAtBottomRef.current = atBottom;
-  }
+  };
 
   const run = useCallback(
     async (question: string, retry: boolean) => {
@@ -203,13 +206,20 @@ export function ThreadView({
 
   return (
     <>
-      <div className={s.messages} style={compact ? { padding: 16 } : undefined}>
+      <div
+        className={s.messages}
+        style={compact ? { padding: 16 } : undefined}
+        ref={containerRef}
+        onScroll={handleScroll}
+      >
         {messages.length === 0 && (
           <div className={s.empty}>
             <p>
-              {scopeTitle
-                ? `Ask about “${scopeTitle}”.`
-                : 'Ask about anything in this project: documents, notes, annotations, sources.'}{' '}
+              {tutor
+                ? `Tutor for ${scopeTitle ?? 'this assignment'}: say what you have tried and get a hint, a pointer to the lecture, or a check of your reasoning. Full solutions stay off unless you switch the toggle.`
+                : scopeTitle
+                  ? `Ask about “${scopeTitle}”.`
+                  : 'Ask about anything in this project: documents, notes, annotations, sources.'}{' '}
               Answers cite the passages they use.
               {mentionTargets.length > 0 && !scopeTitle
                 ? ' Type doc. or [[ to name a specific document.'
@@ -232,6 +242,7 @@ export function ThreadView({
             ref={textareaRef}
             className={s.input}
             aria-label="Question"
+            dir="auto"
             placeholder={
               disabled
                 ? 'AI is unavailable right now (see the notice above).'

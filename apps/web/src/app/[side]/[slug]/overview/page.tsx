@@ -1,0 +1,186 @@
+import { Card, CardRow, HighlightChip, Icon } from '@ezragubbay/folio';
+import { ANNOTATION_TYPE_LABEL } from '@quire/shared';
+import { FileText, FlaskConical, FolderOpen, StickyNote } from 'lucide-react';
+import NextLink from 'next/link';
+import { notFound } from 'next/navigation';
+import { GraphView } from '@/components/graph/graph-view';
+import { getGraph } from '@/lib/graph';
+import { listNotes } from '@/lib/notes';
+import { getCourseOverview, getOverview, recentRuns } from '@/lib/overview';
+import { currentFeature } from '@/lib/platform-server';
+import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { CourseOverview } from './course-overview';
+import s from './overview.module.css';
+
+export const dynamic = 'force-dynamic';
+
+const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const ago = (d: Date) => {
+  const m = Math.round((Date.now() - d.getTime()) / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 36) return `${h} h ago`;
+  return fmt(d);
+};
+
+export default async function OverviewPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const project = await getProjectBySlug(slug);
+  if (!project) notFound();
+  const base = projectBase(project);
+  if (project.kind === 'course') {
+    const o = await getCourseOverview(project.id);
+    return <CourseOverview project={project} base={base} o={o} />;
+  }
+  const graphLevel = (await currentFeature('graph')).level;
+  const [o, graph, notes, runs] = await Promise.all([
+    getOverview(project.id),
+    graphLevel === 'off' ? Promise.resolve(null) : getGraph(project.id, base),
+    listNotes(project.id),
+    recentRuns(project.id, 3),
+  ]);
+  return (
+    <div className={s.wrap}>
+      <header className={s.head}>
+        <h1 className={s.title}>{project.name}</h1>
+        <p className={s.meta}>
+          Started {fmt(project.createdAt)}
+          {o.lastActivity ? ` · last activity ${ago(o.lastActivity)}` : ''}
+        </p>
+        {project.description && <p className={s.desc}>{project.description}</p>}
+        <dl className={s.stats}>
+          <div>
+            <dt>Documents</dt>
+            <dd>{o.counts.documents}</dd>
+          </div>
+          <div>
+            <dt>Annotations</dt>
+            <dd>{o.counts.annotations}</dd>
+          </div>
+          <div>
+            <dt>Open questions</dt>
+            <dd>{o.counts.open}</dd>
+          </div>
+        </dl>
+      </header>
+      <div className={s.grid}>
+        <Card
+          title="Recent documents"
+          action={
+            <NextLink href={`${base}/documents`} className={s.more}>
+              All
+            </NextLink>
+          }
+        >
+          {o.recentDocuments.length === 0 ? (
+            <p className={s.muted}>
+              Nothing yet. Add a PDF, paste an arXiv id, or start a Markdown document.
+            </p>
+          ) : (
+            o.recentDocuments.map((d) => (
+              <CardRow
+                key={d.id}
+                icon={<Icon icon={d.kind === 'pdf' ? FileText : FolderOpen} />}
+                title={<NextLink href={`${base}/documents/${d.id}`}>{d.title}</NextLink>}
+                meta={[
+                  d.readingStatus,
+                  d.kind === 'pdf' && d.pageCount ? `${d.pageCount} pages` : null,
+                  d.year ? String(d.year) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            ))
+          )}
+        </Card>
+        <Card title="Open questions" action={<span className={s.more}>{o.counts.open}</span>}>
+          {o.openItems.length === 0 ? (
+            <p className={s.muted}>Question and Todo annotations will show up here.</p>
+          ) : (
+            o.openItems.map((a) => (
+              <CardRow
+                key={a.id}
+                title={
+                  a.documentId ? (
+                    <NextLink href={`${base}/documents/${a.documentId}`}>
+                      {a.body || a.quote || ANNOTATION_TYPE_LABEL[a.type]}
+                    </NextLink>
+                  ) : (
+                    a.body || ANNOTATION_TYPE_LABEL[a.type]
+                  )
+                }
+                meta={[a.documentTitle, a.pageNo ? `p.${a.pageNo}` : null].filter(Boolean).join(' · ')}
+                trailing={<HighlightChip kind={a.type === 'question' ? 'question' : 'todo'} />}
+              />
+            ))
+          )}
+        </Card>
+        <Card
+          title="Experiments"
+          action={
+            <NextLink href={`${base}/experiments`} className={s.more}>
+              All
+            </NextLink>
+          }
+        >
+          {runs.length === 0 ? (
+            <p className={s.muted}>
+              No runs yet. Start one from Python with quire-client and it shows up here.
+            </p>
+          ) : (
+            runs.map((r) => (
+              <CardRow
+                key={r.run.id}
+                icon={<Icon icon={FlaskConical} />}
+                title={
+                  <NextLink href={`${base}/experiments/${r.run.experimentId}/runs/${r.run.id}`}>
+                    {r.run.name}
+                  </NextLink>
+                }
+                meta={[r.experimentName, r.run.status, ago(r.run.createdAt)].join(' · ')}
+              />
+            ))
+          )}
+        </Card>
+        {graph ? (
+          <Card
+            title="Note graph"
+            action={
+              <NextLink href={`${base}/notes/graph`} className={s.more}>
+                Open
+              </NextLink>
+            }
+            className={s.wide}
+          >
+            <GraphView data={graph} width={640} height={320} legend={false} />
+          </Card>
+        ) : (
+          <Card
+            title="Recent notes"
+            action={
+              <NextLink href={`${base}/notes`} className={s.more}>
+                All
+              </NextLink>
+            }
+          >
+            {notes.length === 0 ? (
+              <p className={s.muted}>No notes yet.</p>
+            ) : (
+              notes
+                .slice(0, 5)
+                .map((n) => (
+                  <CardRow
+                    key={n.id}
+                    icon={<Icon icon={StickyNote} />}
+                    title={<NextLink href={`${base}/notes/${n.slug}`}>{n.title}</NextLink>}
+                    meta={ago(n.updatedAt)}
+                  />
+                ))
+            )}
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}

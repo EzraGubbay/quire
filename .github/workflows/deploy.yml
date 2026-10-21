@@ -31,6 +31,7 @@ jobs:
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quire"
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "backup=${image}-backup" >> "$GITHUB_OUTPUT"
+          echo "gotenberg=${image}-gotenberg" >> "$GITHUB_OUTPUT"
           echo "tag=${image}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
@@ -43,6 +44,17 @@ jobs:
             ${{ steps.meta.outputs.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build and push Gotenberg image (fonts for course decks)
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/gotenberg
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.gotenberg }}:${{ github.sha }}
+            ${{ steps.meta.outputs.gotenberg }}:latest
+          cache-from: type=gha,scope=gotenberg
+          cache-to: type=gha,mode=max,scope=gotenberg
       - name: Build and push backup image
         uses: docker/build-push-action@v6
         with:
@@ -75,7 +87,7 @@ jobs:
           echo "${prev:-}" > .previous_image
           sed -i "s#^QUIRE_IMAGE=.*#QUIRE_IMAGE=${TAG}#" .env
           grep -q '^QUIRE_IMAGE=' .env || echo "QUIRE_IMAGE=${TAG}" >> .env
-          docker compose pull app backup
+          docker compose pull app backup gotenberg
           docker compose up -d db
           docker compose up -d --remove-orphans
       - name: Health check

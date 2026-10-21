@@ -132,6 +132,17 @@ export function AiPanel({
             <Input name="embeddings" defaultValue={settings.models.embeddings} />
           </Field>
         </div>
+        <div className={s.row3}>
+          <Field label="Synthesis model" hint="Courses: raw note → study note (mid-tier)">
+            <Input name="synthesis" defaultValue={settings.models.synthesis} />
+          </Field>
+          <Field label="Weekly test model" hint="Recall tests on chosen lectures">
+            <Input name="testWeekly" defaultValue={settings.models.testWeekly} />
+          </Field>
+          <Field label="Tri-weekly test model" hint="Exam-style tests (strongest)">
+            <Input name="testTriweekly" defaultValue={settings.models.testTriweekly} />
+          </Field>
+        </div>
         <div className={s.row}>
           <Field
             label="Monthly cap (USD)"
@@ -172,6 +183,9 @@ export function AiPanel({
                 settings.models.answer,
                 settings.models.light,
                 settings.models.embeddings,
+                settings.models.synthesis,
+                settings.models.testWeekly,
+                settings.models.testTriweekly,
                 ...Object.keys(settings.prices),
               ]),
             ].map((m) => {

@@ -11,5 +11,14 @@ services:
       POSTGRES_DB: quire
     volumes:
       - pgdata-dev:/var/lib/postgresql/data
+  # Optional: deck conversion and test PDFs locally. Set GOTENBERG_URL=http://localhost:3100 in apps/web/.env.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "3100:3000"
+    command:
+      - gotenberg
+      - --api-timeout=240s
+      - --libreoffice-auto-start=false
 volumes:
   pgdata-dev:

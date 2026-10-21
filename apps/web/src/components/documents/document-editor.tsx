@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { updateDocumentAction } from '@/app/actions/documents';
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
+import { useProject } from '@/components/project-context';
 import type { Document } from '@/db/schema';
 import { renderMarkdownClient } from '@/lib/markdown-client';
 import s from './document-editor.module.css';
@@ -24,6 +25,7 @@ export function DocumentEditor({
   macros: string[];
 }) {
   const router = useRouter();
+  const { base } = useProject();
   const [title, setTitle] = useState(doc.title);
   const [body, setBody] = useState(doc.markdownBody ?? '');
   const [html, setHtml] = useState('');
@@ -65,7 +67,7 @@ export function DocumentEditor({
   return (
     <div className={s.wrap}>
       <div className={s.bar}>
-        <NextLink href={`/p/${slug}/documents/${doc.id}`} className={s.back}>
+        <NextLink href={`${base}/documents/${doc.id}`} className={s.back}>
           <Icon icon={ArrowLeft} /> Done editing
         </NextLink>
         <input

@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import NextLink from 'next/link';
 import { useTransition } from 'react';
 import { newThreadAndGoAction } from '@/app/actions/chat';
+import { useProject } from '@/components/project-context';
 import type { ChatThread } from '@/db/schema';
 import s from './chat.module.css';
 
@@ -23,6 +24,7 @@ export function ChatRail({
   /** Only this document's chats are listed and new chats are scoped to it. */
   scope?: { documentId: string; title: string } | null;
 }) {
+  const { base } = useProject();
   const [pending, start] = useTransition();
   return (
     <aside className={s.rail} aria-label="Chats" data-phone={phone ? 'true' : undefined}>
@@ -41,8 +43,8 @@ export function ChatRail({
       </div>
       {scope && (
         <div className={s.railScope}>
-          <NextLink href={`/p/${slug}/documents/${scope.documentId}`}>Open document</NextLink>
-          <NextLink href={`/p/${slug}/chat`}>All chats</NextLink>
+          <NextLink href={`${base}/documents/${scope.documentId}`}>Open document</NextLink>
+          <NextLink href={`${base}/chat`}>All chats</NextLink>
         </div>
       )}
       <div className={s.list}>
@@ -54,7 +56,7 @@ export function ChatRail({
           threads.map((t) => (
             <NextLink
               key={t.id}
-              href={`/p/${slug}/chat/${t.id}`}
+              href={`${base}/chat/${t.id}`}
               className={s.item}
               data-active={t.id === activeId}
             >

@@ -24,6 +24,8 @@ cpSync(path.join(root, 'cmaps'), 'public/pdfjs/cmaps', { recursive: true });
 const mj = path.join(path.dirname(require.resolve('mathjax/package.json')), 'es5');
 mkdirSync('public/mathjax', { recursive: true });
 cpSync(path.join(mj, 'tex-mml-chtml.js'), 'public/mathjax/tex-mml-chtml.js');
+// SVG output for the test PDFs (rendered headless, no fonts to load).
+cpSync(path.join(mj, 'tex-svg.js'), 'public/mathjax/tex-svg.js');
 cpSync(path.join(mj, 'input/tex/extensions'), 'public/mathjax/input/tex/extensions', { recursive: true });
 cpSync(path.join(mj, 'output/chtml/fonts/woff-v2'), 'public/mathjax/output/chtml/fonts/woff-v2', {
   recursive: true,

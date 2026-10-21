@@ -31,6 +31,18 @@ export const FEATURES = {
   'reader.zoom': { phone: 'on', desktop: 'on' },
   /** Meta flag: show the read-only feature-flags table in Settings. */
   'settings.flags': { phone: 'off', tablet: 'off', desktop: 'on' },
+  /** Courses: lectures and recitations lists; the detail page is the reader. */
+  sessions: { phone: 'lite', desktop: 'on' },
+  /** Lecture page with the raw note beside the slides (needs a wide canvas). */
+  'sessions.split': { phone: 'off', desktop: 'on' },
+  /** Synthesize a raw note with the model (dialog with cost estimate). */
+  'notes.synthesize': { phone: 'off', desktop: 'on' },
+  /** Homework list, checklist, grades. */
+  homework: { phone: 'on', desktop: 'on' },
+  /** Tests list, answer reveal and marking. */
+  tests: { phone: 'on', desktop: 'on' },
+  /** Generating weekly / tri-weekly tests. */
+  'tests.generate': { phone: 'off', desktop: 'on' },
 } as const satisfies Record<string, Row>;
 
 export type FeatureKey = keyof typeof FEATURES;
@@ -56,6 +68,12 @@ export const FEATURE_LABEL: Record<FeatureKey, string> = {
   'reader.immersive': 'Immersive reader (bottom bar, sheets)',
   'reader.zoom': 'Reader zoom',
   'settings.flags': 'Feature-flags table (meta)',
+  sessions: 'Lectures and recitations',
+  'sessions.split': 'Lecture page with side-by-side note',
+  'notes.synthesize': 'Synthesize notes',
+  homework: 'Homework',
+  tests: 'Tests',
+  'tests.generate': 'Generate tests',
 };
 
 type Overrides = Partial<Record<FeatureKey, Partial<Record<Platform, Level>>>>;
