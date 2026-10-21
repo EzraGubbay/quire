@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "start:standalone": "rm -rf .next/standalone/apps/web/.next/static .next/standalone/apps/web/public && cp -R .next/static .next/standalone/apps/web/.next/ && cp -R public .next/standalone/apps/web/ && node .next/standalone/apps/web/server.js"
+    "start:standalone": "rm -rf .next/standalone/apps/web/.next/static .next/standalone/apps/web/public && cp -R .next/static .next/standalone/apps/web/.next/ && cp -R public .next/standalone/apps/web/ && node --env-file-if-exists=.env .next/standalone/apps/web/server.js"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
