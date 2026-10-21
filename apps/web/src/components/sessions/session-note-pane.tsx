@@ -8,6 +8,7 @@ import { MarkdownEditor, type MarkdownEditorHandle } from '@/components/editor/m
 import { SynthesizeButton } from '@/components/notes/synthesize-button';
 import { useProject } from '@/components/project-context';
 import type { Note } from '@/db/schema';
+import { announceNoteChange } from '@/lib/note-signal';
 import s from './sessions.module.css';
 
 /**
@@ -61,6 +62,7 @@ export function SessionNotePane({
         const n = await ensureNote();
         const res = await saveSessionNoteAction(slug, n.id, text);
         setStatus(res.error ? 'error' : 'saved');
+        if (!res.error) announceNoteChange(n.id);
       } catch {
         setStatus('error');
       }

@@ -336,3 +336,6 @@
   overflow-x: auto;
   padding: 0 12px 8px;
 }
+.refreshLabel[data-spinning] {
+  opacity: 0.6;
+}

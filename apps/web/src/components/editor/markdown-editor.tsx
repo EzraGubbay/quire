@@ -143,7 +143,18 @@ export function MarkdownEditor({
         }),
         EditorView.theme({
           '&': { fontFamily: 'var(--eg-font-mono)', fontSize: '13.5px', height: '100%' },
-          '.cm-content': { fontFamily: 'var(--eg-font-mono)', padding: '12px 0' },
+          '.cm-content': {
+            fontFamily: 'var(--eg-font-mono)',
+            padding: '12px 0',
+            color: 'var(--eg-text)',
+            caretColor: 'var(--eg-text)',
+          },
+          // CodeMirror draws its own caret (default black), invisible on the dark register.
+          '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--eg-text)' },
+          '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground':
+            {
+              background: 'var(--eg-accent-soft)',
+            },
           '.cm-gutters': { background: 'var(--eg-surface-2)', color: 'var(--eg-muted)', border: 'none' },
           '&.cm-focused': { outline: 'none' },
           '.cm-scroller': { lineHeight: '1.55' },

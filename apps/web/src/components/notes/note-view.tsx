@@ -19,7 +19,9 @@ import { useProject } from '@/components/project-context';
 import { PollWhile } from '@/components/ui/poll-while';
 import type { Note } from '@/db/schema';
 import { renderMarkdownClient } from '@/lib/markdown-client';
+import { announceNoteChange } from '@/lib/note-signal';
 import type { Backlink } from '@/lib/notes';
+import { LiveNote } from './live-note';
 import s from './notes.module.css';
 import { SynthesizeButton } from './synthesize-button';
 
@@ -131,6 +133,7 @@ export function NoteView({
         <span className={s.status}>
           edited {note.updatedAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
         </span>
+        <LiveNote slug={slug} noteId={note.id} updatedAt={note.updatedAt.toISOString()} />
         {canSynthesize && note.status === 'ready' && <SynthesizeButton slug={slug} note={note} />}
         <NextLink href={`${base}/notes/${note.slug}?edit=1`} className={s.chip}>
           <Icon icon={Pencil} /> Edit
@@ -319,6 +322,7 @@ function NoteEditor({
         const res = await updateNoteAction(slug, note.id, { title, body });
         if (res.error) return;
         setDirty(false);
+        announceNoteChange(note.id);
         const target = `${base}/notes/${res.noteSlug ?? note.slug}`;
         if (thenClose) router.push(target);
         else if (res.noteSlug && res.noteSlug !== note.slug) router.replace(`${target}?edit=1`);

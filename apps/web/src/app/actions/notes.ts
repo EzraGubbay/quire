@@ -98,6 +98,14 @@ const patchSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).optional(),
 });
 
+/** When the note last changed (ISO string), for live read views polling from another device. */
+export async function noteVersionAction(slug: string, id: string): Promise<string | null> {
+  const project = await getProjectBySlug(slug);
+  if (!project) return null;
+  const note = await getNote(project.id, id);
+  return note ? note.updatedAt.toISOString() : null;
+}
+
 export async function updateNoteAction(
   slug: string,
   id: string,
