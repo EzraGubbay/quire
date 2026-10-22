@@ -105,10 +105,22 @@
   --callout-ink: var(--quire-term-example-ink);
 }
 .body :global(.callout[data-kind="remark"]),
-.body :global(.callout[data-kind="note"]),
-.body :global(.callout[data-kind="question"]) {
+.body :global(.callout[data-kind="note"]) {
   --callout-bg: var(--quire-term-remark);
   --callout-ink: var(--quire-term-remark-ink);
+}
+.body :global(.callout[data-kind="question"]) {
+  --callout-bg: var(--quire-term-question);
+  --callout-ink: var(--quire-term-question-ink);
+}
+/* Obsidian ==highlight==: a marker stroke behind the text, which keeps its own colour. */
+.body :global(mark) {
+  background: var(--quire-mark);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .body :global(.algorithm) {
   margin: 14px 0;

@@ -121,7 +121,9 @@ export function mockChat(
   else if (opts.json) text = '{}';
   else {
     const cites = [...system.matchAll(/^\[(\d+)\]/gm)].map((m) => m[1]).slice(0, 2);
-    text = `Mock answer to “${last.slice(0, 60)}”.${cites.length ? ` Based on ${cites.map((c) => `[${c}]`).join(' and ')}.` : ''} (AI_MOCK)`;
+    // Asking from a lecture deck sends the working note; say so (with its citation) so e2e can see it arrived.
+    const note = system.match(/^Working note \[(\d+)\]/m)?.[1];
+    text = `Mock answer to “${last.slice(0, 60)}”.${cites.length ? ` Based on ${cites.map((c) => `[${c}]`).join(' and ')}.` : ''}${note ? ` Your note [${note}] was in context.` : ''} (AI_MOCK)`;
   }
   const usage: Usage = {
     input: Math.ceil(messages.reduce((n, m) => n + textOf(m).length, 0) / 4),

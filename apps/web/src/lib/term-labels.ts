@@ -11,6 +11,7 @@ export const TERM_KINDS = [
   'corollary',
   'example',
   'remark',
+  'question',
 ] as const;
 export type TermKind = (typeof TERM_KINDS)[number];
 
@@ -23,16 +24,19 @@ export const TERM_LABEL: Record<TermKind, string> = {
   corollary: 'Corollary',
   example: 'Example',
   remark: 'Remark',
+  question: 'Question',
 };
 
 /**
- * The three with a button and a shortcut; the rest only get the rendering. Option (Alt) + letter is the primary
- * binding; Control+Option is kept as an alternate for keyboards where Option+letter is taken.
+ * The four with a button and a shortcut; the rest only get the rendering. Question marks an open question written
+ * down during the lecture; Ask and Synthesize treat those lines as questions to settle. Option (Alt) + letter is the
+ * primary binding; Control+Option is kept as an alternate for keyboards where Option+letter is taken.
  */
 export const TERM_SHORTCUTS: { kind: TermKind; keys: string[]; display: string }[] = [
   { kind: 'definition', keys: ['Alt-d', 'Ctrl-Alt-d'], display: '⌥D' },
   { kind: 'claim', keys: ['Alt-c', 'Ctrl-Alt-c'], display: '⌥C' },
   { kind: 'theorem', keys: ['Alt-t', 'Ctrl-Alt-t'], display: '⌥T' },
+  { kind: 'question', keys: ['Alt-q', 'Ctrl-Alt-q'], display: '⌥Q' },
 ];
 
 /** The Markdown inserted for a label, e.g. `**Theorem:** `. */

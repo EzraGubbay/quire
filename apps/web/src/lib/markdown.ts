@@ -44,6 +44,73 @@ function remarkWikiLinks() {
   };
 }
 
+const PHRASING_PARENTS = new Set([
+  'paragraph',
+  'heading',
+  'tableCell',
+  'emphasis',
+  'strong',
+  'delete',
+  'link',
+]);
+
+/**
+ * Obsidian `==highlight==` becomes <mark>. A pair stays within one line, may wrap other inline formatting
+ * (`==**bold** and $x$==`), and flanks like emphasis: `==` opens before a non-space and closes after one, so
+ * comparisons such as `a == b` stay text. Runs of three or more `=` are left alone. Runs after remark-breaks, so a
+ * typed newline is a `break` node that ends any open pair.
+ */
+function remarkHighlight() {
+  const marker = /(?<!=)==(?!=)/g;
+  const wrap = (kids: PhrasingContent[]): PhrasingContent[] | null => {
+    const out: PhrasingContent[] = [];
+    // Index in `out` where the open pair's content starts; the literal `==` placeholder sits just before it and
+    // stays as text if the pair never closes.
+    let open = -1;
+    let changed = false;
+    kids.forEach((node, i) => {
+      if (node.type !== 'text' || !node.value.includes('==')) {
+        if (node.type === 'break') open = -1;
+        out.push(node);
+        return;
+      }
+      const v = node.value;
+      const next = kids[i + 1];
+      let last = 0;
+      for (const m of v.matchAll(marker)) {
+        const at = m.index ?? 0;
+        // A neighbouring inline element (bold, math, link) counts as a non-space character.
+        const before = at > 0 ? (v[at - 1] ?? ' ') : i > 0 ? 'x' : ' ';
+        const after = at + 2 < v.length ? (v[at + 2] ?? ' ') : next && next.type !== 'break' ? 'x' : ' ';
+        if (open < 0 && /\S/.test(after)) {
+          if (at > last) out.push({ type: 'text', value: v.slice(last, at) });
+          out.push({ type: 'text', value: '==' });
+          open = out.length;
+          last = at + 2;
+        } else if (open >= 0 && /\S/.test(before)) {
+          if (at > last) out.push({ type: 'text', value: v.slice(last, at) });
+          const inner = out.splice(open);
+          out.pop();
+          out.push({ type: 'emphasis', data: { hName: 'mark' }, children: inner });
+          open = -1;
+          changed = true;
+          last = at + 2;
+        }
+      }
+      if (last < v.length) out.push({ type: 'text', value: v.slice(last) });
+    });
+    return changed ? out : null;
+  };
+  return (tree: Root) => {
+    visit(tree, (node) => {
+      if (!PHRASING_PARENTS.has(node.type) || !('children' in node)) return;
+      const parent = node as { children: PhrasingContent[] };
+      const next = wrap(parent.children);
+      if (next) parent.children = next;
+    });
+  };
+}
+
 export const CALLOUT_KINDS = [
   'definition',
   'theorem',
@@ -263,6 +330,7 @@ const processor = unified()
   .use(remarkWikiLinks)
   // A typed newline is a rendered newline (no two-space or blank-line dance), as in Obsidian's default.
   .use(remarkBreaks)
+  .use(remarkHighlight)
   .use(remarkRehype)
   .use(rehypeSlug)
   .use(rehypeMathDelimiters)

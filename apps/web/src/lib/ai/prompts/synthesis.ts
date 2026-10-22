@@ -12,7 +12,9 @@ remarks, no explanation of what you did, and no code fence around the whole thin
 ## What to do
 - Include at minimum everything in the raw notes: do not drop any topic, question, table or example.
 - Complete and expand the content: fill blank table cells, resolve every question the student flagged (in
-  *italics*, with \`???\`, or in \`<llm: ... >\` blocks), answering directly in **bold** or in a Q&A block.
+  *italics*, with \`???\`, in \`<llm: ... >\` blocks, or on a line starting \`**Question:**\`), answering directly in
+  **bold** or in a Q&A block. Each \`**Question:**\` line is an open question from the lecture: turn it into a
+  Q&A block at that point, with the answer.
 - Execute every \`{curly brace instruction}\` in the raw notes:
   - \`{Insert image from slide}\` → write \`*(See slide N: what it shows)*\` using the slide numbers given
   - \`{Insert LaTeX example}\` → write it with \`$$...$$\`
@@ -33,6 +35,7 @@ remarks, no explanation of what you did, and no code fence around the whole thin
 - Mark definitions, claims and theorems with a bold label at the start of the paragraph, exactly like
   \`**Definition:** ...\`, \`**Claim:** ...\`, \`**Theorem:** ...\` (also \`**Lemma:**\`, \`**Proof:**\`,
   \`**Corollary:**\`, \`**Example:**\`, \`**Remark:**\`). The app highlights these labels.
+- Keep the student's \`==highlights==\`: they mark what the student found important. Use them sparingly yourself.
 - Tables for comparisons, pros/cons and structured facts. Code in fenced blocks with a language tag (c, cpp, cuda,
   python, bash, x86asm). Algorithms in \`\`\`algorithm blocks (one step per line; \`$...$\` allowed).
 - Q&A blocks after relevant sections, especially where the student had questions and where exam-relevant

@@ -358,3 +358,10 @@
 .tutorToggle input {
   margin-top: 3px;
 }
+.contextNote {
+  margin: 0;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--eg-rule);
+  font: 400 12px / 1.4 var(--eg-font-ui);
+  color: var(--eg-muted);
+}

@@ -57,4 +57,27 @@ describe('course rendering', () => {
     expect(html).toContain('class="algorithm"');
     expect(html).toContain('<span class="kw">for</span>');
   });
+  it('tags open-question labels', async () => {
+    const html = await renderMarkdown('Notes.\n**Question:** Why is the reduction associative?');
+    expect(html).toContain('<strong class="term-label" data-kind="question">Question:</strong>');
+  });
+  it('renders ==highlights== as <mark>, including around inline formatting', async () => {
+    expect(await renderMarkdown('The ==race condition== matters.')).toContain(
+      'The <mark>race condition</mark> matters.',
+    );
+    const html = await renderMarkdown('==**bold** and $x$== then ==two==');
+    expect(html).toMatch(
+      /<mark><strong>bold<\/strong> and <span class="math math-inline">.*?<\/span><\/mark>/,
+    );
+    expect(html).toContain('<mark>two</mark>');
+  });
+  it('leaves comparisons, long runs, unclosed and multi-line markers as text', async () => {
+    expect(await renderMarkdown('if a == b and c == d')).not.toContain('<mark>');
+    expect(await renderMarkdown('a ==== b')).not.toContain('<mark>');
+    const open = await renderMarkdown('==never closed');
+    expect(open).not.toContain('<mark>');
+    expect(open).toContain('==never closed');
+    expect(await renderMarkdown('==first line\nsecond line==')).not.toContain('<mark>');
+    expect(await renderMarkdown('`x ==y==`')).not.toContain('<mark>');
+  });
 });

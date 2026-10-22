@@ -119,7 +119,20 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await expect(editor).toContainText('**Theorem:** Associative reductions parallelise.');
     await pane.getByRole('button', { name: /Cite slide/ }).click();
     await expect(editor).toContainText('#1]]');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Alt+q');
+    await page.keyboard.type('Why does ==associativity== matter?');
+    await expect(editor).toContainText('**Question:** Why does ==associativity== matter?');
     await expect(pane.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+    // Ask from the deck sends the note along with the slides; the mock answer says so and cites the note.
+    await page.getByTitle('Ask the AI about this document').click();
+    const ask = page.getByRole('dialog', { name: 'Ask' });
+    await expect(ask.getByTestId('ask-note-context')).toContainText('lecture note');
+    await ask.getByLabel('Question').fill('What is a race condition?');
+    await ask.getByLabel('Question').press('Enter');
+    await expect(ask.getByTestId('chat-message').nth(1)).toContainText('was in context', { timeout: 20_000 });
+    await expect(ask.locator('a[href*="/notes/"]')).toContainText('Lecture 1');
+    await page.keyboard.press('Escape');
     // The deck shows up in Documents and the note under Raw.
     await page.goto(`/c/${slug}/notes`);
     await page.getByTestId('notes-folders').getByRole('button', { name: /Raw/ }).click();
@@ -128,6 +141,8 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
 
   await test.step('synthesize the raw note (AI_MOCK)', async () => {
     await page.getByRole('link', { name: /^Lecture 1/ }).click();
+    await expect(page.locator('strong.term-label[data-kind="question"]')).toBeVisible();
+    await expect(page.locator('mark', { hasText: 'associativity' })).toBeVisible();
     await page.getByRole('button', { name: 'Synthesize', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByTestId('synthesis-estimate')).toContainText('$', { timeout: 15_000 });

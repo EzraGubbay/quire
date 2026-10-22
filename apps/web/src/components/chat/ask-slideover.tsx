@@ -162,6 +162,12 @@ export function AskSlideover({
             </span>
           </label>
         )}
+        {context.note && (
+          <p className={s.contextNote} data-testid="ask-note-context">
+            Sends the slides and your {context.note.sessionKind} note “{context.note.title}”, which it also
+            checks for misunderstandings.
+          </p>
+        )}
         <SpendBanner summary={summary} configured={configured} />
         <ThreadView
           slug={slug}

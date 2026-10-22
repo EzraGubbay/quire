@@ -228,7 +228,8 @@ a {
 }
 
 /* Term labels: `**Theorem:**` and friends at the start of a paragraph get a tinted highlight behind the bold
-   label; the text keeps its colour. Theorem purple, definition a medium blue, claim dark orange; the rest neutral. */
+   label; the text keeps its colour. Theorem purple, definition a medium blue, claim dark orange, open question rose;
+   the rest neutral. `--quire-mark` is the ==highlight== marker: a soft butter yellow, amber on the dark register. */
 .folio {
   --quire-term-theorem: #e6d9f5;
   --quire-term-theorem-ink: #5b3a9a;
@@ -246,6 +247,9 @@ a {
   --quire-term-example-ink: #2b5e3a;
   --quire-term-remark: #efe8da;
   --quire-term-remark-ink: #6e665a;
+  --quire-term-question: #f6d2e2;
+  --quire-term-question-ink: #a1245c;
+  --quire-mark: #fbe7a2;
 }
 .folio[data-theme="dark"] {
   --quire-term-theorem: #3a2a5c;
@@ -264,6 +268,9 @@ a {
   --quire-term-example-ink: #a9d8b5;
   --quire-term-remark: #2e2923;
   --quire-term-remark-ink: #b3a898;
+  --quire-term-question: #5a1f42;
+  --quire-term-question-ink: #f3b5d3;
+  --quire-mark: #5c4b16;
 }
 @media (prefers-color-scheme: dark) {
   .folio:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -283,6 +290,9 @@ a {
     --quire-term-example-ink: #a9d8b5;
     --quire-term-remark: #2e2923;
     --quire-term-remark-ink: #b3a898;
+    --quire-term-question: #5a1f42;
+    --quire-term-question-ink: #f3b5d3;
+    --quire-mark: #5c4b16;
   }
 }
 strong.term-label {
@@ -316,6 +326,9 @@ strong.term-label[data-kind="example"] {
 }
 strong.term-label[data-kind="remark"] {
   --quire-term-bg: var(--quire-term-remark);
+}
+strong.term-label[data-kind="question"] {
+  --quire-term-bg: var(--quire-term-question);
 }
 
 /* App bar at tablet widths: the side switch shares the left section with the crumb and the tabs. Drop the crumb

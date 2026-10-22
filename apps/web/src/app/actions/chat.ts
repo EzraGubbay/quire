@@ -9,6 +9,7 @@ import { clearProviderBlock, spendSummary } from '@/lib/ai/ledger';
 import { aiConfigured } from '@/lib/ai/provider';
 import { createThread, deleteThread, getThread, listMessages, listThreads, setThreadMode } from '@/lib/chat';
 import { listDocuments } from '@/lib/documents';
+import { deckNote } from '@/lib/notes';
 import { baseFromSlug, getProjectBySlug, projectBase } from '@/lib/projects';
 
 async function projectOr404(slug: string) {
@@ -56,6 +57,8 @@ export interface AskContext {
   threads: Pick<ChatThread, 'id' | 'title' | 'updatedAt' | 'mode'>[];
   /** Messages of the newest chat in scope. */
   messages: ChatMessage[];
+  /** Asking from a lecture or recitation deck: the working note sent along with the slides. */
+  note: { title: string; sessionKind: string } | null;
 }
 
 /** Everything the Ask panel needs on open: spend state, completer titles, the chats in scope and the latest one's messages. */
@@ -65,10 +68,11 @@ export async function askContextAction(
   scope: AskScope = {},
 ): Promise<AskContext> {
   const project = await projectOr404(slug);
-  const [summary, docs, all] = await Promise.all([
+  const [summary, docs, all, working] = await Promise.all([
     spendSummary(),
     listDocuments(project.id),
     listThreads(project.id),
+    project.kind === 'course' && documentId ? deckNote(project.id, documentId) : undefined,
   ]);
   const threads = all.filter((t) =>
     scope.questionId
@@ -85,6 +89,7 @@ export async function askContextAction(
     titles: docs.map((d) => d.title),
     threads: threads.map((t) => ({ id: t.id, title: t.title, updatedAt: t.updatedAt, mode: t.mode })),
     messages,
+    note: working ? { title: working.note.title, sessionKind: working.sessionKind } : null,
   };
 }
 

@@ -1,7 +1,7 @@
 import { type EntityKind, slugify } from '@quire/shared';
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { annotations, documents, type Link, links, type Note, notes, sources } from '@/db/schema';
+import { annotations, documents, type Link, links, type Note, notes, sessions, sources } from '@/db/schema';
 import { extractWikiLinks } from './markdown';
 
 export async function listNotes(projectId: string): Promise<Note[]> {
@@ -17,6 +17,25 @@ export async function sessionNote(projectId: string, sessionId: string): Promise
     .orderBy(asc(notes.createdAt))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * The working note beside a lecture or recitation deck: the raw note of the session the document belongs to, when
+ * it has any text. Ask sends it along with the slides.
+ */
+export async function deckNote(
+  projectId: string,
+  documentId: string,
+): Promise<{ note: Note; sessionKind: string } | undefined> {
+  const [d] = await db
+    .select({ sessionId: documents.sessionId, kind: sessions.kind })
+    .from(documents)
+    .innerJoin(sessions, eq(sessions.id, documents.sessionId))
+    .where(and(eq(documents.projectId, projectId), eq(documents.id, documentId)))
+    .limit(1);
+  if (!d?.sessionId) return undefined;
+  const note = await sessionNote(projectId, d.sessionId);
+  return note?.body.trim() ? { note, sessionKind: d.kind } : undefined;
 }
 
 export async function moveNote(projectId: string, id: string, folderId: string | null): Promise<void> {

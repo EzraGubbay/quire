@@ -51,6 +51,10 @@
   --quire-term-bg: var(--quire-term-theorem);
   --quire-term-ink: var(--quire-term-theorem-ink);
 }
+.termBtn[data-kind="question"] {
+  --quire-term-bg: var(--quire-term-question);
+  --quire-term-ink: var(--quire-term-question-ink);
+}
 .host {
   flex: 1;
   min-height: 0;

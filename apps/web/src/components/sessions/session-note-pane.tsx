@@ -82,13 +82,19 @@ export function SessionNotePane({
     },
     [],
   );
-  // Flush on unmount or tab close so the last sentence is not lost.
+  // Flush on tab close so the last sentence is not lost, and when Ask opens so the question sees the latest note.
   useEffect(() => {
     const flush = () => {
-      if (status === 'dirty') void save(body);
+      if (status !== 'dirty') return;
+      if (timer.current) clearTimeout(timer.current);
+      void save(body);
     };
     window.addEventListener('beforeunload', flush);
-    return () => window.removeEventListener('beforeunload', flush);
+    window.addEventListener('quire:ask', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('quire:ask', flush);
+    };
   }, [status, body, save]);
 
   const cite = () => {
