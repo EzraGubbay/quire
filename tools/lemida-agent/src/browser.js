@@ -56,13 +56,18 @@ async function saveState(context, config) {
 }
 
 async function isLoggedIn(page) {
-  if (isAuthWall(page.url())) return false;
-  // Guests get a .usermenu too (it holds the "Log in" link), so the only reliable marker is a logout
-  // link — and a visible login link means we're NOT signed in.
-  const logout = await page.$('a[href*="/login/logout.php"]');
-  if (!logout) return false;
-  const login = await page.$('a[href*="/login/index.php"], a[href*="login/index.php?"]');
-  return !login;
+  try {
+    if (isAuthWall(page.url())) return false;
+    // Guests get a .usermenu too (it holds the "Log in" link), so the only reliable marker is a logout
+    // link — and a visible login link means we're NOT signed in.
+    const logout = await page.$('a[href*="/login/logout.php"]');
+    if (!logout) return false;
+    const login = await page.$('a[href*="/login/index.php"], a[href*="login/index.php?"]');
+    return !login;
+  } catch {
+    // Page navigated mid-check (e.g. a 365 redirect) — "execution context destroyed"; treat as not-yet.
+    return false;
+  }
 }
 
 /**
@@ -74,7 +79,8 @@ export async function openLogin(config) {
   try {
     await restoreState(context, config); // a still-valid session skips the manual step
     const page = context.pages()[0] ?? (await context.newPage());
-    await page.goto(config.homeUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    // Straight to the student OAuth sign-in, not /my/ (which bounces guests to a landing page).
+    await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
     const deadline = Date.now() + config.loginTimeoutMs;
     while (Date.now() < deadline) {
       if (await isLoggedIn(page)) {

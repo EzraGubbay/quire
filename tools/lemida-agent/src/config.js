@@ -13,7 +13,9 @@ export function loadConfig() {
     agentDir,
     baseUrl: base,
     apiKey: process.env.QUIRE_API_KEY ?? '',
-    loginUrl: process.env.LEMIDA_LOGIN_URL ?? 'https://lemida.biu.ac.il/login/index.php',
+    // Straight to the student 365 sign-in, so the login window doesn't land on the guest page.
+    loginUrl:
+      process.env.LEMIDA_LOGIN_URL ?? 'https://lemida.biu.ac.il/auth/multioauth/login.php?userType=student',
     homeUrl: process.env.LEMIDA_HOME_URL ?? 'https://lemida.biu.ac.il/my/',
     profileDir: process.env.LEMIDA_PROFILE_DIR ?? path.join(agentDir, '.profile'),
     // Cookies (incl. Moodle's non-persistent session cookie) saved after login and re-injected on every
