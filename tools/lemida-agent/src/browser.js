@@ -180,9 +180,8 @@ export async function syncCourse(config, course, onFile, { seen = new Set(), ful
     if (/\/enrol\//.test(landed)) {
       throw new SessionExpired(`${landed} (not enrolled, or signed in only as a guest — run \`login\`)`);
     }
-    const resources = parseMoodleCourse(await page.content(), page.url()).filter((r) =>
-      FILE_MODULES.has(r.moduleType),
-    );
+
+    const resources = await gatherResources(page);
     stats.resources = resources.length;
     for (const resource of resources) {
       if (!full && seen.has(resource.href)) {
@@ -200,4 +199,28 @@ export async function syncCourse(config, course, onFile, { seen = new Set(), ful
   } finally {
     await context.close();
   }
+}
+
+/**
+ * The file activities on a course page, following Moodle 4.5 "subsections" (delegated sections whose
+ * activities live on their own /mod/subsection/ page, not the main course page). One level of nesting is
+ * expanded; subsection hrefs themselves are not added to `seen`, so newly-added files inside them appear.
+ */
+export async function gatherResources(page) {
+  const top = parseMoodleCourse(await page.content(), page.url());
+  const files = top.filter((r) => FILE_MODULES.has(r.moduleType));
+  // The course-index merge in parseMoodleCourse normally already covers subsection files; only crawl
+  // subsection pages when it didn't (an older layout with no course index).
+  if (files.length === 0) {
+    for (const sub of top.filter((r) => r.moduleType === 'mod_subsection')) {
+      await page.goto(sub.href, { waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle').catch(() => {});
+      if (isAuthWall(page.url())) throw new SessionExpired(page.url());
+      for (const r of parseMoodleCourse(await page.content(), page.url())) {
+        if (FILE_MODULES.has(r.moduleType)) files.push({ ...r, sectionTitle: r.sectionTitle || sub.name });
+      }
+    }
+  }
+  const seen = new Set();
+  return files.filter((r) => (seen.has(r.href) ? false : (seen.add(r.href), true)));
 }

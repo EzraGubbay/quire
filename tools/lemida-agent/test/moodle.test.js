@@ -29,6 +29,25 @@ test('parses every activity with its section and module type', async () => {
   assert.equal(hw.sectionTitle, 'שיעורי בית');
 });
 
+test('merges course-index links (files inside collapsed subsections)', () => {
+  // A resource that only appears in the left course-index drawer, inside a subsection's section node.
+  const html = `
+    <div class="courseindex" role="tree">
+      <div class="courseindex-section" data-for="section">
+        <span class="courseindex-section-title">הרצאות</span>
+        <div class="courseindex-item">
+          <a class="courseindex-link" href="https://lemida.biu.ac.il/mod/resource/view.php?id=3297801">CPU Architecture</a>
+        </div>
+      </div>
+    </div>`;
+  const items = parseMoodleCourse(html, 'https://lemida.biu.ac.il/course/view.php?id=9');
+  const cpu = items.find((i) => i.href.includes('id=3297801'));
+  assert.ok(cpu, 'course-index resource should be found');
+  assert.equal(cpu.name, 'CPU Architecture');
+  assert.equal(cpu.moduleType, 'mod_resource');
+  assert.equal(cpu.sectionTitle, 'הרצאות');
+});
+
 test('resolves relative hrefs to absolute', async () => {
   const items = parseMoodleCourse(await fixture(), 'https://lemida.biu.ac.il/course/view.php?id=9');
   assert.ok(items.every((i) => i.href.startsWith('https://lemida.biu.ac.il/')));

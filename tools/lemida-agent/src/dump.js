@@ -1,9 +1,11 @@
-// Throwaway diagnostic: load a course page with the saved profile and report what the DOM actually
-// contains, at domcontentloaded vs after the network settles. Usage: node src/dump.js <courseUrl>
-import { writeFile } from 'node:fs/promises';
+// Throwaway diagnostic: load a course page with the saved session and report what the parser sees.
+// Usage: node --env-file-if-exists=.env src/dump.js <courseUrl>
+import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import { gatherResources } from './browser.js';
 import { loadConfig } from './config.js';
-import { isAuthWall, parseMoodleCourse } from './moodle.js';
+import { isAuthWall } from './moodle.js';
 import { resolveBrowser } from './which-browser.js';
 
 const url = process.argv[2];
@@ -18,13 +20,27 @@ const ctx = await chromium.launchPersistentContext(config.profileDir, {
   ...(b.executablePath ? { executablePath: b.executablePath } : {}),
   ...(b.channel ? { channel: b.channel } : {}),
 });
-const page = ctx.pages()[0] ?? (await ctx.newPage());
 
-const counts = (label) =>
-  page.evaluate((l) => {
+// Restore the saved session exactly like probe/sync do.
+if (existsSync(config.stateFile)) {
+  try {
+    const state = JSON.parse(await readFile(config.stateFile, 'utf8'));
+    if (Array.isArray(state.cookies) && state.cookies.length) {
+      await ctx.addCookies(state.cookies);
+      console.log('restored', state.cookies.length, 'cookies');
+    }
+  } catch (e) {
+    console.log('state restore failed:', e.message);
+  }
+} else {
+  console.log('no .storage.json — not logged in');
+}
+
+const page = ctx.pages()[0] ?? (await ctx.newPage());
+const counts = () =>
+  page.evaluate(() => {
     const n = (sel) => document.querySelectorAll(sel).length;
     return {
-      stage: l,
       url: location.href,
       liActivity: n('li.activity'),
       dataActivity: n('[data-region="activity"]'),
@@ -32,20 +48,20 @@ const counts = (label) =>
       modLinks: n('a[href*="/mod/"]'),
       sections: n('li.section, [data-for="section"], .course-section'),
       activityname: n('.activityname'),
-      instancename: n('.instancename'),
     };
-  }, label);
+  });
 
 await page.goto(url, { waitUntil: 'domcontentloaded' });
-console.log('authWall(domcontentloaded):', isAuthWall(page.url()));
-console.log(JSON.stringify(await counts('domcontentloaded')));
 await page.waitForLoadState('networkidle').catch(() => {});
 await page.waitForTimeout(1500);
-console.log(JSON.stringify(await counts('networkidle')));
+console.log('authWall:', isAuthWall(page.url()));
+console.log('counts:', JSON.stringify(await counts()));
 
-const html = await page.content();
-await writeFile('/tmp/lemida-course.html', html);
-console.log('saved /tmp/lemida-course.html bytes=', html.length);
-console.log('parseMoodleCourse found:', parseMoodleCourse(html, page.url()).length);
-console.log('first 3:', JSON.stringify(parseMoodleCourse(html, page.url()).slice(0, 3)));
+await writeFile('/tmp/lemida-course.html', await page.content());
+
+const resources = await gatherResources(page);
+console.log(`\ngatherResources (incl. subsections): ${resources.length} file activities`);
+for (const r of resources) console.log(`  [${r.moduleType}] ${r.sectionTitle} :: ${r.name} -> ${r.href}`);
+const hit = resources.filter((r) => /cpu|architecture|מעבד|ארכיטקטורה/i.test(r.name));
+console.log('\nCPU/architecture matches:', JSON.stringify(hit));
 await ctx.close();

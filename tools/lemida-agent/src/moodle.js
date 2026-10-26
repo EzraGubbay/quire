@@ -27,7 +27,8 @@ export function moduleTypeOf(activityEl, href) {
 }
 
 const SECTION_HEADING = '.sectionname, h3.sectionname, [data-for="section_title"], h3, h4';
-const ACTIVITY = 'li.activity, [data-region="activity"], li.activity-wrapper';
+// Moodle 4.x renders activities as <div class="activity …">; older/other modules use <li class="activity">.
+const ACTIVITY = 'li.activity, div.activity, [data-region="activity"], li.activity-wrapper';
 const MOD_LINK = 'a[href*="/mod/"]';
 
 /**
@@ -67,6 +68,25 @@ export function parseMoodleCourse(html, baseUrl = 'https://lemida.biu.ac.il/') {
   // Fallback: a theme we didn't recognise — scan every activity, no section context.
   if (out.length === 0) {
     for (const act of root.querySelectorAll(ACTIVITY)) push(act, '');
+  }
+
+  // The course-index drawer lists every activity flat (grouped by section), including files inside
+  // collapsed Moodle-4.5 subsections that never render in the main content region. Merge those in.
+  const idx = root.querySelector('.courseindex') ?? root;
+  for (const section of idx.querySelectorAll('.courseindex-section')) {
+    const t = section.querySelector(
+      '.courseindex-section-title, [data-for="section_item"], .courseindex-name',
+    );
+    // Drop the expand/collapse toggle and hidden labels so the heading isn't prefixed with UI text.
+    if (t)
+      for (const x of t.querySelectorAll('button, svg, .accesshide, .visually-hidden, .sr-only')) x.remove();
+    const sectionTitle = clean(t?.text);
+    for (const a of section.querySelectorAll('a[href*="/mod/"]')) {
+      const href = absolute(a.getAttribute('href'), baseUrl);
+      if (!href || seen.has(href)) continue;
+      seen.add(href);
+      out.push({ name: clean(a.text), href, moduleType: moduleTypeOf(a, href), sectionTitle });
+    }
   }
   return out;
 }
