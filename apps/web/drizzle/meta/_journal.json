@@ -50,6 +50,13 @@
       "when": 1792566648992,
       "tag": "0006_salty_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793004807496,
+      "tag": "0007_futuristic_madame_masque",
+      "breakpoints": true
     }
   ]
 }

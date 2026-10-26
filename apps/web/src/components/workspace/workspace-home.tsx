@@ -2,7 +2,7 @@
 
 import { Button, Card, CardRow, Icon } from '@ezragubbay/folio';
 import { COURSE_TYPES, type ProjectKind } from '@quire/shared';
-import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, Plus, RefreshCw } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useState, useTransition } from 'react';
@@ -129,9 +129,17 @@ export function WorkspaceHome({ kind, active, archived, dueSoon = [] }: Workspac
           <h1 className={s.title}>{copy.title}</h1>
           <p className={s.sub}>{copy.sub}</p>
         </div>
-        <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
-          {copy.newLabel}
-        </Button>
+        <div className={s.headActions}>
+          {kind === 'course' && (
+            <NextLink href="/courses/lemida" className={s.headLink}>
+              <Icon icon={RefreshCw} />
+              <span>Lemida sync</span>
+            </NextLink>
+          )}
+          <Button variant="primary" icon={<Icon icon={Plus} />} onClick={() => setOpen(true)}>
+            {copy.newLabel}
+          </Button>
+        </div>
       </header>
       {kind === 'course' && dueSoon.length > 0 && (
         <Card title="Due this week" action={<span className={s.count}>{dueSoon.length}</span>}>
