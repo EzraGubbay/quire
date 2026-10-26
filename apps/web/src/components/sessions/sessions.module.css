@@ -117,6 +117,12 @@
   height: 32px;
   border-radius: var(--eg-radius-control);
   color: var(--eg-muted);
+  /* Reset native <button> chrome so the Edit button matches the plain <a> icons. */
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
 }
 .iconBtn:hover {
   color: var(--eg-text);
