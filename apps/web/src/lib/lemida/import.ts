@@ -13,6 +13,7 @@ import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { attachDocumentToSession, createSession, listSessions, sessionTitle } from '@/lib/sessions';
 import { classifyLemidaFile, cleanTitle } from './classify';
+import { markSynced } from './courses';
 
 export interface ImportMeta {
   fileName: string;
@@ -131,6 +132,7 @@ export async function importLemidaFile(
   data: Uint8Array,
 ): Promise<ImportResult> {
   const hash = sha256(data);
+  if (meta.mappingId) await markSynced(meta.mappingId).catch(() => {});
 
   // 1. Already pulled this exact file (per project).
   const [prior] = await db

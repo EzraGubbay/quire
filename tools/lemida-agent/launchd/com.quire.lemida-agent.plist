@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example LaunchAgent. Edit the two paths (NODE and the agent dir), then copy into
+     ~/Library/LaunchAgents/ and `launchctl load` it. Keeps the agent running and restarts it. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.quire.lemida-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Output of `which node` -->
+    <string>/opt/homebrew/bin/node</string>
+    <string>--env-file-if-exists=.env</string>
+    <string>src/cli.js</string>
+    <string>run</string>
+  </array>
+
+  <!-- Absolute path to this folder -->
+  <key>WorkingDirectory</key>
+  <string>/Users/ezragubbay/Desktop/Projects/quire/tools/lemida-agent</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/lemida-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/lemida-agent.err.log</string>
+</dict>
+</plist>

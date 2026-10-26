@@ -1,0 +1,23 @@
+{
+  "name": "lemida-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Companion agent: reuses your manual Lemida login to pull course files into Quire. Runs on your Mac, not the Pi.",
+  "bin": {
+    "lemida-agent": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/cli.js run",
+    "sync": "node --env-file-if-exists=.env src/cli.js sync",
+    "login": "node --env-file-if-exists=.env src/cli.js login",
+    "probe": "node --env-file-if-exists=.env src/cli.js probe",
+    "parse": "node src/cli.js parse",
+    "test": "node --test",
+    "setup": "playwright install chromium"
+  },
+  "dependencies": {
+    "node-html-parser": "^6.1.13",
+    "playwright": "^1.49.1"
+  }
+}
