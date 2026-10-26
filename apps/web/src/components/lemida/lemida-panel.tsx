@@ -220,7 +220,7 @@ function ReviewCard({
       {review.length === 0 ? (
         <p className={s.empty}>Nothing to sort — every pulled file was placed automatically.</p>
       ) : (
-        <ul className={s.reviewList}>
+        <ul className={s.reviewList} data-testid="lemida-review">
           {review.map((r) => (
             <li key={r.id} className={s.reviewItem}>
               <div className={s.reviewHead}>

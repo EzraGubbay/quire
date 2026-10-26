@@ -29,14 +29,17 @@ export interface Classification {
  * and `\b` is ASCII-only in JS, so Latin words use `\b` and Hebrew words are matched literally. Order is
  * priority: homework before recitation (so "תרגיל בית" wins over the bare "תרגיל"), exam before lecture.
  */
+// Hebrew words are matched by stem so singular and plural both hit (הרצאה/הרצאות → הרצא), and final-form
+// letters are covered explicitly (מבחן/מבחנים → מבח[ןנ]). Order is priority: homework before recitation
+// so "תרגיל בית" wins over the bare "תרגול/תרגיל" family, exam before lecture.
 const KIND_PATTERNS: { kind: LemidaKind; re: RegExp }[] = [
   {
     kind: 'homework',
-    re: /תרגיל\s*בית|שיעור[יe]?\s*בית|שו"?ב|מטלה|מטלת|\bhomework\b|\bassignment\b|problem\s*set|\bpset\b|\bhw\s*\d|\bex\d|\bex\s*\d/i,
+    re: /תרגיל\s*בית|שיעור[יe]?\s*בית|שו"?ב|מטל[הת]|\bhomework\b|\bassignment\b|problem\s*set|\bpset\b|\bhw\s*\d|\bex\d|\bex\s*\d/i,
   },
   {
     kind: 'exam',
-    re: /מבחן|בחינה|מועד\s*[אבג]|בוחן|\bexam\b|\bmidterm\b|\bfinal\b|\bquiz\b|\bmoed\b/i,
+    re: /מבח[ןנ]|בחינ|מועד\s*[אבג]|בוח[ןנ]|\bexam\b|\bmidterm\b|\bfinal\b|\bquiz\b|\bmoed\b/i,
   },
   {
     kind: 'recitation',
@@ -44,11 +47,11 @@ const KIND_PATTERNS: { kind: LemidaKind; re: RegExp }[] = [
   },
   {
     kind: 'lecture',
-    re: /הרצאה|שיעור(?!\s*בית)|\blecture\b|\blec\b|\bslides?\b|מצגת/i,
+    re: /הרצא|שיעור(?!\s*בית)|\blecture\b|\blec\b|\bslides?\b|מצג[תות]/i,
   },
   {
     kind: 'book',
-    re: /ספר\s*קורס|ספר\s*הלימוד|\btextbook\b|course\s*book|\breader\b|חומר\s*קריאה|חוברת/i,
+    re: /ספר\s|\btextbook\b|course\s*book|\breader\b|חומר\s*קריאה|חוברת/i,
   },
 ];
 
@@ -101,6 +104,30 @@ export function classifyLemidaFile(input: ClassifyInput): Classification {
     result.title = cleanTitle(fileName);
   }
   return result;
+}
+
+const HW_NUM = /(?:תרגיל\s*בית|שיעור[יe]?\s*בית|מטלה|homework|assignment|\bhw|\bps|\bex)\D{0,6}(\d{1,3})/i;
+/** A homework number from the file name; the first integer as a fallback. */
+export function homeworkNumber(fileName: string): number | undefined {
+  const m = fileName.match(HW_NUM) ?? fileName.match(/(\d{1,3})/);
+  return m?.[1] ? Number(m[1]) : undefined;
+}
+
+const DUE = /(?:להגש[הת]|הגשה|due|deadline)[^0-9]{0,12}(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/i;
+/** A due date mentioned on the first page ("להגשה עד 12.11"), interpreted as this academic year. */
+export function parseDueDate(snippet: string | undefined, now = new Date()): Date | null {
+  if (!snippet) return null;
+  const m = snippet.match(DUE);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  let year = m[3] ? Number(m[3]) : now.getFullYear();
+  if (year < 100) year += 2000;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  // No explicit year and the date already passed this year ⇒ it means next year.
+  const d = new Date(year, month - 1, day, 23, 59);
+  if (!m[3] && d.getTime() < now.getTime() - 7 * 86_400_000) d.setFullYear(year + 1);
+  return d;
 }
 
 /** File name minus extension, separators tidied, for a human-readable title. */

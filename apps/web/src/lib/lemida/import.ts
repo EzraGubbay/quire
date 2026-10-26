@@ -12,7 +12,7 @@ import { builtinFolder, createDeckDocument, createFolder, listFolders } from '@/
 import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { attachDocumentToSession, createSession, listSessions, sessionTitle } from '@/lib/sessions';
-import { classifyLemidaFile, cleanTitle } from './classify';
+import { classifyLemidaFile, cleanTitle, homeworkNumber, parseDueDate } from './classify';
 import { markSynced } from './courses';
 
 export interface ImportMeta {
@@ -100,30 +100,6 @@ async function findOrCreateAssignment(projectId: string, number: number, title: 
     .limit(1);
   if (existing) return existing;
   return createAssignment(projectId, { number, title });
-}
-
-const HW_NUM = /(?:תרגיל\s*בית|שיעור[יe]?\s*בית|מטלה|homework|assignment|\bhw|\bps|\bex)\D{0,6}(\d{1,3})/i;
-/** A homework number from the file name; the first integer as a fallback. */
-export function homeworkNumber(fileName: string): number | undefined {
-  const m = fileName.match(HW_NUM) ?? fileName.match(/(\d{1,3})/);
-  return m?.[1] ? Number(m[1]) : undefined;
-}
-
-const DUE = /(?:להגש[הת]|הגשה|due|deadline)[^0-9]{0,12}(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/i;
-/** A due date mentioned on the first page ("להגשה עד 12.11"), interpreted as this academic year. */
-export function parseDueDate(snippet: string | undefined, now = new Date()): Date | null {
-  if (!snippet) return null;
-  const m = snippet.match(DUE);
-  if (!m) return null;
-  const day = Number(m[1]);
-  const month = Number(m[2]);
-  let year = m[3] ? Number(m[3]) : now.getFullYear();
-  if (year < 100) year += 2000;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  // No explicit year and the date already passed this year ⇒ it means next year.
-  const d = new Date(year, month - 1, day, 23, 59);
-  if (!m[3] && d.getTime() < now.getTime() - 7 * 86_400_000) d.setFullYear(year + 1);
-  return d;
 }
 
 export async function importLemidaFile(

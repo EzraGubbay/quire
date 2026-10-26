@@ -10,8 +10,7 @@ import { indexOwner } from '@/lib/ai/index';
 import { builtinFolder, createFolder, listFolders, moveDocument } from '@/lib/documents';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { attachDocumentToSession, createSession, listSessions } from '@/lib/sessions';
-import { classifyLemidaFile, cleanTitle } from './classify';
-import { homeworkNumber } from './import';
+import { classifyLemidaFile, cleanTitle, homeworkNumber } from './classify';
 
 export interface ReviewItem extends LemidaFile {
   project: Project;
