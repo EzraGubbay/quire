@@ -139,6 +139,19 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await expect(page.getByRole('link', { name: /^Lecture 1/ })).toBeVisible();
   });
 
+  await test.step('edit a lecture’s title and date', async () => {
+    await page.goto(`/c/${slug}/lectures`);
+    const list = page.getByTestId('lectures-list');
+    await list.getByRole('button', { name: /^Edit/ }).first().click();
+    const dlg = page.locator('dialog[open]');
+    await dlg.getByLabel('Title').fill('Edited topic');
+    await dlg.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(list.getByText('Edited topic')).toBeVisible();
+    // Leave the page on the Notes/Raw view the next step expects.
+    await page.goto(`/c/${slug}/notes`);
+    await page.getByTestId('notes-folders').getByRole('button', { name: /Raw/ }).click();
+  });
+
   await test.step('synthesize the raw note (AI_MOCK)', async () => {
     await page.getByRole('link', { name: /^Lecture 1/ }).click();
     await expect(page.locator('strong.term-label[data-kind="question"]')).toBeVisible();

@@ -2,11 +2,16 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { SessionKind } from '@quire/shared';
-import { Download, FileText, Plus, Presentation, Upload, Users } from 'lucide-react';
+import { Download, FileText, Pencil, Plus, Presentation, Upload, Users } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type DragEvent, useActionState, useEffect, useRef, useState } from 'react';
-import { type ActionState, createSessionAction, dropSessionFilesAction } from '@/app/actions/sessions';
+import { type DragEvent, useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import {
+  type ActionState,
+  createSessionAction,
+  dropSessionFilesAction,
+  updateSessionAction,
+} from '@/app/actions/sessions';
 import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -44,6 +49,7 @@ export function SessionsList({
   const router = useRouter();
   const label = LABEL[kind];
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SessionWithDocuments | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dropState, dropAction, dropping] = useActionState<ActionState, FormData>(dropSessionFilesAction, {});
   const fileInput = useRef<HTMLInputElement>(null);
@@ -153,6 +159,17 @@ export function SessionsList({
                 </span>
               </NextLink>
               <span className={s.rowActions}>
+                {!lite && (
+                  <button
+                    type="button"
+                    className={s.iconBtn}
+                    title={`Edit ${label.one.toLowerCase()} number, title and date`}
+                    aria-label={`Edit ${x.title || `${label.one} ${x.number}`}`}
+                    onClick={() => setEditing(x)}
+                  >
+                    <Icon icon={Pencil} />
+                  </button>
+                )}
                 {x.documents.map((d) =>
                   d.originalPath ? (
                     <a
@@ -189,7 +206,90 @@ export function SessionsList({
         onClose={() => setOpen(false)}
         nextNumber={nextNumber(sessions)}
       />
+      {editing && (
+        <EditSessionDialog
+          key={editing.id}
+          slug={slug}
+          kind={kind}
+          session={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function EditSessionDialog({
+  slug,
+  kind,
+  session,
+  onClose,
+}: {
+  slug: string;
+  kind: SessionKind;
+  session: SessionWithDocuments;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const label = LABEL[kind];
+  const [number, setNumber] = useState(String(session.number));
+  const [title, setTitle] = useState(session.title);
+  const [date, setDate] = useState(session.date ?? '');
+  const [error, setError] = useState('');
+  const [pending, start] = useTransition();
+
+  const save = () =>
+    start(async () => {
+      setError('');
+      const res = await updateSessionAction(slug, session.id, {
+        number: Number(number),
+        title: title.trim(),
+        date: date || null,
+      });
+      if (res.error) setError(res.error);
+      else {
+        router.refresh();
+        onClose();
+      }
+    });
+
+  return (
+    <Dialog open title={`Edit ${label.one.toLowerCase()}`} onClose={onClose}>
+      <form
+        className={s.form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <div className={s.formRow}>
+          <Field label="Number">
+            <Input
+              type="number"
+              min={0}
+              max={999}
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Date">
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Title" error={error} hint="The topic, e.g. SIMD.">
+          <Input maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        </Field>
+        <DialogActions>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={pending}>
+            {pending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 }
 
