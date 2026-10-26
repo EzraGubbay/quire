@@ -31,10 +31,12 @@ async function launch(config, headless) {
 
 async function isLoggedIn(page) {
   if (isAuthWall(page.url())) return false;
-  const marker = await page.$(
-    'a[href*="logout.php"], .usermenu, #user-menu-toggle, [data-region="user-menu"]',
-  );
-  return Boolean(marker);
+  // Guests get a .usermenu too (it holds the "Log in" link), so the only reliable marker is a logout
+  // link — and a visible login link means we're NOT signed in.
+  const logout = await page.$('a[href*="/login/logout.php"]');
+  if (!logout) return false;
+  const login = await page.$('a[href*="/login/index.php"], a[href*="login/index.php?"]');
+  return !login;
 }
 
 /**
@@ -128,7 +130,14 @@ export async function syncCourse(config, course, onFile, { seen = new Set(), ful
   try {
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(course.lemidaUrl, { waitUntil: 'domcontentloaded' });
-    if (isAuthWall(page.url())) throw new SessionExpired(page.url());
+    // Course content can hydrate after domcontentloaded; let the network settle before reading the DOM.
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const landed = page.url();
+    if (isAuthWall(landed)) throw new SessionExpired(landed);
+    // Not signed in as an enrolled student ⇒ Moodle sends us to the enrolment page, not the course.
+    if (/\/enrol\//.test(landed)) {
+      throw new SessionExpired(`${landed} (not enrolled, or signed in only as a guest — run \`login\`)`);
+    }
     const resources = parseMoodleCourse(await page.content(), page.url()).filter((r) =>
       FILE_MODULES.has(r.moduleType),
     );
