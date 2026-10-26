@@ -28,9 +28,15 @@ The panel is where you link each Quire course to its Lemida page, press **Sign i
 ```bash
 cd tools/lemida-agent
 npm install
-npm run setup            # downloads the Chromium Playwright uses
 cp .env.example .env     # then edit .env: QUIRE_BASE_URL and QUIRE_API_KEY
+npm run setup            # only needed if you DON'T have a Chromium-family default browser (see below)
 ```
+
+**Browser.** By default the agent drives your **OS default browser** (Brave, Chrome, Edge, …) so login
+looks familiar — set `LEMIDA_BROWSER` to override (`brave`, `chrome`, a path, …). It drives that browser
+on its **own** profile (`.profile/`), separate from your everyday profile, so the one-time login you do
+in it can be reused headlessly. Only if your default isn't a Chromium-family browser does it fall back to
+Playwright's bundled Chromium — which is what `npm run setup` downloads.
 
 `QUIRE_API_KEY` is the same key the Pi uses. Read it from the Pi; don't paste it anywhere public.
 

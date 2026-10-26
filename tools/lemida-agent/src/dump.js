@@ -4,14 +4,19 @@ import { writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { loadConfig } from './config.js';
 import { isAuthWall, parseMoodleCourse } from './moodle.js';
+import { resolveBrowser } from './which-browser.js';
 
 const url = process.argv[2];
 if (!url) throw new Error('usage: node src/dump.js <courseUrl>');
 const config = loadConfig();
+const b = resolveBrowser(config);
+console.log('browser:', b.name);
 
 const ctx = await chromium.launchPersistentContext(config.profileDir, {
   headless: true,
   userAgent: config.userAgent,
+  ...(b.executablePath ? { executablePath: b.executablePath } : {}),
+  ...(b.channel ? { channel: b.channel } : {}),
 });
 const page = ctx.pages()[0] ?? (await ctx.newPage());
 

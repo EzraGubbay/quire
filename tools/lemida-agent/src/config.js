@@ -16,6 +16,9 @@ export function loadConfig() {
     loginUrl: process.env.LEMIDA_LOGIN_URL ?? 'https://lemida.biu.ac.il/login/index.php',
     homeUrl: process.env.LEMIDA_HOME_URL ?? 'https://lemida.biu.ac.il/my/',
     profileDir: process.env.LEMIDA_PROFILE_DIR ?? path.join(agentDir, '.profile'),
+    // Which browser Playwright drives: '' auto-detects the OS default (Brave/Chrome/Edge/…); or set a
+    // name (brave, chrome, edge, vivaldi, arc, chromium) or an absolute path to the browser binary.
+    browser: process.env.LEMIDA_BROWSER ?? '',
     pollMs: Number(process.env.LEMIDA_POLL_MS ?? 5000),
     probeMs: Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000),
     loginTimeoutMs: Number(process.env.LEMIDA_LOGIN_TIMEOUT_MS ?? 300_000),

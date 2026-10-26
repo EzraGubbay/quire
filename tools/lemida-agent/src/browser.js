@@ -9,6 +9,7 @@ import {
   parsePluginfileLinks,
   parseResourceWorkaround,
 } from './moodle.js';
+import { resolveBrowser } from './which-browser.js';
 
 export class SessionExpired extends Error {
   constructor(url) {
@@ -20,12 +21,19 @@ export class SessionExpired extends Error {
 /** The module types we pull files from; anything else (url, page, quiz, …) is left alone. */
 const FILE_MODULES = new Set(['mod_resource', 'mod_folder', 'mod_assign']);
 
+let resolved;
 async function launch(config, headless) {
+  if (!resolved) {
+    resolved = resolveBrowser(config);
+    console.log(`browser: ${resolved.name}`);
+  }
   return chromium.launchPersistentContext(config.profileDir, {
     headless,
     userAgent: config.userAgent,
     acceptDownloads: true,
     viewport: { width: 1280, height: 900 },
+    ...(resolved.executablePath ? { executablePath: resolved.executablePath } : {}),
+    ...(resolved.channel ? { channel: resolved.channel } : {}),
   });
 }
 
