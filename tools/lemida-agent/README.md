@@ -32,6 +32,11 @@ cp .env.example .env     # then edit .env: QUIRE_BASE_URL and QUIRE_API_KEY
 npm run setup            # only needed if you DON'T have a Chromium-family default browser (see below)
 ```
 
+**Session.** Moodle's login cookie is a *session* cookie that Chromium discards when the browser closes,
+so after each `login` the agent saves all cookies to `.storage.json` and re-injects them on every
+probe/sync. That reuse lasts as long as the Lemida session does (about a day); when it expires, `probe`
+reports `expired` and you `login` again.
+
 **Browser.** By default the agent drives your **OS default browser** (Brave, Chrome, Edge, …) so login
 looks familiar — set `LEMIDA_BROWSER` to override (`brave`, `chrome`, a path, …). It drives that browser
 on its **own** profile (`.profile/`), separate from your everyday profile, so the one-time login you do

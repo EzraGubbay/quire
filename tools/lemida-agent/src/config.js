@@ -16,6 +16,9 @@ export function loadConfig() {
     loginUrl: process.env.LEMIDA_LOGIN_URL ?? 'https://lemida.biu.ac.il/login/index.php',
     homeUrl: process.env.LEMIDA_HOME_URL ?? 'https://lemida.biu.ac.il/my/',
     profileDir: process.env.LEMIDA_PROFILE_DIR ?? path.join(agentDir, '.profile'),
+    // Cookies (incl. Moodle's non-persistent session cookie) saved after login and re-injected on every
+    // probe/sync — Chromium would otherwise drop session cookies when the browser closes.
+    stateFile: process.env.LEMIDA_STATE_FILE ?? path.join(agentDir, '.storage.json'),
     // Which browser Playwright drives: '' auto-detects the OS default (Brave/Chrome/Edge/…); or set a
     // name (brave, chrome, edge, vivaldi, arc, chromium) or an absolute path to the browser binary.
     browser: process.env.LEMIDA_BROWSER ?? '',

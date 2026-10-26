@@ -3,3 +3,4 @@ package-lock.json
 .profile/
 .seen.json
 .env
+.storage.json

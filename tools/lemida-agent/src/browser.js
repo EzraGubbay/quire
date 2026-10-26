@@ -1,6 +1,8 @@
 // Playwright operations over a persistent Chrome profile on the Mac. The profile holds the session you
 // establish by hand; the agent reuses it. Guardrails: it never types credentials and never tries to pass
 // a login or bot-check page — if it lands on one, it stops and reports the session as expired.
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import {
   filenameFrom,
@@ -37,6 +39,22 @@ async function launch(config, headless) {
   });
 }
 
+/** Re-inject saved cookies (incl. the Moodle session cookie Chromium drops on close) before navigating. */
+async function restoreState(context, config) {
+  if (!existsSync(config.stateFile)) return;
+  try {
+    const state = JSON.parse(await readFile(config.stateFile, 'utf8'));
+    if (Array.isArray(state.cookies) && state.cookies.length) await context.addCookies(state.cookies);
+  } catch {
+    // Corrupt/empty state file — ignore and fall back to the profile's own cookies.
+  }
+}
+
+/** Persist all cookies (session ones included) after a successful login, for later probe/sync. */
+async function saveState(context, config) {
+  await context.storageState({ path: config.stateFile });
+}
+
 async function isLoggedIn(page) {
   if (isAuthWall(page.url())) return false;
   // Guests get a .usermenu too (it holds the "Log in" link), so the only reliable marker is a logout
@@ -54,14 +72,22 @@ async function isLoggedIn(page) {
 export async function openLogin(config) {
   const context = await launch(config, false);
   try {
+    await restoreState(context, config); // a still-valid session skips the manual step
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(config.homeUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
     const deadline = Date.now() + config.loginTimeoutMs;
     while (Date.now() < deadline) {
-      if (await isLoggedIn(page)) return 'valid';
+      if (await isLoggedIn(page)) {
+        await saveState(context, config); // capture the session cookie while it's live
+        return 'valid';
+      }
       await page.waitForTimeout(2000);
     }
-    return (await isLoggedIn(page)) ? 'valid' : 'unknown';
+    if (await isLoggedIn(page)) {
+      await saveState(context, config);
+      return 'valid';
+    }
+    return 'unknown';
   } finally {
     await context.close();
   }
@@ -71,6 +97,7 @@ export async function openLogin(config) {
 export async function probe(config) {
   const context = await launch(config, true);
   try {
+    await restoreState(context, config);
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(config.homeUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
     return (await isLoggedIn(page)) ? 'valid' : 'expired';
@@ -136,6 +163,7 @@ export async function syncCourse(config, course, onFile, { seen = new Set(), ful
   const context = await launch(config, true);
   const stats = { resources: 0, downloaded: 0, skipped: 0 };
   try {
+    await restoreState(context, config);
     const page = context.pages()[0] ?? (await context.newPage());
     await page.goto(course.lemidaUrl, { waitUntil: 'domcontentloaded' });
     // Course content can hydrate after domcontentloaded; let the network settle before reading the DOM.
