@@ -75,6 +75,33 @@ export type EntityKind = (typeof ENTITY_KINDS)[number];
 export const LINK_KINDS = ['wiki', 'mention', 'belongs', 'suggested', 'synthesized'] as const;
 export type LinkKind = (typeof LINK_KINDS)[number];
 
+/** Semantic type a file pulled from Lemida is placed as. `unknown` lands in the review queue. */
+export const LEMIDA_KINDS = [
+  'lecture',
+  'recitation',
+  'homework',
+  'exam',
+  'book',
+  'other',
+  'unknown',
+] as const;
+export type LemidaKind = (typeof LEMIDA_KINDS)[number];
+
+/** Lifecycle of a file the agent handed to Quire. */
+export const LEMIDA_FILE_STATUSES = ['imported', 'needs_review', 'duplicate', 'error'] as const;
+export type LemidaFileStatus = (typeof LEMIDA_FILE_STATUSES)[number];
+
+/** Commands the Quire panel enqueues for the Mac companion agent to run. */
+export const LEMIDA_COMMAND_KINDS = ['open_login', 'probe', 'sync'] as const;
+export type LemidaCommandKind = (typeof LEMIDA_COMMAND_KINDS)[number];
+
+export const LEMIDA_COMMAND_STATUSES = ['pending', 'running', 'done', 'error'] as const;
+export type LemidaCommandStatus = (typeof LEMIDA_COMMAND_STATUSES)[number];
+
+/** Whether the reused Lemida browser session is still logged in. */
+export const LEMIDA_SESSION_STATUSES = ['unknown', 'valid', 'expired'] as const;
+export type LemidaSessionStatus = (typeof LEMIDA_SESSION_STATUSES)[number];
+
 export const projectCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(2000).default(''),

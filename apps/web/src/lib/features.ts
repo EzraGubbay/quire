@@ -43,6 +43,8 @@ export const FEATURES = {
   tests: { phone: 'on', desktop: 'on' },
   /** Generating weekly / tri-weekly tests. */
   'tests.generate': { phone: 'off', desktop: 'on' },
+  /** Lemida sync panel: agent status, course mapping, review queue (needs a wide canvas). */
+  'lemida.sync': { phone: 'off', tablet: 'off', desktop: 'on' },
 } as const satisfies Record<string, Row>;
 
 export type FeatureKey = keyof typeof FEATURES;
@@ -74,6 +76,7 @@ export const FEATURE_LABEL: Record<FeatureKey, string> = {
   homework: 'Homework',
   tests: 'Tests',
   'tests.generate': 'Generate tests',
+  'lemida.sync': 'Lemida sync',
 };
 
 type Overrides = Partial<Record<FeatureKey, Partial<Record<Platform, Level>>>>;

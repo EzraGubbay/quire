@@ -4,6 +4,10 @@ import {
   DOCUMENT_KINDS,
   ENTITY_KINDS,
   FOLDER_SCOPES,
+  LEMIDA_COMMAND_KINDS,
+  LEMIDA_COMMAND_STATUSES,
+  LEMIDA_FILE_STATUSES,
+  LEMIDA_KINDS,
   LINK_KINDS,
   NOTE_STATUSES,
   PROJECT_KINDS,
@@ -52,6 +56,10 @@ export const questionStatus = pgEnum('question_status', QUESTION_STATUSES);
 export const testKind = pgEnum('test_kind', TEST_KINDS);
 export const testStatus = pgEnum('test_status', TEST_STATUSES);
 export const testResult = pgEnum('test_result', TEST_RESULTS);
+export const lemidaKind = pgEnum('lemida_kind', LEMIDA_KINDS);
+export const lemidaFileStatus = pgEnum('lemida_file_status', LEMIDA_FILE_STATUSES);
+export const lemidaCommandKind = pgEnum('lemida_command_kind', LEMIDA_COMMAND_KINDS);
+export const lemidaCommandStatus = pgEnum('lemida_command_status', LEMIDA_COMMAND_STATUSES);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -137,6 +145,8 @@ export const documents = pgTable(
     /** The uploaded .pptx (relative to FILES_DIR) when file_path is its PDF rendering. */
     originalPath: text('original_path'),
     originalName: text('original_name'),
+    /** sha256 of the source bytes (original file for decks, PDF otherwise); lazily backfilled, used to dedupe Lemida pulls. */
+    contentHash: text('content_hash'),
     /** Why the deck has no PDF yet (conversion unavailable or failed). */
     conversionError: text('conversion_error'),
     /** For documents in the Practice Exams folder: { term?, solutionDocumentId? }. */
@@ -601,6 +611,84 @@ export const rereadItems = pgTable(
   (t) => [index('reread_items_idx').on(t.testId)],
 );
 
+/** A Quire course linked to one Lemida (Moodle) course, with its per-course sync state. */
+export const lemidaCourses = pgTable(
+  'lemida_courses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** The Lemida course-view URL the user mapped. */
+    lemidaUrl: text('lemida_url').notNull(),
+    /** Parsed `id=` from the course URL, when present. */
+    lemidaCourseId: text('lemida_course_id'),
+    label: text('label').notNull().default(''),
+    enabled: boolean('enabled').notNull().default(true),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index('lemida_courses_project_idx').on(t.projectId),
+    uniqueIndex('lemida_courses_project_url_idx').on(t.projectId, t.lemidaUrl),
+  ],
+);
+
+/**
+ * Every file the agent handed to Quire: provenance for dedupe, the review queue (needs_review rows),
+ * and the Phase-2 training log (the deterministic rule + confidence, and any manual correction).
+ */
+export const lemidaFiles = pgTable(
+  'lemida_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    lemidaCourseId: uuid('lemida_course_id').references(() => lemidaCourses.id, { onDelete: 'set null' }),
+    sourceUrl: text('source_url').notNull().default(''),
+    fileName: text('file_name').notNull(),
+    sha256: text('sha256').notNull(),
+    contentType: text('content_type').notNull().default('application/octet-stream'),
+    size: integer('size').notNull().default(0),
+    /** Moodle section heading the resource sat under, when known. */
+    sectionTitle: text('section_title').notNull().default(''),
+    /** Moodle module type the resource came from (mod_resource, mod_folder, mod_assign, …). */
+    moduleType: text('module_type').notNull().default(''),
+    detectedKind: lemidaKind('detected_kind').notNull().default('unknown'),
+    confidence: real('confidence').notNull().default(0),
+    /** Which deterministic rule fired (for Phase-2 analysis). */
+    rule: text('rule').notNull().default(''),
+    placement: jsonb('placement')
+      .$type<{ documentId?: string; sessionId?: string; assignmentId?: string }>()
+      .notNull()
+      .default({}),
+    status: lemidaFileStatus('status').notNull().default('needs_review'),
+    /** Set when the user re-files a row from the review queue; the Phase-2 label. */
+    correctedKind: lemidaKind('corrected_kind'),
+    error: text('error'),
+    ...timestamps,
+  },
+  (t) => [
+    index('lemida_files_project_idx').on(t.projectId, t.status),
+    uniqueIndex('lemida_files_project_sha_idx').on(t.projectId, t.sha256),
+  ],
+);
+
+/** The command/status channel the Quire panel and the Mac agent talk over (agent polls for pending). */
+export const lemidaCommands = pgTable(
+  'lemida_commands',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: lemidaCommandKind('kind').notNull(),
+    status: lemidaCommandStatus('status').notNull().default('pending'),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    result: jsonb('result').$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (t) => [index('lemida_commands_status_idx').on(t.status, t.createdAt)],
+);
+
 export const projectRelations = relations(projects, ({ many }) => ({
   folders: many(folders),
   documents: many(documents),
@@ -652,3 +740,9 @@ export type AssignmentFile = typeof assignmentFiles.$inferSelect;
 export type Test = typeof tests.$inferSelect;
 export type TestQuestion = typeof testQuestions.$inferSelect;
 export type RereadItem = typeof rereadItems.$inferSelect;
+export type LemidaCourse = typeof lemidaCourses.$inferSelect;
+export type NewLemidaCourse = typeof lemidaCourses.$inferInsert;
+export type LemidaFile = typeof lemidaFiles.$inferSelect;
+export type NewLemidaFile = typeof lemidaFiles.$inferInsert;
+export type LemidaCommand = typeof lemidaCommands.$inferSelect;
+export type NewLemidaCommand = typeof lemidaCommands.$inferInsert;
