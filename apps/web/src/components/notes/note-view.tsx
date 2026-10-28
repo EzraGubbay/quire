@@ -282,6 +282,13 @@ export function NoteView({
   );
 }
 
+/**
+ * The direct note editor under Notes. Like the in-lecture note pane, it autosaves 1.5 s after typing
+ * stops (title or body) and flushes on tab close / when Ask opens, so nothing is lost; the status pill
+ * shows where the save is. A rename changes the note's slug, so a save that renames soft-replaces the URL
+ * to the new `?edit=1` slug (kept reload-safe) — body-only saves don't touch the URL. "Done" flushes then
+ * returns to the read view.
+ */
 function NoteEditor({
   slug,
   note,
@@ -302,41 +309,88 @@ function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [html, setHtml] = useState('');
-  const [dirty, setDirty] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
   const [pending, start] = useTransition();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest values for the debounced save and the close/unload flush, which run outside render.
+  const titleRef = useRef(title);
+  titleRef.current = title;
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
+  const slugRef = useRef(note.slug);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => {
       renderMarkdownClient(body).then(setHtml);
     }, 250);
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      if (previewTimer.current) clearTimeout(previewTimer.current);
     };
   }, [body]);
 
   const save = useCallback(
-    (thenClose = false) =>
-      start(async () => {
-        const res = await updateNoteAction(slug, note.id, { title, body });
-        if (res.error) return;
-        setDirty(false);
+    async (close = false) => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      setStatus('saving');
+      try {
+        const res = await updateNoteAction(slug, note.id, { title: titleRef.current, body: bodyRef.current });
+        if (res.error) {
+          setStatus('error');
+          return;
+        }
+        setStatus('saved');
         announceNoteChange(note.id);
-        const target = `${base}/notes/${res.noteSlug ?? note.slug}`;
-        if (thenClose) router.push(target);
-        else if (res.noteSlug && res.noteSlug !== note.slug) router.replace(`${target}?edit=1`);
-        else router.refresh();
-      }),
-    [slug, note.id, note.slug, title, body, router, base],
+        const renamed = !!res.noteSlug && res.noteSlug !== slugRef.current;
+        if (res.noteSlug) slugRef.current = res.noteSlug;
+        if (close) start(() => router.push(`${base}/notes/${slugRef.current}`));
+        else if (renamed) start(() => router.replace(`${base}/notes/${slugRef.current}?edit=1`));
+      } catch {
+        setStatus('error');
+      }
+    },
+    [slug, note.id, router, base],
   );
 
+  const scheduleSave = useCallback(() => {
+    setStatus('dirty');
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void save(false), 1500);
+  }, [save]);
+
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
+  // Flush the pending save on tab close and when Ask opens (so the question sees the latest note).
   useEffect(() => {
-    if (!dirty) return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', h);
-    return () => window.removeEventListener('beforeunload', h);
-  }, [dirty]);
+    const flush = () => {
+      if (status !== 'dirty') return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      void save(false);
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('quire:ask', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      window.removeEventListener('quire:ask', flush);
+    };
+  }, [status, save]);
+
+  const statusLabel =
+    status === 'saving'
+      ? 'Saving…'
+      : status === 'dirty'
+        ? 'Unsaved changes'
+        : status === 'error'
+          ? 'Save failed'
+          : 'Saved';
 
   return (
     <div className={s.main}>
@@ -352,11 +406,18 @@ function NoteEditor({
           value={title}
           onChange={(e) => {
             setTitle(e.target.value);
-            setDirty(true);
+            scheduleSave();
           }}
         />
-        <span className={s.status}>{pending ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
-        <Button variant="secondary" size="sm" disabled={pending || !dirty} onClick={() => save(false)}>
+        <span className={s.status} data-status={status}>
+          {statusLabel}
+        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={status !== 'dirty' && status !== 'error'}
+          onClick={() => save(false)}
+        >
           Save
         </Button>
         <Button
@@ -364,7 +425,11 @@ function NoteEditor({
           size="sm"
           icon={<Icon icon={Check} />}
           disabled={pending}
-          onClick={() => (dirty ? save(true) : router.push(`${base}/notes/${note.slug}`))}
+          onClick={() =>
+            status === 'dirty' || status === 'saving' || status === 'error'
+              ? save(true)
+              : start(() => router.push(`${base}/notes/${slugRef.current}`))
+          }
         >
           Done
         </Button>
@@ -377,7 +442,7 @@ function NoteEditor({
           value={body}
           onChange={(e) => {
             setBody(e.target.value);
-            setDirty(true);
+            scheduleSave();
           }}
           placeholder="Write in Markdown. [[wiki links]] and $TeX$ work."
         />
@@ -387,7 +452,7 @@ function NoteEditor({
             value={body}
             onChange={(v) => {
               setBody(v);
-              setDirty(true);
+              scheduleSave();
             }}
             linkTargets={linkTargets}
             macros={macros}

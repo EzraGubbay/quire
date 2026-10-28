@@ -17,6 +17,9 @@ test('notes: create, edit with a wiki link, follow it to create the target, see 
   await page.waitForURL(/\/notes\/routing-entropy\?edit=1$/);
   await page.locator('.cm-content').click();
   await page.keyboard.type('Entropy of the router posterior; relates to [[ELBO tightness]] and $H(q)$.');
+  // Autosave: the status pill flips to "dirty" on typing, then to "saved" ~1.5 s later — no Save click.
+  await expect(page.locator('[data-status="dirty"]')).toBeVisible();
+  await expect(page.locator('[data-status="saved"]')).toBeVisible({ timeout: 5000 });
   await page.getByRole('button', { name: 'Done' }).click();
   await page.waitForURL(/\/notes\/routing-entropy$/);
   await expect(page.locator('[class*="markdown-view"] mjx-container').first()).toBeVisible();
