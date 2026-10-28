@@ -123,6 +123,9 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await page.keyboard.press('Alt+q');
     await page.keyboard.type('Why does ==associativity== matter?');
     await expect(editor).toContainText('**Question:** Why does ==associativity== matter?');
+    // Live formatting decorates the raw source in place: the bold label reads bold, ==highlight== tints its content.
+    await expect(pane.locator('.cm-md-strong').first()).toHaveText('Theorem:');
+    await expect(pane.locator('.cm-md-mark')).toHaveText('associativity');
     await expect(pane.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 });
     // Ask from the deck sends the note along with the slides; the mock answer says so and cites the note.
     await page.getByTitle('Ask the AI about this document').click();

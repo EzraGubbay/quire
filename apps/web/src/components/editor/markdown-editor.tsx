@@ -4,8 +4,17 @@ import { autocompletion, type CompletionContext, type CompletionResult } from '@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, placeholder } from '@codemirror/view';
+import { EditorState, type Range } from '@codemirror/state';
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  keymap,
+  lineNumbers,
+  placeholder,
+  ViewPlugin,
+  type ViewUpdate,
+} from '@codemirror/view';
 import { type Ref, useEffect, useImperativeHandle, useRef } from 'react';
 import { TERM_LABEL, TERM_SHORTCUTS, type TermKind, termMarkdown } from '@/lib/term-labels';
 import s from './markdown-editor.module.css';
@@ -43,6 +52,82 @@ function insertLabelIn(view: EditorView, kind: TermKind) {
   view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
   view.focus();
 }
+
+// Live formatting: decorations that make the note's structure legible AS IT IS TYPED. This stays a raw editor — the
+// markers (`**`, `*`, `_`, `==`, `#`, bullets) are never hidden — so we only paint over the source: emphasis reads
+// bold/italic, ==highlight== gets the same butter tint as the rendered <mark>, headings grow, and list bullets are
+// accented. The markers themselves are muted so the content reads at a glance. Styling lives in markdown-editor.module.css.
+const DECO = {
+  strong: Decoration.mark({ class: 'cm-md-strong' }),
+  em: Decoration.mark({ class: 'cm-md-em' }),
+  mark: Decoration.mark({ class: 'cm-md-mark' }),
+  marker: Decoration.mark({ class: 'cm-md-marker' }),
+  listMarker: Decoration.mark({ class: 'cm-md-list-marker' }),
+};
+// One line decoration per heading level (`#`..`######`), applied at the line start.
+const HEADINGS = [1, 2, 3, 4, 5, 6].map((n) => Decoration.line({ class: `cm-md-heading cm-md-h${n}` }));
+
+// Inline spans with their marker width: content gets the style, the flanking markers are muted. Emphasis uses
+// emphasis-like flanking (markers hug non-space) and highlight mirrors the renderer's `==x==` rule so `a == b` stays
+// plain. Single-star/underscore italics avoid the `**` of bold and intra-word underscores.
+const INLINE: { re: RegExp; deco: Decoration; marker: number }[] = [
+  { re: /\*\*([^\s*](?:[^*]*[^\s*])?)\*\*/g, deco: DECO.strong, marker: 2 },
+  { re: /(?<!=)==(?!=)(?=\S)[^\n]+?(?<=\S)(?<!=)==(?!=)/g, deco: DECO.mark, marker: 2 },
+  { re: /(?<![*\w])\*(?!\s)[^*\n]+?(?<=\S)\*(?![*\w])/g, deco: DECO.em, marker: 1 },
+  { re: /(?<![_\w])_(?!\s)[^_\n]+?(?<=\S)_(?![_\w])/g, deco: DECO.em, marker: 1 },
+];
+
+/** Collects the live-formatting decorations for one line's raw text (`base` is the line's document offset). */
+function decorateLine(base: number, text: string, out: Range<Decoration>[]) {
+  const hashes = /^(#{1,6})\s/.exec(text)?.[1];
+  if (hashes) {
+    const line = HEADINGS[hashes.length - 1];
+    if (line) out.push(line.range(base));
+    out.push(DECO.marker.range(base, base + hashes.length));
+  }
+  // A bullet (`-`, `*`, `+`) or ordered (`1.`) marker at the line start, optionally indented.
+  const list = /^(\s*)([-*+]|\d{1,9}\.)\s/.exec(text);
+  if (list?.[2]) {
+    const at = base + (list[1]?.length ?? 0);
+    out.push(DECO.listMarker.range(at, at + list[2].length));
+  }
+  for (const { re, deco, marker } of INLINE) {
+    for (const m of text.matchAll(re)) {
+      const start = base + (m.index ?? 0);
+      const end = start + m[0].length;
+      out.push(DECO.marker.range(start, start + marker));
+      out.push(deco.range(start + marker, end - marker));
+      out.push(DECO.marker.range(end - marker, end));
+    }
+  }
+}
+
+/** Builds the decoration set for the visible ranges only, so long notes stay cheap to style. */
+function buildDecorations(view: EditorView): DecorationSet {
+  const out: Range<Decoration>[] = [];
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = view.state.doc.lineAt(pos);
+      decorateLine(line.from, line.text, out);
+      pos = line.to + 1;
+    }
+  }
+  return Decoration.set(out, true);
+}
+
+// Recompute on edits and when the viewport scrolls (visible-range styling only covers the lines on screen).
+const liveFormatting = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildDecorations(view);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged) this.decorations = buildDecorations(u.view);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
 
 /** CodeMirror 6 Markdown source editor with wiki-link and TeX macro autocomplete, term labels, and RTL-aware lines. */
 export function MarkdownEditor({
@@ -112,6 +197,7 @@ export function MarkdownEditor({
         lineNumbers(),
         history(),
         markdown({ codeLanguages: languages }),
+        liveFormatting,
         autocompletion({ override: [complete] }),
         placeholder('Write in Markdown. [[wiki links]] and $TeX$ work.'),
         EditorView.lineWrapping,
