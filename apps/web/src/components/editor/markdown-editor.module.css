@@ -63,3 +63,42 @@
 .host :global(.cm-editor) {
   height: 100%;
 }
+/* Live formatting: the raw markers stay on screen (this is a source editor), so we only restyle so structure reads at
+   a glance — emphasis, ==highlight== (the same tint as the rendered <mark>), headings and list bullets. */
+.host :global(.cm-md-strong) {
+  font-weight: 650;
+}
+.host :global(.cm-md-em) {
+  font-style: italic;
+}
+.host :global(.cm-md-mark) {
+  background: var(--quire-mark);
+  border-radius: 2px;
+}
+.host :global(.cm-md-list-marker) {
+  color: var(--eg-accent-text);
+  font-weight: 600;
+}
+/* The markers themselves recede so the content leads. */
+.host :global(.cm-md-marker) {
+  color: var(--eg-muted);
+}
+.host :global(.cm-md-heading) {
+  font-weight: 650;
+  line-height: 1.3;
+}
+.host :global(.cm-md-h1) {
+  font-size: 1.5em;
+}
+.host :global(.cm-md-h2) {
+  font-size: 1.3em;
+}
+.host :global(.cm-md-h3) {
+  font-size: 1.15em;
+}
+.host :global(.cm-md-h4) {
+  font-size: 1.05em;
+}
+.host :global(.cm-md-h6) {
+  color: var(--eg-text-2);
+}
