@@ -4,7 +4,7 @@ import { autocompletion, type CompletionContext, type CompletionResult } from '@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { EditorState, type Range } from '@codemirror/state';
+import { EditorSelection, EditorState, type Range } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -50,6 +50,27 @@ function insertLabelIn(view: EditorView, kind: TermKind) {
   const prefix = lineBlank || atLineStart ? '' : '\n';
   const text = `${prefix}${termMarkdown(kind)}`;
   view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length } });
+  view.focus();
+}
+
+/**
+ * Wraps each selection in `before`/`after` markers (acting on every cursor). With a selection the wrapped text stays
+ * selected; with none the markers are inserted and the caret parks between them. `block` puts the content on its own
+ * line between the fences — used for display math (`$$\n…\n$$`).
+ */
+function wrapSelectionIn(view: EditorView, before: string, after: string, block = false) {
+  const { state } = view;
+  view.dispatch(
+    state.changeByRange((range) => {
+      const inner = state.sliceDoc(range.from, range.to);
+      const insert = block ? `${before}\n${inner}\n${after}` : `${before}${inner}${after}`;
+      const start = range.from + before.length + (block ? 1 : 0); // just inside the opening marker
+      return {
+        changes: { from: range.from, to: range.to, insert },
+        range: EditorSelection.range(start, start + inner.length),
+      };
+    }),
+  );
   view.focus();
 }
 
@@ -220,6 +241,28 @@ export function MarkdownEditor({
               },
             })),
           ),
+          // Formatting + math shortcuts. `Mod-` is Cmd on macOS, Ctrl elsewhere (CodeMirror). Each wraps the selection,
+          // or with no selection drops the markers and parks the caret between them; the `**`/`*`/`==`/`$` markers
+          // render through the live-formatting ViewPlugin. These dodge the editor's Alt-based term labels (Alt+t/q/…)
+          // and browser Cmd keys. We avoid Cmd-M for math — macOS minimises the window on Cmd-M, an OS shortcut a page
+          // can't reliably suppress — and use E for "equation" instead. Final set:
+          //   Mod-b  bold **…**      Mod-i  italic *…*      Mod-Shift-h  highlight ==…==
+          //   Mod-e  inline math $…$                        Mod-Shift-e  display math $$ … $$ (content on its own line)
+          ...(
+            [
+              ['Mod-b', '**', '**', false],
+              ['Mod-i', '*', '*', false],
+              ['Mod-Shift-h', '==', '==', false],
+              ['Mod-e', '$', '$', false],
+              ['Mod-Shift-e', '$$', '$$', true],
+            ] as const
+          ).map(([key, before, after, block]) => ({
+            key,
+            run: (v: EditorView) => {
+              wrapSelectionIn(v, before, after, block);
+              return true;
+            },
+          })),
           indentWithTab,
           ...defaultKeymap,
           ...historyKeymap,
