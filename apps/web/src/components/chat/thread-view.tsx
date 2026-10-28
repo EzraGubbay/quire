@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { RotateCcw, Send, Square } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Send, Square } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -11,6 +11,7 @@ import type { ChatMessage } from '@/db/schema';
 import type { Citation } from '@/lib/chat';
 import { renderMarkdownClient } from '@/lib/markdown-client';
 import s from './chat.module.css';
+import { streamPhase } from './stream-state';
 
 type Msg = Pick<ChatMessage, 'id' | 'role' | 'content' | 'citations' | 'error' | 'model' | 'costUsd'> & {
   pending?: boolean;
@@ -307,6 +308,24 @@ function friendly(error: string): string {
   return error;
 }
 
+/**
+ * Shown while an answer is pending before the first token: a reading/working cue, not a bare spinner.
+ * The dots animate only while this is mounted; the moment the stream ends (`done` or `error`) it is
+ * replaced, so a motionless bubble always means the answer has stopped coming.
+ */
+function Thinking() {
+  return (
+    <span className={s.thinking} role="status" aria-live="polite" data-testid="chat-thinking">
+      <span className={s.thinkingDots} aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className={s.thinkingLabel}>Thinking…</span>
+    </span>
+  );
+}
+
 function Message({ m, onRetry }: { m: Msg; onRetry?: () => void }) {
   const [html, setHtml] = useState('');
   useEffect(() => {
@@ -314,13 +333,19 @@ function Message({ m, onRetry }: { m: Msg; onRetry?: () => void }) {
     if (m.role === 'assistant' && m.content && !m.pending) renderMarkdownClient(m.content).then(setHtml);
   }, [m.content, m.role, m.pending]);
   const cites = (m.citations as Citation[]) ?? [];
+  const phase = streamPhase(m);
   return (
-    <div className={s.msg} data-role={m.role} data-testid="chat-message">
+    <div className={s.msg} data-role={m.role} data-testid="chat-message" data-phase={phase}>
       <div className={s.bubble}>
         {m.role === 'user' ? (
           m.content
-        ) : m.pending ? (
-          <span className={s.streaming}>{m.content || '…'}</span>
+        ) : phase === 'thinking' ? (
+          <Thinking />
+        ) : phase === 'streaming' ? (
+          <span className={s.streaming}>
+            {m.content}
+            <span className={s.caret} aria-hidden="true" />
+          </span>
         ) : html ? (
           <MarkdownView html={html} />
         ) : m.content ? (
@@ -329,6 +354,7 @@ function Message({ m, onRetry }: { m: Msg; onRetry?: () => void }) {
         {m.error && (
           <div className={s.errorRow} data-testid="chat-error">
             <span className={s.error}>
+              <Icon icon={AlertTriangle} size={16} aria-hidden="true" />
               {m.content ? 'The answer was cut off: ' : ''}
               {friendly(m.error)}
             </span>

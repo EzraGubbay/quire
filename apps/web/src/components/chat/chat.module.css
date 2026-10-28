@@ -124,6 +124,13 @@
 .error {
   color: var(--eg-accent-text);
   font: 400 13px / 1.4 var(--eg-font-ui);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The stopped-stream marker: a static alert that reads differently from the moving "thinking" dots. */
+.error svg {
+  flex: none;
 }
 .cites {
   display: flex;
@@ -284,6 +291,94 @@
 }
 .streaming {
   white-space: pre-wrap;
+}
+
+/* Waiting indicator. It animates only while mounted — i.e. only while the answer is still on its way
+ * (thinking or streaming). On `done` it is swapped for the rendered answer and on `error` for the
+ * stopped-stream marker, so a motionless assistant bubble always means nothing more is coming. */
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--eg-text-2);
+}
+.thinkingDots {
+  display: inline-flex;
+  gap: 5px;
+}
+.thinkingDots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--eg-accent);
+  animation: eg-think 1.2s ease-in-out infinite;
+}
+.thinkingDots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.thinkingDots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+.thinkingLabel {
+  font: 500 13px / 1 var(--eg-font-ui);
+  color: var(--eg-text-2);
+  /* A gentle shimmer so the words read as live rather than a frozen label. */
+  animation: eg-think-pulse 1.6s ease-in-out infinite;
+}
+@keyframes eg-think {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@keyframes eg-think-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Streaming: a soft caret trailing the text, so a half-answer still reads as "more is coming". */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--eg-accent);
+  border-radius: 1px;
+  animation: eg-caret 1s steps(2, start) infinite;
+}
+@keyframes eg-caret {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Honour reduced-motion: keep the cue visible, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .thinkingDots i,
+  .thinkingLabel,
+  .caret {
+    animation: none;
+  }
+  .thinkingDots i {
+    opacity: 0.6;
+  }
 }
 .errorRow {
   display: flex;

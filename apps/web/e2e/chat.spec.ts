@@ -34,8 +34,18 @@ test('chat: ask a question, get a cited answer from indexed notes; ask-about-doc
   await expect(answer).toContainText('Mock answer', { timeout: 20_000 });
   await expect(answer.getByRole('link', { name: /\[1\]/ })).toBeVisible();
   await expect(answer).toContainText('Routing posterior');
+  // The thinking indicator resolved into the answer on success; nothing is left animating.
+  await expect(page.getByTestId('chat-thinking')).toHaveCount(0);
   // Thread renamed from the first question.
   await expect(page.locator('[class*="itemTitle"]').first()).toContainText('When does the routing posterior');
+
+  // Error-stop: a forced provider failure keeps the thinking indicator up while the answer is pending,
+  // then stops it and shows the failure, so "still coming" reads differently from "it will never arrive".
+  await page.getByLabel('Question').fill('MOCK_FAIL_ALWAYS what breaks?');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('chat-thinking')).toBeVisible();
+  await expect(page.getByTestId('chat-error')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('chat-thinking')).toHaveCount(0);
 
   // Ask slide-over from the app bar.
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
