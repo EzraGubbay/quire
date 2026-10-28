@@ -112,6 +112,14 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await expect(pane).toBeVisible();
     const editor = pane.locator('.cm-content');
     await editor.click();
+    // Formatting shortcut: type a word, select it all, wrap it in bold with Mod-b (ControlOrMeta picks the platform
+    // modifier). The selection becomes `**mutex**`; then clear the note so the rest of the step starts empty.
+    await page.keyboard.type('mutex');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(editor).toContainText('**mutex**');
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
     await page.keyboard.type('Race condition: two threads touch shared state without a lock.');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Alt+t');
