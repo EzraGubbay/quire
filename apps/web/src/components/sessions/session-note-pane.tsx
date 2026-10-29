@@ -1,15 +1,26 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { ExternalLink, Quote, Sparkles } from 'lucide-react';
+import { ExternalLink, FileText, Quote, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
-import { saveSessionNoteAction, sessionNoteAction } from '@/app/actions/sessions';
+import {
+  type ActionState,
+  listNoteOptionsAction,
+  newSessionNoteAction,
+  saveSessionNoteAction,
+  sessionNoteAction,
+  setSessionNoteAction,
+} from '@/app/actions/sessions';
 import { MarkdownEditor, type MarkdownEditorHandle } from '@/components/editor/markdown-editor';
 import { SynthesizeButton } from '@/components/notes/synthesize-button';
 import { useProject } from '@/components/project-context';
+import { Dialog, DialogActions } from '@/components/ui/dialog';
+import { Field } from '@/components/ui/field';
 import type { Note } from '@/db/schema';
 import { announceNoteChange } from '@/lib/note-signal';
 import s from './sessions.module.css';
+
+type NoteOption = { id: string; title: string; sessionId: string | null };
 
 /**
  * The raw note beside the slides. Created on the first keystroke (so empty lectures do not litter the Raw folder),
@@ -39,6 +50,9 @@ export function SessionNotePane({
   const [note, setNote] = useState<Note | null>(initial);
   const [body, setBody] = useState(initial?.body ?? '');
   const [status, setStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [options, setOptions] = useState<NoteOption[] | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const editor = useRef<MarkdownEditorHandle>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const creating = useRef<Promise<Note> | null>(null);
@@ -102,6 +116,40 @@ export function SessionNotePane({
     editor.current?.insertAtCursor(`[[${deckTitle}#${currentPage}]] `);
   };
 
+  const openChooser = useCallback(async () => {
+    setChooserOpen(true);
+    setOptions(null);
+    try {
+      setOptions(await listNoteOptionsAction(slug));
+    } catch {
+      setOptions([]);
+    }
+  }, [slug]);
+
+  // Make `run`'s note this session's note. Persist the current note first (switching never loses edits), then load
+  // the chosen/new note into the editor. The previously tied note is only unlinked server-side, never deleted.
+  const switchTo = useCallback(
+    async (run: () => Promise<ActionState & { note?: Note }>) => {
+      setChoosing(true);
+      if (status === 'dirty') {
+        if (timer.current) clearTimeout(timer.current);
+        await save(body);
+      }
+      const res = await run();
+      setChoosing(false);
+      if (res.error || !res.note) {
+        setStatus('error');
+        return;
+      }
+      setNote(res.note);
+      setBody(res.note.body);
+      setStatus('saved');
+      creating.current = null;
+      setChooserOpen(false);
+    },
+    [status, body, save],
+  );
+
   return (
     <div className={s.pane} data-testid="session-note-pane">
       <div className={s.paneBar}>
@@ -119,6 +167,15 @@ export function SessionNotePane({
                     ? 'Saved'
                     : ''}
         </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Icon icon={FileText} />}
+          title="Choose a different note, or start a new one, as this lecture's note"
+          onClick={openChooser}
+        >
+          Change note
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -152,6 +209,7 @@ export function SessionNotePane({
       </div>
       <div className={s.paneEditor}>
         <MarkdownEditor
+          key={note?.id ?? 'empty'}
           ref={editor}
           value={body}
           onChange={onChange}
@@ -159,6 +217,47 @@ export function SessionNotePane({
           macros={macros}
         />
       </div>
+      {chooserOpen && (
+        <Dialog open title="Lecture note" onClose={() => setChooserOpen(false)}>
+          <div className={s.form} data-testid="note-chooser">
+            <Field
+              label="Use an existing note"
+              hint="Whatever note is attached now stays in Notes — switching never deletes it."
+            >
+              <select
+                className={s.noteSelect}
+                aria-label="Existing note"
+                defaultValue=""
+                disabled={choosing || options === null}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id) void switchTo(() => setSessionNoteAction(slug, sessionId, id));
+                }}
+              >
+                <option value="">{options === null ? 'Loading…' : 'Choose a note…'}</option>
+                {(options ?? []).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.title}
+                    {o.id === note?.id ? ' (current)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <DialogActions>
+              <Button variant="secondary" onClick={() => setChooserOpen(false)} disabled={choosing}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={choosing}
+                onClick={() => void switchTo(() => newSessionNoteAction(slug, sessionId))}
+              >
+                {choosing ? 'Working…' : 'New blank note'}
+              </Button>
+            </DialogActions>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -2,11 +2,11 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { SessionKind } from '@quire/shared';
-import { ArrowLeft, Upload } from 'lucide-react';
+import { ArrowLeft, Trash2, Upload } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useRef, useState } from 'react';
-import { type ActionState, dropSessionFilesAction } from '@/app/actions/sessions';
+import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import { type ActionState, deleteDeckAction, dropSessionFilesAction } from '@/app/actions/sessions';
 import { DocumentView } from '@/components/documents/document-view';
 import { useProject } from '@/components/project-context';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -50,8 +50,13 @@ export function SessionPage({
   const { base } = useProject();
   const router = useRouter();
   const [page, setPage] = useState(doc?.lastPage ?? 1);
+  const [deleting, startDelete] = useTransition();
   const title = `${LABEL[session.kind]} ${session.number}${session.title ? ` — ${session.title}` : ''}`;
   const backHref = `${base}/${TAB[session.kind]}`;
+  const deleteDeck = (d: Document) => {
+    if (!window.confirm(`Delete the deck “${d.title}”? The file is removed; your notes stay.`)) return;
+    startDelete(() => deleteDeckAction(slug, d.id));
+  };
   if (!doc) return <NoDeck slug={slug} session={session} backHref={backHref} title={title} />;
   const aside = split
     ? {
@@ -73,20 +78,33 @@ export function SessionPage({
     : undefined;
   return (
     <div style={{ display: 'contents' }} data-testid="session-page">
-      {session.documents.length > 1 && (
-        <div className={s.deckSwitch}>
-          {session.documents.map((d) => (
-            <NextLink
-              key={d.id}
-              href={`${backHref}/${session.id}?doc=${d.id}`}
-              className={s.deckChip}
-              data-active={d.id === doc.id || undefined}
+      <div className={s.deckSwitch} data-testid="deck-switch">
+        {session.documents.map((d) => (
+          <span key={d.id} className={s.deckChipWrap} data-active={d.id === doc.id || undefined}>
+            {session.documents.length > 1 ? (
+              <NextLink
+                href={`${backHref}/${session.id}?doc=${d.id}`}
+                className={s.deckChip}
+                data-active={d.id === doc.id || undefined}
+              >
+                {d.title}
+              </NextLink>
+            ) : (
+              <span className={s.deckChip}>{d.title}</span>
+            )}
+            <button
+              type="button"
+              className={s.deckDel}
+              disabled={deleting}
+              title={`Delete deck ${d.title}`}
+              aria-label={`Delete deck ${d.title}`}
+              onClick={() => deleteDeck(d)}
             >
-              {d.title}
-            </NextLink>
-          ))}
-        </div>
-      )}
+              <Icon icon={Trash2} />
+            </button>
+          </span>
+        ))}
+      </div>
       <DocumentView
         key={doc.id}
         slug={slug}

@@ -229,4 +229,47 @@ test('course lifecycle: create, archive with undo, lectures, notes, synthesis, h
     await page.goto(`/c/${slug}/overview`);
     await expect(page.getByTestId('reread-list')).toBeVisible();
   });
+
+  await test.step('lecture note: switch to a new note without deleting the existing one', async () => {
+    await page.goto(`/c/${slug}/lectures`);
+    await page.getByTestId('lectures-list').getByRole('link').first().click();
+    await page.waitForURL(new RegExp(`/c/${slug}/lectures/[^/]+`));
+    const pane = page.getByTestId('session-note-pane');
+    await expect(pane).toBeVisible();
+    // The tied note still holds the text written earlier.
+    await expect(pane.locator('.cm-content')).toContainText('Race condition');
+    // Switch to a brand-new note as the lecture's note.
+    await pane.getByRole('button', { name: 'Change note' }).click();
+    await page.locator('dialog[open]').getByRole('button', { name: 'New blank note' }).click();
+    await expect(pane.locator('.cm-content')).not.toContainText('Race condition');
+    // The previous note was NOT deleted: Raw now holds both it and the new one.
+    await page.goto(`/c/${slug}/notes`);
+    await page.getByTestId('notes-folders').getByRole('button', { name: /Raw/ }).click();
+    await expect(page.getByRole('link', { name: /^Lecture 1/ })).toHaveCount(2);
+  });
+
+  await test.step('delete the deck, then delete the lecture (its notes survive)', async () => {
+    await page.goto(`/c/${slug}/lectures`);
+    await page.getByTestId('lectures-list').getByRole('link').first().click();
+    await page.waitForURL(new RegExp(`/c/${slug}/lectures/[^/]+`));
+    page.once('dialog', (d) => d.accept());
+    await page
+      .getByTestId('deck-switch')
+      .getByRole('button', { name: /^Delete deck/ })
+      .click();
+    await expect(page.getByText('No deck yet')).toBeVisible();
+    // Delete the lecture itself from the list.
+    await page.goto(`/c/${slug}/lectures`);
+    page.once('dialog', (d) => d.accept());
+    await page
+      .getByTestId('lectures-list')
+      .getByRole('button', { name: /^Delete/ })
+      .first()
+      .click();
+    await expect(page.getByTestId('lectures-list').getByRole('link', { name: /Lecture 1/ })).toHaveCount(0);
+    // Notes are untouched by deleting the lecture.
+    await page.goto(`/c/${slug}/notes`);
+    await page.getByTestId('notes-folders').getByRole('button', { name: /Raw/ }).click();
+    await expect(page.getByRole('link', { name: /^Lecture 1/ })).toHaveCount(2);
+  });
 });

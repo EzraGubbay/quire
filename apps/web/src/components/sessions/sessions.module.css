@@ -243,6 +243,42 @@
   color: var(--eg-accent-text);
   border-color: var(--eg-accent);
 }
+.deckChipWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.deckDel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--eg-radius-control);
+  color: var(--eg-muted);
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.deckDel:hover {
+  color: var(--eg-accent-text);
+  background: var(--eg-surface-2);
+}
+.deckDel:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.noteSelect {
+  width: 100%;
+  font: 400 14px / 1.3 var(--eg-font-ui);
+  color: var(--eg-text);
+  background: var(--eg-surface);
+  border: 1px solid var(--eg-rule-2);
+  border-radius: var(--eg-radius-control);
+  padding: 8px 10px;
+}
 .noteLink {
   position: fixed;
   right: 16px;
