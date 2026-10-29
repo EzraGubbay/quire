@@ -1,5 +1,5 @@
 import { type EntityKind, slugify } from '@quire/shared';
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { annotations, documents, type Link, links, type Note, notes, sessions, sources } from '@/db/schema';
 import { extractWikiLinks } from './markdown';
@@ -17,6 +17,22 @@ export async function sessionNote(projectId: string, sessionId: string): Promise
     .orderBy(asc(notes.createdAt))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Unlink notes tied to a session (session_id → null) WITHOUT deleting them, optionally keeping one tied.
+ * Used when a lecture's note is switched or re-created: the previously tied note stays in Notes, just no longer
+ * attached to the session.
+ */
+export async function clearSessionNote(
+  projectId: string,
+  sessionId: string,
+  exceptId?: string,
+): Promise<void> {
+  const where = exceptId
+    ? and(eq(notes.projectId, projectId), eq(notes.sessionId, sessionId), ne(notes.id, exceptId))
+    : and(eq(notes.projectId, projectId), eq(notes.sessionId, sessionId));
+  await db.update(notes).set({ sessionId: null, updatedAt: new Date() }).where(where);
 }
 
 /**

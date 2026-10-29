@@ -2,13 +2,14 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { SessionKind } from '@quire/shared';
-import { Download, FileText, Pencil, Plus, Presentation, Upload, Users } from 'lucide-react';
+import { Download, FileText, Pencil, Plus, Presentation, Trash2, Upload, Users } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type DragEvent, useActionState, useEffect, useRef, useState, useTransition } from 'react';
 import {
   type ActionState,
   createSessionAction,
+  deleteSessionAction,
   dropSessionFilesAction,
   updateSessionAction,
 } from '@/app/actions/sessions';
@@ -52,6 +53,7 @@ export function SessionsList({
   const [editing, setEditing] = useState<SessionWithDocuments | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dropState, dropAction, dropping] = useActionState<ActionState, FormData>(dropSessionFilesAction, {});
+  const [deleting, startDelete] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -71,6 +73,11 @@ export function SessionsList({
     e.preventDefault();
     setDragging(false);
     if (e.dataTransfer.files.length) submitFiles(e.dataTransfer.files);
+  };
+  const removeSession = (x: SessionWithDocuments) => {
+    const name = x.title ? `${label.one} ${x.number} — ${x.title}` : `${label.one} ${x.number}`;
+    if (!window.confirm(`Delete ${name}? Its decks stay in Documents and its notes stay in Notes.`)) return;
+    startDelete(() => deleteSessionAction(slug, x.id));
   };
 
   return (
@@ -168,6 +175,18 @@ export function SessionsList({
                     onClick={() => setEditing(x)}
                   >
                     <Icon icon={Pencil} />
+                  </button>
+                )}
+                {!lite && (
+                  <button
+                    type="button"
+                    className={s.iconBtn}
+                    title={`Delete ${label.one.toLowerCase()}`}
+                    aria-label={`Delete ${x.title || `${label.one} ${x.number}`}`}
+                    disabled={deleting}
+                    onClick={() => removeSession(x)}
+                  >
+                    <Icon icon={Trash2} />
                   </button>
                 )}
                 {x.documents.map((d) =>

@@ -6,9 +6,9 @@ import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { z } from 'zod';
 import type { Note } from '@/db/schema';
-import { indexOwner } from '@/lib/ai/index';
-import { builtinFolder, createDeckDocument } from '@/lib/documents';
-import { createNote, getNote, sessionNote, updateNote } from '@/lib/notes';
+import { indexOwner, removeOwner } from '@/lib/ai/index';
+import { builtinFolder, createDeckDocument, deleteDocument, getDocument } from '@/lib/documents';
+import { clearSessionNote, createNote, getNote, listNotes, sessionNote, updateNote } from '@/lib/notes';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
 import {
   attachDocumentToSession,
@@ -169,6 +169,76 @@ export async function attachToSessionAction(slug: string, documentId: string, se
   revalidatePath(`${projectBase(project)}/lectures`);
   revalidatePath(`${projectBase(project)}/recitations`);
   revalidatePath(`${projectBase(project)}/documents`);
+}
+
+/** Deletes a deck (the PDF/pptx document and its pages); the lecture and its note are untouched. */
+export async function deleteDeckAction(slug: string, documentId: string): Promise<void> {
+  const project = await projectOr404(slug);
+  const doc = await getDocument(project.id, documentId);
+  await deleteDocument(project.id, documentId);
+  await removeOwner(project.id, 'document', documentId);
+  revalidatePath(`${projectBase(project)}/documents`);
+  const session = doc?.sessionId ? await getSession(project.id, doc.sessionId) : null;
+  if (session) {
+    const tab = session.kind === 'lecture' ? 'lectures' : 'recitations';
+    revalidatePath(`${projectBase(project)}/${tab}/${session.id}`);
+    redirect(`${projectBase(project)}/${tab}/${session.id}`);
+  }
+  redirect(`${projectBase(project)}/documents`);
+}
+
+/**
+ * Makes an existing note the session's note. Any note currently tied to the session is only unlinked (never
+ * deleted) and stays in Notes; the chosen note is tied in its place.
+ */
+export async function setSessionNoteAction(
+  slug: string,
+  sessionId: string,
+  noteId: string,
+): Promise<ActionState & { note?: Note }> {
+  const project = await projectOr404(slug);
+  const s = await getSession(project.id, sessionId);
+  if (!s) return { error: 'Session not found' };
+  const target = await getNote(project.id, noteId);
+  if (!target) return { error: 'Note not found' };
+  await clearSessionNote(project.id, sessionId, noteId);
+  const updated = await updateNote(project.id, noteId, { sessionId });
+  const tab = s.kind === 'lecture' ? 'lectures' : 'recitations';
+  revalidatePath(`${projectBase(project)}/${tab}/${sessionId}`);
+  revalidatePath(`${projectBase(project)}/notes`);
+  return { ok: true, note: updated ?? target };
+}
+
+/**
+ * Creates a fresh empty note and makes it the session's note. The previously tied note is only unlinked, never
+ * deleted — it stays in Notes.
+ */
+export async function newSessionNoteAction(
+  slug: string,
+  sessionId: string,
+): Promise<ActionState & { note?: Note }> {
+  const project = await projectOr404(slug);
+  const s = await getSession(project.id, sessionId);
+  if (!s) return { error: 'Session not found' };
+  await clearSessionNote(project.id, sessionId);
+  const raw = await builtinFolder(project.id, 'raw');
+  const title = `${SESSION_LABEL[s.kind].one} ${s.number}${s.title ? ` — ${s.title}` : ''} notes`;
+  const note = await createNote(project.id, title, '', { folderId: raw?.id ?? null, sessionId });
+  const tab = s.kind === 'lecture' ? 'lectures' : 'recitations';
+  revalidatePath(`${projectBase(project)}/${tab}/${sessionId}`);
+  revalidatePath(`${projectBase(project)}/notes`);
+  return { ok: true, note };
+}
+
+/** Notes offered in the "choose this lecture's note" picker: ready notes, newest first. */
+export async function listNoteOptionsAction(
+  slug: string,
+): Promise<{ id: string; title: string; sessionId: string | null }[]> {
+  const project = await projectOr404(slug);
+  const notes = await listNotes(project.id);
+  return notes
+    .filter((n) => n.status === 'ready')
+    .map((n) => ({ id: n.id, title: n.title, sessionId: n.sessionId }));
 }
 
 /** The raw note taken in a session, created in the Raw folder on first use. */
