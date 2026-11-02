@@ -1,7 +1,24 @@
-// Provider adapter. OpenAI's SDK speaks to OpenAI and to any OpenAI-compatible endpoint (DeepSeek, Kimi, Ollama).
+// Provider adapter. OpenAI's SDK speaks to OpenAI and to any OpenAI-compatible endpoint (DeepSeek, Kimi, Ollama);
+// generation can also be routed to Claude (the Anthropic API, or the `claude` CLI on a subscription token). A
+// Claude route that keeps failing falls over to OpenAI for a cooldown window (see lib/ai/failover.ts). Embeddings
+// are ALWAYS OpenAI — no Claude route offers them — so OPENAI_API_KEY stays required whatever the provider.
 import OpenAI from 'openai';
+import {
+  claudeApiChat,
+  claudeApiStream,
+  claudeSubChat,
+  claudeSubStream,
+  hasImages,
+  KNOWN_CLAUDE_MODELS,
+  listClaudeApiModels,
+  stripImages,
+} from './claude';
+import { classifyError, ProviderError } from './errors';
+import { effectiveProvider, noteClaudeFailure, noteClaudeSuccess } from './failover';
 import { aiMock, mockChat, mockEmbedding } from './mock';
 import { type AiSettings, getAiSettings } from './settings';
+
+export { classifyError, ProviderError };
 
 /** A message part: text, or an image (data URL or https URL) for vision-capable models. */
 export type ContentPart =
@@ -21,6 +38,8 @@ export interface ChatResult {
   text: string;
   usage: Usage;
   model: string;
+  /** Set when this result came from the failover provider/model rather than the configured one. */
+  fallback?: boolean;
 }
 
 /** The text of a message, ignoring images (for logging, mocks and token estimates). */
@@ -30,43 +49,7 @@ export function messageText(m: ChatMessageIn): string {
     : m.content.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
 }
 
-export class ProviderError extends Error {
-  /** Text streamed before the failure, if any (the answer was cut off rather than never started). */
-  partial = '';
-  constructor(
-    message: string,
-    public readonly kind: 'quota' | 'rate_limit' | 'auth' | 'other',
-    public readonly status?: number,
-  ) {
-    super(message);
-    this.name = 'ProviderError';
-  }
-  /** Server-side or transient: worth another attempt (or the light model). Never auth or quota. */
-  get retryable(): boolean {
-    return (
-      this.kind === 'rate_limit' ||
-      (this.kind === 'other' && (this.status === undefined || this.status >= 500))
-    );
-  }
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export function classifyError(err: unknown): ProviderError {
-  const e = err as {
-    status?: number;
-    code?: string;
-    message?: string;
-    error?: { code?: string; message?: string };
-  };
-  const code = e.code ?? e.error?.code ?? '';
-  const msg = e.error?.message ?? e.message ?? 'Unknown provider error';
-  if (e.status === 429 && /insufficient_quota|billing|budget/i.test(`${code} ${msg}`))
-    return new ProviderError(msg, 'quota', 429);
-  if (e.status === 429) return new ProviderError(msg, 'rate_limit', 429);
-  if (e.status === 401 || e.status === 403) return new ProviderError(msg, 'auth', e.status);
-  return new ProviderError(msg, 'other', e.status);
-}
 
 let cached: { key: string; client: OpenAI } | null = null;
 
@@ -82,7 +65,11 @@ export function getClient(s: AiSettings): OpenAI {
   return cached.client;
 }
 
-export const aiConfigured = (): boolean => aiMock() || Boolean(process.env.OPENAI_API_KEY);
+export const aiConfigured = (): boolean =>
+  aiMock() ||
+  Boolean(process.env.OPENAI_API_KEY) ||
+  Boolean(process.env.ANTHROPIC_API_KEY) ||
+  Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN);
 
 function usageOf(
   u:
@@ -111,9 +98,18 @@ export interface ChatOptions {
   timeoutMs?: number;
 }
 
-export async function chat(messages: ChatMessageIn[], opts: ChatOptions): Promise<ChatResult> {
-  if (aiMock()) return mockChat(messages, opts.model, { json: opts.json });
-  const s = opts.settings ?? (await getAiSettings());
+export interface ChatStreamOptions {
+  model: string;
+  maxTokens?: number;
+  settings?: AiSettings;
+  onDelta: (delta: string) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+// ---- OpenAI backends (unchanged behaviour, extracted so Claude routes can fall back to them) ----------------
+
+async function openaiChat(messages: ChatMessageIn[], opts: ChatOptions, s: AiSettings): Promise<ChatResult> {
   const client = getClient(s);
   try {
     const res = await client.chat.completions.create(
@@ -135,28 +131,11 @@ export async function chat(messages: ChatMessageIn[], opts: ChatOptions): Promis
   }
 }
 
-/** Streams text deltas; resolves with the full text and usage when done. */
-export async function chatStream(
+async function openaiChatStream(
   messages: ChatMessageIn[],
-  opts: {
-    model: string;
-    maxTokens?: number;
-    settings?: AiSettings;
-    onDelta: (delta: string) => void;
-    signal?: AbortSignal;
-  },
+  opts: ChatStreamOptions,
+  s: AiSettings,
 ): Promise<ChatResult> {
-  if (aiMock()) {
-    let r: ChatResult;
-    try {
-      r = mockChat(messages, opts.model);
-    } catch (err) {
-      throw classifyError(err);
-    }
-    for (const word of r.text.split(/(?<= )/)) opts.onDelta(word);
-    return r;
-  }
-  const s = opts.settings ?? (await getAiSettings());
   const client = getClient(s);
   // The SDK only retries before the stream opens; OpenAI's occasional "server had an error" 500s also arrive as
   // the first (and only) chunk of a stream. Retry ourselves while nothing has been shown to the user yet.
@@ -196,6 +175,85 @@ export async function chatStream(
   }
 }
 
+// ---- dispatch ----------------------------------------------------------------------------------------------
+
+export async function chat(messages: ChatMessageIn[], opts: ChatOptions): Promise<ChatResult> {
+  if (aiMock()) return mockChat(messages, opts.model, { json: opts.json });
+  const s = opts.settings ?? (await getAiSettings());
+  const eff = effectiveProvider(s);
+  if (eff === 'claude-api' || eff === 'claude-sub') {
+    try {
+      const res = await claudeGenerate(eff, messages, opts);
+      await noteClaudeSuccess(s);
+      return res;
+    } catch (err) {
+      if (!(err instanceof ProviderError)) throw err;
+      await noteClaudeFailure(s);
+      // Graceful: serve this call via OpenAI (the failover model — the Claude id is not valid at OpenAI) so the
+      // user is never left empty-handed on a Claude blip; mark it so the UI can show it was rerouted.
+      const res = await openaiChat(messages, { ...opts, model: s.failoverModel, settings: s }, s);
+      return { ...res, fallback: true };
+    }
+  }
+  return openaiChat(messages, { ...opts, settings: s }, s);
+}
+
+/** Routes a single non-streamed call to the right Claude backend, using the API for vision when the sub can't. */
+function claudeGenerate(
+  eff: 'claude-api' | 'claude-sub',
+  messages: ChatMessageIn[],
+  opts: ChatOptions,
+): Promise<ChatResult> {
+  const o = { model: opts.model, maxTokens: opts.maxTokens, json: opts.json, timeoutMs: opts.timeoutMs };
+  if (eff === 'claude-api') return claudeApiChat(messages, o);
+  if (hasImages(messages))
+    return process.env.ANTHROPIC_API_KEY
+      ? claudeApiChat(messages, o)
+      : claudeSubChat(stripImages(messages), o);
+  return claudeSubChat(messages, o);
+}
+
+/** Streams text deltas; resolves with the full text and usage when done. */
+export async function chatStream(messages: ChatMessageIn[], opts: ChatStreamOptions): Promise<ChatResult> {
+  if (aiMock()) {
+    let r: ChatResult;
+    try {
+      r = mockChat(messages, opts.model);
+    } catch (err) {
+      throw classifyError(err);
+    }
+    for (const word of r.text.split(/(?<= )/)) opts.onDelta(word);
+    return r;
+  }
+  const s = opts.settings ?? (await getAiSettings());
+  const eff = effectiveProvider(s);
+  if (eff === 'claude-api' || eff === 'claude-sub') {
+    try {
+      const o = {
+        model: opts.model,
+        maxTokens: opts.maxTokens,
+        timeoutMs: opts.timeoutMs,
+        signal: opts.signal,
+        onDelta: opts.onDelta,
+      };
+      let res: ChatResult;
+      if (eff === 'claude-api') res = await claudeApiStream(messages, o);
+      else if (hasImages(messages) && process.env.ANTHROPIC_API_KEY) res = await claudeApiStream(messages, o);
+      else res = await claudeSubStream(hasImages(messages) ? stripImages(messages) : messages, o);
+      await noteClaudeSuccess(s);
+      return res;
+    } catch (err) {
+      if (!(err instanceof ProviderError)) throw err;
+      if (opts.signal?.aborted) throw err; // user aborted: not a Claude failure, don't fail over
+      await noteClaudeFailure(s);
+      if (err.partial) throw err; // already streamed text: can't cleanly re-answer via OpenAI
+      const res = await openaiChatStream(messages, { ...opts, model: s.failoverModel, settings: s }, s);
+      return { ...res, fallback: true };
+    }
+  }
+  return openaiChatStream(messages, { ...opts, settings: s }, s);
+}
+
 export async function embed(
   texts: string[],
   opts: { model: string; settings?: AiSettings },
@@ -207,6 +265,7 @@ export async function embed(
       usage: { input: texts.reduce((n, t) => n + Math.ceil(t.length / 4), 0), cached: 0, output: 0 },
     };
   const s = opts.settings ?? (await getAiSettings());
+  // Embeddings always go through OpenAI (or an OpenAI-compatible endpoint); Claude routes have no embeddings API.
   const client = getClient(s);
   try {
     const res = await client.embeddings.create({ model: opts.model, input: texts, dimensions: 1536 });
@@ -223,6 +282,8 @@ export async function embed(
 export async function listModels(s?: AiSettings): Promise<string[]> {
   if (aiMock()) return ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'text-embedding-3-small'];
   const st = s ?? (await getAiSettings());
+  if (st.provider === 'claude-api') return listClaudeApiModels();
+  if (st.provider === 'claude-sub') return KNOWN_CLAUDE_MODELS;
   const client = getClient(st);
   try {
     const res = await client.models.list();

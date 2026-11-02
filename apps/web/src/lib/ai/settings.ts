@@ -11,8 +11,19 @@ export const priceSchema = z.object({
 });
 
 export const aiSettingsSchema = z.object({
-  provider: z.enum(['openai', 'openai-compatible']).default('openai'),
-  /** For openai-compatible providers (DeepSeek, Kimi, a local Ollama). Ignored for 'openai'. */
+  /**
+   * Which backend answers generation (chat, synthesis, tests, discover). Embeddings ALWAYS go through OpenAI —
+   * neither Claude route offers an embeddings API — so OPENAI_API_KEY stays required whatever this is set to.
+   * - 'openai'            → the OpenAI API (ChatGPT), as before.
+   * - 'openai-compatible' → an OpenAI-shaped endpoint at `baseUrl` (DeepSeek, Kimi, a local Ollama).
+   * - 'claude-api'        → the Anthropic API with ANTHROPIC_API_KEY.
+   * - 'claude-sub'        → the `claude` CLI driven as a plain completion, authed by a Max subscription token
+   *                         (CLAUDE_CODE_OAUTH_TOKEN). Flat-rate, so these calls record $0 in the ledger.
+   * When a Claude route fails `CLAUDE_FAILOVER_STRIKES` times in a row, generation falls over to OpenAI for
+   * `CLAUDE_FAILOVER_HOURS` (see claudeFailover + lib/ai/failover.ts).
+   */
+  provider: z.enum(['openai', 'openai-compatible', 'claude-api', 'claude-sub']).default('openai'),
+  /** For openai-compatible providers (DeepSeek, Kimi, a local Ollama). Ignored for the other providers. */
   baseUrl: z.string().url().optional(),
   models: z
     .object({
@@ -34,6 +45,12 @@ export const aiSettingsSchema = z.object({
       testWeekly: 'gpt-5.6-terra',
       testTriweekly: 'gpt-5.6-sol',
     }),
+  /**
+   * OpenAI model that answers when a Claude route fails over (3-strike cooldown, or a single blip). Must be a
+   * real OpenAI chat model — the Claude model ids in `models` are not valid at OpenAI. Only used on the Claude
+   * routes; the OpenAI providers fall back within `models` (heavy → light) as before.
+   */
+  failoverModel: z.string().min(1).default('gpt-5.6-terra'),
   /** Monthly hard cap in USD; calls are refused once month-to-date spend reaches it. */
   monthlyCapUsd: z.number().min(0).default(25),
   warnAtFraction: z.number().min(0).max(1).default(0.8),
@@ -46,6 +63,14 @@ export const aiSettingsSchema = z.object({
   }),
   /** Set when the provider refuses for budget reasons; cleared on the 1st or by hand. */
   providerBlocked: z.object({ at: z.string(), message: z.string() }).nullable().default(null),
+  /**
+   * Circuit breaker for the Claude routes. `consecutiveFails` counts Claude failures since the last success;
+   * once it reaches the strike limit, `until` is set and generation uses OpenAI until that time passes. Reset
+   * on any Claude success. Only meaningful when `provider` is a Claude route. See lib/ai/failover.ts.
+   */
+  claudeFailover: z
+    .object({ consecutiveFails: z.number().int().min(0), until: z.string().nullable() })
+    .default({ consecutiveFails: 0, until: null }),
 });
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
 

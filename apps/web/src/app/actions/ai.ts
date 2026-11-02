@@ -15,13 +15,16 @@ export interface ActionState {
   models?: string[];
 }
 
+const PROVIDERS = ['openai', 'openai-compatible', 'claude-api', 'claude-sub'] as const;
+
 export async function saveAiSettingsAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const cap = Number(formData.get('monthlyCapUsd'));
   const warn = Number(formData.get('warnAtPercent'));
+  const providerRaw = String(formData.get('provider') ?? 'openai');
   const patch: Partial<AiSettings> = {
-    provider: (formData.get('provider') === 'openai-compatible'
-      ? 'openai-compatible'
-      : 'openai') as AiSettings['provider'],
+    provider: (PROVIDERS as readonly string[]).includes(providerRaw)
+      ? (providerRaw as AiSettings['provider'])
+      : 'openai',
     models: {
       answer: String(formData.get('answer') ?? '').trim() || 'gpt-5.6-sol',
       light: String(formData.get('light') ?? '').trim() || 'gpt-5.6-terra',
@@ -30,6 +33,7 @@ export async function saveAiSettingsAction(_prev: ActionState, formData: FormDat
       testWeekly: String(formData.get('testWeekly') ?? '').trim() || 'gpt-5.6-terra',
       testTriweekly: String(formData.get('testTriweekly') ?? '').trim() || 'gpt-5.6-sol',
     },
+    failoverModel: String(formData.get('failoverModel') ?? '').trim() || 'gpt-5.6-terra',
     monthlyCapUsd: Number.isFinite(cap) && cap >= 0 ? cap : 25,
     warnAtFraction: Number.isFinite(warn) ? Math.min(1, Math.max(0, warn / 100)) : 0.8,
   };
@@ -54,10 +58,13 @@ export async function saveAiSettingsAction(_prev: ActionState, formData: FormDat
 }
 
 export async function testConnectionAction(): Promise<ActionState> {
-  if (!aiConfigured()) return { error: 'OPENAI_API_KEY is not set on the server.' };
+  if (!aiConfigured()) return { error: 'No AI provider is configured on the server.' };
   try {
-    const models = await listModels(await getAiSettings());
-    return { ok: true, models: models.filter((m) => /gpt|embedding|o[0-9]/i.test(m)).slice(0, 60) };
+    const s = await getAiSettings();
+    const models = await listModels(s);
+    const claude = s.provider === 'claude-api' || s.provider === 'claude-sub';
+    const shown = claude ? models : models.filter((m) => /gpt|embedding|o[0-9]/i.test(m));
+    return { ok: true, models: shown.slice(0, 60) };
   } catch (err) {
     return { error: (err as Error).message };
   }

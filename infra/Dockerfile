@@ -24,6 +24,9 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
   && groupadd -g 1001 quire && useradd -u 1001 -g quire -m quire \
   && mkdir -p /data/files && chown quire:quire /data/files
+# The `claude` CLI backs the optional "Claude Subscription" generation route (claude -p, all tools disabled).
+# It authenticates at runtime from CLAUDE_CODE_OAUTH_TOKEN and is inert when another provider is selected.
+RUN npm install -g @anthropic-ai/claude-code@2.1.316 && npm cache clean --force
 WORKDIR /app
 COPY --from=build --chown=quire:quire /repo/apps/web/.next/standalone ./
 COPY --from=build --chown=quire:quire /repo/apps/web/.next/static ./apps/web/.next/static

@@ -155,8 +155,27 @@
   margin-right: 4px;
 }
 .meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font: 400 11px / 1 var(--eg-font-mono);
   color: var(--eg-muted);
+}
+.metaModel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Tiny marker: this answer came from the failover model, not the one set in Settings. */
+.fallbackTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--eg-accent-text);
+  background: var(--eg-accent-soft);
+  border: 1px solid var(--eg-accent);
 }
 .composer {
   border-top: 1px solid var(--eg-rule);

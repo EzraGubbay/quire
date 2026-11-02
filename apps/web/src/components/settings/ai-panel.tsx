@@ -27,6 +27,10 @@ export function AiPanel({
     if (state.ok) router.refresh();
   }, [state.ok, router]);
   const maxDay = Math.max(0.01, ...summary.byDay.map((d) => d.cost));
+  const failover =
+    settings.claudeFailover.until && new Date(settings.claudeFailover.until).getTime() > Date.now()
+      ? settings.claudeFailover.until
+      : null;
   return (
     <section className={s.section}>
       <h2 className={s.h2}>AI</h2>
@@ -104,9 +108,14 @@ export function AiPanel({
       </div>
       <form action={action} className={s.form}>
         <div className={s.row}>
-          <Field label="Provider">
+          <Field
+            label="Generation provider"
+            hint="Embeddings always use OpenAI (no Claude embeddings API), so OPENAI_API_KEY stays required."
+          >
             <select name="provider" className={s.select} defaultValue={settings.provider}>
-              <option value="openai">OpenAI</option>
+              <option value="openai">ChatGPT API (OpenAI)</option>
+              <option value="claude-sub">Claude Subscription (CLAUDE_CODE_OAUTH_TOKEN)</option>
+              <option value="claude-api">Claude API (ANTHROPIC_API_KEY)</option>
               <option value="openai-compatible">OpenAI-compatible endpoint</option>
             </select>
           </Field>
@@ -121,6 +130,19 @@ export function AiPanel({
             />
           </Field>
         </div>
+        {failover && (
+          <p className={s.help} data-testid="claude-failover">
+            Claude has failed repeatedly; generation is on ChatGPT until{' '}
+            {new Date(failover).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.
+          </p>
+        )}
+        <p className={s.help}>
+          For a Claude route, set the model fields to Claude ids — suggested: <code>claude-sonnet-5-5</code>{' '}
+          for answers/synthesis, <code>claude-haiku-5-5</code> for the light and weekly roles,{' '}
+          <code>claude-opus-5-5</code> for tri-weekly exam tests. Keep <code>text-embedding-3-small</code> for
+          embeddings. Subscription calls are flat-rate, so they record $0 unless you add a price row; set real
+          prices for the Claude API to track spend.
+        </p>
         <div className={s.row3}>
           <Field label="Answer model" hint="Heavy questions">
             <Input name="answer" defaultValue={settings.models.answer} />
@@ -141,6 +163,14 @@ export function AiPanel({
           </Field>
           <Field label="Tri-weekly test model" hint="Exam-style tests (strongest)">
             <Input name="testTriweekly" defaultValue={settings.models.testTriweekly} />
+          </Field>
+        </div>
+        <div className={s.row}>
+          <Field
+            label="Failover model (OpenAI)"
+            hint="Answers when a Claude route fails. Must be a real OpenAI model, not a Claude id."
+          >
+            <Input name="failoverModel" defaultValue={settings.failoverModel} />
           </Field>
         </div>
         <div className={s.row}>
@@ -186,6 +216,7 @@ export function AiPanel({
                 settings.models.synthesis,
                 settings.models.testWeekly,
                 settings.models.testTriweekly,
+                settings.failoverModel,
                 ...Object.keys(settings.prices),
               ]),
             ].map((m) => {
