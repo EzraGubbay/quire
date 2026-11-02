@@ -378,10 +378,18 @@ function Message({ m, onRetry }: { m: Msg; onRetry?: () => void }) {
         </div>
       )}
       {m.role === 'assistant' && !m.pending && !m.error && m.model && (
-        <span className={s.meta}>
-          {m.model}
+        <span className={s.meta} data-fallback={m.fallback || undefined}>
+          {m.fallback && (
+            <span
+              className={s.fallbackTag}
+              data-testid="chat-fallback"
+              title="The configured model was unavailable, so a fallback model answered this one."
+            >
+              ↩ fallback
+            </span>
+          )}
+          <span className={s.metaModel}>{m.model}</span>
           {m.costUsd != null ? ` · $${m.costUsd.toFixed(4)}` : ''}
-          {m.fallback ? ' · answered by the light model after the main one errored' : ''}
         </span>
       )}
     </div>

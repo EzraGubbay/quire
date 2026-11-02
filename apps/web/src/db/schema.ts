@@ -413,6 +413,8 @@ export const chatMessages = pgTable(
     /** [{n, kind, id, title, href, pageNo}] for the [n] markers in content. */
     citations: jsonb('citations').notNull().default([]),
     model: text('model'),
+    /** True when a provider/model other than the configured one answered (Claude→OpenAI failover, or heavy→light). */
+    fallback: boolean('fallback').notNull().default(false),
     inputTokens: integer('input_tokens'),
     outputTokens: integer('output_tokens'),
     costUsd: real('cost_usd'),

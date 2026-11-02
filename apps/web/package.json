@@ -15,6 +15,7 @@
     "start:standalone": "rm -rf .next/standalone/apps/web/.next/static .next/standalone/apps/web/public && cp -R .next/static .next/standalone/apps/web/.next/ && cp -R public .next/standalone/apps/web/ && node --env-file-if-exists=.env .next/standalone/apps/web/server.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.0",
     "@codemirror/lang-markdown": "^6.5.2",

@@ -75,6 +75,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
           content: res.text,
           citations: res.citations,
           model: res.model,
+          fallback: res.fallback ?? false,
           inputTokens: res.usage.input,
           outputTokens: res.usage.output,
           costUsd: res.costUsd,

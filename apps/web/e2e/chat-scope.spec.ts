@@ -90,9 +90,12 @@ test('chat: ask reuses the last chat, doc mentions, per-document chats, retry an
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByTestId('chat-error')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.getByTestId('chat-message')).toHaveCount(4);
-  // A 500 that passes on the second attempt is answered by the light model without the user noticing.
+  // A 500 that passes on the second attempt is answered by the fallback model; the answer still arrives, and
+  // the message is tagged so it is visible which model actually responded and that it was rerouted.
   await q.fill(`MOCK_FAIL_ONCE tell me more ${Date.now()}`);
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('chat-message').nth(5)).toContainText('Mock answer', { timeout: 20_000 });
-  await expect(page.getByTestId('chat-message').nth(5)).toContainText('light model');
+  const fellOver = page.getByTestId('chat-message').nth(5);
+  await expect(fellOver).toContainText('Mock answer', { timeout: 20_000 });
+  await expect(fellOver.getByTestId('chat-fallback')).toBeVisible();
+  await expect(fellOver).toContainText('gpt-5.6-terra');
 });

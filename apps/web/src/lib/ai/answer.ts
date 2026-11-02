@@ -215,13 +215,15 @@ export async function answer(input: AnswerInput): Promise<AnswerResult> {
       settings: s,
     });
     const used = new Set([...res.text.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
+    // `fallback` = our own heavy→light retry; `res.fallback` = a provider-level failover (Claude → OpenAI).
+    const fellOver = fallback || res.fallback === true;
     return {
       text: res.text,
       citations: citations.filter((c) => used.has(c.n)),
       model: res.model,
       usage: res.usage,
       costUsd,
-      ...(fallback ? { fallback: true } : {}),
+      ...(fellOver ? { fallback: true } : {}),
     };
   } catch (err) {
     if (err instanceof ProviderError) {
