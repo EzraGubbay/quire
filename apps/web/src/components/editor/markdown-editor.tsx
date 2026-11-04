@@ -38,6 +38,10 @@ export interface EditorProps {
   autoFocus?: boolean;
   /** Definition / Claim / Theorem buttons above the editor (the shortcuts work regardless). */
   toolbar?: boolean;
+  /** `[[wiki link]]` autocomplete. Off for notes that are their own thing (e.g. mind-map node notes). */
+  wikilinks?: boolean;
+  /** Override the default placeholder (which advertises wiki links). */
+  placeholderText?: string;
   ref?: Ref<MarkdownEditorHandle>;
 }
 
@@ -159,12 +163,14 @@ export function MarkdownEditor({
   onSave,
   autoFocus,
   toolbar = true,
+  wikilinks = true,
+  placeholderText,
   ref,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const latest = useRef({ onChange, onSave, linkTargets, macros });
-  latest.current = { onChange, onSave, linkTargets, macros };
+  const latest = useRef({ onChange, onSave, linkTargets, macros, wikilinks });
+  latest.current = { onChange, onSave, linkTargets, macros, wikilinks };
 
   useImperativeHandle(
     ref,
@@ -185,7 +191,7 @@ export function MarkdownEditor({
   useEffect(() => {
     if (!host.current) return;
     const complete = (ctx: CompletionContext): CompletionResult | null => {
-      const link = ctx.matchBefore(/\[\[([^\]]*)$/);
+      const link = latest.current.wikilinks ? ctx.matchBefore(/\[\[([^\]]*)$/) : null;
       if (link) {
         const q = link.text.slice(2).toLowerCase();
         return {
@@ -220,7 +226,12 @@ export function MarkdownEditor({
         markdown({ codeLanguages: languages }),
         liveFormatting,
         autocompletion({ override: [complete] }),
-        placeholder('Write in Markdown. [[wiki links]] and $TeX$ work.'),
+        placeholder(
+          placeholderText ??
+            (wikilinks
+              ? 'Write in Markdown. [[wiki links]] and $TeX$ work.'
+              : 'Write in Markdown. $TeX$ works.'),
+        ),
         EditorView.lineWrapping,
         // Hebrew lines read right-to-left while math and code stay left-to-right.
         EditorView.perLineTextDirection.of(true),

@@ -1,7 +1,8 @@
 # Mind Map — feature spec (Phase 0, grilled 2026-10-28)
 
 Output of the grilling session for the queued "Mind map" feature. This is the spec the
-implementation session should build from. **Not yet implemented.**
+implementation session built from. **Implemented 2026-11-04** — see "Implemented" at the bottom
+for the decisions taken on the open questions and the files that landed.
 
 ## One-line
 
@@ -82,3 +83,36 @@ Gate behind a feature flag following the `currentFeature('graph')` / `lib/featur
 4. **Per-node styling** — colors/icons per root or per node?
 5. **Export** — print / PNG / Markdown outline export?
 6. **Touch specifics** — long-press to add a child? two-finger pan vs. one-finger drag-node on iPad?
+
+## Implemented (2026-11-04)
+
+Built exactly as the decisions table specifies (forest, per-project, both sides, hand-built,
+auto-layout + drag-persist, per-node Markdown note with wikilinks OFF). Decisions taken on the
+open questions:
+
+1. **Forest vs. DAG** — strict **forest** (one parent per node), as the MVP says. No `mind_map_edge`.
+2. **Reparenting** — **menu-based**, not drag-onto: select a node → "Move under…" enters a pick
+   mode (next node clicked becomes the parent) with a "Make it a root" button. Chosen over drag-onto
+   so plain drag stays unambiguously *reposition*, and because it is reliable on touch. A server-side
+   cycle guard rejects moving a node under itself or a descendant.
+3. **Collapse/expand** — a **caret** on any node with children (click to toggle); a collapsed node
+   shows a "(N hidden)" count. State persists.
+4. **Per-node styling** — **one hue per root**, inherited by its whole subtree (6-colour palette).
+5. **Export** — **deferred** (not built). Markdown-outline / PNG export can come later; nothing
+   depends on it.
+6. **Touch** — one-finger drag a node = reposition; drag the background / two-finger = pan; pinch =
+   zoom; a selected node's **＋** adds a child. No long-press (ambiguous on trackpads). Pointer events
+   throughout so iPad works.
+
+Extra decision found during build: mutations `revalidatePath` the mind-map route so a later visit
+re-reads the forest. The live canvas is uncontrolled after mount (`MindMapView` seeds from
+`initialNodes` once), so this never disturbs an in-progress edit or drag — it only refreshes the
+cached RSC for the next navigation.
+
+**Files:** `db/schema.ts` (`mind_map_nodes` + `drizzle/0009`), `lib/mindmap.ts` (CRUD + cycle guard),
+`lib/mindmap-layout.ts` (pure d3-hierarchy layout, `+ .test.ts`), `app/actions/mindmap.ts`,
+`app/[side]/[slug]/mindmap/` (page + loading + css), `components/mindmap/` (`mind-map-view.tsx`
+interactive SVG/HTML canvas with pointer pan/zoom/drag, `node-note-panel.tsx` autosave drawer),
+`components/editor/markdown-editor.tsx` (`wikilinks` / `placeholderText` props), `lib/features.ts`
+(`mindmap` flag: desktop + iPad, phone off), nav in `app-shell.tsx` + `command-palette.tsx`,
+`e2e/mindmap.spec.ts`. Added dep: `d3-hierarchy`.

@@ -18,6 +18,8 @@ export const FEATURES = {
   'notes.read': { phone: 'on', desktop: 'on' },
   'notes.edit': { phone: 'lite', desktop: 'on' },
   graph: { phone: 'off', desktop: 'on' },
+  /** Hand-built mind map (forest). Wide canvas + precise/touch pointer: desktop and iPad (tablet), not phone. */
+  mindmap: { phone: 'off', tablet: 'on', desktop: 'on' },
   sources: { phone: 'on', desktop: 'on' },
   experiments: { phone: 'lite', desktop: 'on' },
   chat: { phone: 'on', desktop: 'on' },
@@ -60,6 +62,7 @@ export const FEATURE_LABEL: Record<FeatureKey, string> = {
   'notes.read': 'Notes',
   'notes.edit': 'Note editing',
   graph: 'Graph',
+  mindmap: 'Mind map',
   sources: 'Sources',
   experiments: 'Experiments',
   chat: 'Chat',

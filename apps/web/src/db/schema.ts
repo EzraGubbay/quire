@@ -24,6 +24,7 @@ import {
 } from '@quire/shared';
 import { relations } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   date,
   index,
@@ -691,6 +692,38 @@ export const lemidaCommands = pgTable(
   (t) => [index('lemida_commands_status_idx').on(t.status, t.createdAt)],
 );
 
+/**
+ * A node in a project's hand-built mind map (one forest per project). The forest is encoded with a nullable
+ * self-referential `parent_id` (null → a root); deleting a node cascades to its whole subtree. This is the user's
+ * own evolving mental model — deliberately separate from the auto-generated notes graph, and its `note` is plain
+ * Markdown with NO [[wikilinks]].
+ */
+export const mindMapNodes = pgTable(
+  'mind_map_nodes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    /** Null for a root; otherwise the parent node. Deleting a parent removes its subtree. */
+    parentId: uuid('parent_id').references((): AnyPgColumn => mindMapNodes.id, { onDelete: 'cascade' }),
+    label: text('label').notNull().default(''),
+    /** The node's hidden Markdown note (revealed on click); may be empty. No wikilinks. */
+    note: text('note').notNull().default(''),
+    /** User-dragged position; null → use the computed auto-layout position. */
+    x: real('x'),
+    y: real('y'),
+    /** Order among siblings. */
+    sortOrder: integer('sort_order').notNull().default(0),
+    collapsed: boolean('collapsed').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    index('mind_map_nodes_project_idx').on(t.projectId),
+    index('mind_map_nodes_parent_idx').on(t.parentId),
+  ],
+);
+
 export const projectRelations = relations(projects, ({ many }) => ({
   folders: many(folders),
   documents: many(documents),
@@ -747,4 +780,6 @@ export type NewLemidaCourse = typeof lemidaCourses.$inferInsert;
 export type LemidaFile = typeof lemidaFiles.$inferSelect;
 export type NewLemidaFile = typeof lemidaFiles.$inferInsert;
 export type LemidaCommand = typeof lemidaCommands.$inferSelect;
+export type MindMapNode = typeof mindMapNodes.$inferSelect;
+export type NewMindMapNode = typeof mindMapNodes.$inferInsert;
 export type NewLemidaCommand = typeof lemidaCommands.$inferInsert;
