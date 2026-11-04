@@ -1,0 +1,21 @@
+.wrap {
+  width: min(1400px, 100% - 48px);
+  margin: 24px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.title {
+  margin: 0;
+  font: 600 22px / 1.2 var(--eg-font-heading);
+}
+.sub {
+  margin: 0;
+  color: var(--eg-text-2);
+  font: 400 13px / 1.4 var(--eg-font-ui);
+}

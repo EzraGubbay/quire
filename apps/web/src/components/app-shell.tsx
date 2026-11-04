@@ -19,6 +19,7 @@ export const RESEARCH_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'documents', label: 'Documents' },
   { id: 'notes', label: 'Notes' },
+  { id: 'mindmap', label: 'Mind map' },
   { id: 'sources', label: 'Sources' },
   { id: 'experiments', label: 'Experiments' },
   { id: 'chat', label: 'Chat' },
@@ -32,6 +33,7 @@ export const COURSE_TABS = [
   { id: 'tests', label: 'Tests' },
   { id: 'documents', label: 'Documents' },
   { id: 'notes', label: 'Notes' },
+  { id: 'mindmap', label: 'Mind map' },
   { id: 'chat', label: 'Chat' },
 ] as const satisfies readonly AppBarTab[];
 

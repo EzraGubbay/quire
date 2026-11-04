@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Link2,
   MessageSquare,
+  Network,
   Plus,
   Presentation,
   Search,
@@ -74,6 +75,7 @@ export function CommandPalette({ project, open, onClose }: CommandPaletteProps) 
       { id: 'documents', label: 'Documents', icon: FileText, run: () => go(`${base}/documents`) },
       { id: 'notes', label: 'Notes', icon: StickyNote, run: () => go(`${base}/notes`) },
       { id: 'graph', label: 'Graph', icon: Waypoints, run: () => go(`${base}/notes/graph`) },
+      { id: 'mindmap', label: 'Mind map', icon: Network, run: () => go(`${base}/mindmap`) },
       { id: 'chat', label: 'Chat', icon: MessageSquare, run: () => go(`${base}/chat`) },
       {
         id: 'new-note',
