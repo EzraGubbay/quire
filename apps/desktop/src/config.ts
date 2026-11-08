@@ -24,8 +24,11 @@ export function loadConfig(): DesktopConfig {
   } catch {
     // Malformed/unreadable config — fall back to env + default.
   }
-  const quireUrl = (process.env.QUIRE_URL ?? stored.quireUrl ?? DEFAULT_QUIRE_URL).replace(/\/+$/, '');
-  if (!existsSync(file)) {
+  const envUrl = process.env.QUIRE_URL?.replace(/\/+$/, '') || undefined;
+  const quireUrl = (envUrl ?? stored.quireUrl ?? DEFAULT_QUIRE_URL).replace(/\/+$/, '');
+  // Seed a hand-editable config file on first run — but NEVER from a QUIRE_URL override, so a one-off dev
+  // URL (e.g. localhost) can't get baked into the packaged app's persistent config.
+  if (!existsSync(file) && !envUrl) {
     try {
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, `${JSON.stringify({ quireUrl }, null, 2)}\n`);
