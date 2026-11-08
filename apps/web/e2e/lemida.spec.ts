@@ -50,7 +50,9 @@ test('lemida import: classify + place, dedupe, and resolve a review item', async
     expect(r.detectedKind).toBe('lecture');
     expect(r.status).toBe('imported');
     await page.goto(`/c/${slug}/lectures`);
-    await expect(page.getByText('Intro')).toBeVisible();
+    // Scope to the lecture row: the deck is now also shown by name as a chip, so a bare getByText('Intro')
+    // matches both the row title and the chip.
+    await expect(page.getByTestId('session-row').filter({ hasText: 'Intro' })).toBeVisible();
   });
 
   await test.step('a Moodle assignment activity becomes homework', async () => {

@@ -2,7 +2,7 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { SessionKind } from '@quire/shared';
-import { ArrowLeft, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, FolderInput, Trash2, Upload } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
@@ -10,8 +10,9 @@ import { type ActionState, deleteDeckAction, dropSessionFilesAction } from '@/ap
 import { DocumentView } from '@/components/documents/document-view';
 import { useProject } from '@/components/project-context';
 import { EmptyState } from '@/components/ui/empty-state';
-import type { Annotation, Document, Note } from '@/db/schema';
+import type { Annotation, Document, Note, Session } from '@/db/schema';
 import type { SessionWithDocuments } from '@/lib/sessions';
+import { MoveDeckDialog } from './move-deck-dialog';
 import { SessionNotePane } from './session-note-pane';
 import s from './sessions.module.css';
 
@@ -21,6 +22,7 @@ const LABEL: Record<SessionKind, string> = { lecture: 'Lecture', recitation: 'Re
 export function SessionPage({
   slug,
   session,
+  sessions,
   doc,
   annotations,
   note,
@@ -34,6 +36,8 @@ export function SessionPage({
 }: {
   slug: string;
   session: SessionWithDocuments;
+  /** Every session in the project — targets for the "move deck" picker. */
+  sessions: Session[];
   /** The deck shown; null when the session has no file yet. */
   doc: Document | null;
   annotations: Annotation[];
@@ -51,6 +55,7 @@ export function SessionPage({
   const router = useRouter();
   const [page, setPage] = useState(doc?.lastPage ?? 1);
   const [deleting, startDelete] = useTransition();
+  const [moving, setMoving] = useState<Document | null>(null);
   const title = `${LABEL[session.kind]} ${session.number}${session.title ? ` — ${session.title}` : ''}`;
   const backHref = `${base}/${TAB[session.kind]}`;
   const deleteDeck = (d: Document) => {
@@ -92,6 +97,17 @@ export function SessionPage({
             ) : (
               <span className={s.deckChip}>{d.title}</span>
             )}
+            {!lite && (
+              <button
+                type="button"
+                className={s.deckDel}
+                title={`Move deck ${d.title} to another ${LABEL[session.kind].toLowerCase()}`}
+                aria-label={`Move deck ${d.title}`}
+                onClick={() => setMoving(d)}
+              >
+                <Icon icon={FolderInput} />
+              </button>
+            )}
             <button
               type="button"
               className={s.deckDel}
@@ -105,6 +121,15 @@ export function SessionPage({
           </span>
         ))}
       </div>
+      {moving && (
+        <MoveDeckDialog
+          slug={slug}
+          doc={{ id: moving.id, title: moving.title }}
+          sessions={sessions}
+          currentSessionId={session.id}
+          onClose={() => setMoving(null)}
+        />
+      )}
       <DocumentView
         key={doc.id}
         slug={slug}
