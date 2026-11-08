@@ -5,7 +5,7 @@ import { mergedMacros } from '@/lib/macros';
 import { linkTargets, sessionNote } from '@/lib/notes';
 import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug, requireKind } from '@/lib/projects';
-import { getSession } from '@/lib/sessions';
+import { getSession, listSessions } from '@/lib/sessions';
 
 /** Shared by the lecture and recitation detail routes. */
 export async function SessionRoute({
@@ -29,20 +29,23 @@ export async function SessionRoute({
     withFile[0] ??
     session.documents[0] ??
     null;
-  const [annotations, note, targets, macroRows, split, viewer, annotate, synth] = await Promise.all([
-    doc ? listAnnotations(project.id, doc.id) : Promise.resolve([]),
-    sessionNote(project.id, session.id),
-    linkTargets(project.id),
-    mergedMacros(project.id),
-    currentFeature('sessions.split'),
-    currentFeature('documents.viewer'),
-    currentFeature('documents.annotate'),
-    currentFeature('notes.synthesize'),
-  ]);
+  const [annotations, note, targets, macroRows, split, viewer, annotate, synth, allSessions] =
+    await Promise.all([
+      doc ? listAnnotations(project.id, doc.id) : Promise.resolve([]),
+      sessionNote(project.id, session.id),
+      linkTargets(project.id),
+      mergedMacros(project.id),
+      currentFeature('sessions.split'),
+      currentFeature('documents.viewer'),
+      currentFeature('documents.annotate'),
+      currentFeature('notes.synthesize'),
+      listSessions(project.id),
+    ]);
   return (
     <SessionPage
       slug={slug}
       session={session}
+      sessions={allSessions}
       doc={doc}
       annotations={annotations}
       note={note ?? null}

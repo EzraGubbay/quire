@@ -2,7 +2,17 @@
 
 import { Button, Icon } from '@ezragubbay/folio';
 import type { SessionKind } from '@quire/shared';
-import { Download, FileText, Pencil, Plus, Presentation, Trash2, Upload, Users } from 'lucide-react';
+import {
+  Download,
+  FileText,
+  FolderInput,
+  Pencil,
+  Plus,
+  Presentation,
+  Trash2,
+  Upload,
+  Users,
+} from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type DragEvent, useActionState, useEffect, useRef, useState, useTransition } from 'react';
@@ -17,7 +27,9 @@ import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Input } from '@/components/ui/field';
+import type { Document, Session } from '@/db/schema';
 import type { SessionWithDocuments } from '@/lib/sessions';
+import { MoveDeckDialog } from './move-deck-dialog';
 import s from './sessions.module.css';
 
 const LABEL: Record<SessionKind, { one: string; many: string; tab: string }> = {
@@ -38,11 +50,14 @@ export function SessionsList({
   slug,
   kind,
   sessions,
+  allSessions,
   lite = false,
 }: {
   slug: string;
   kind: SessionKind;
   sessions: SessionWithDocuments[];
+  /** Every session in the project (both kinds) — targets for the "move deck" picker. */
+  allSessions: Session[];
   /** Phones: list only, no drop zone or inline editing. */
   lite?: boolean;
 }) {
@@ -51,6 +66,7 @@ export function SessionsList({
   const label = LABEL[kind];
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<SessionWithDocuments | null>(null);
+  const [moving, setMoving] = useState<{ doc: Document; sessionId: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dropState, dropAction, dropping] = useActionState<ActionState, FormData>(dropSessionFilesAction, {});
   const [deleting, startDelete] = useTransition();
@@ -144,75 +160,93 @@ export function SessionsList({
       ) : (
         <ol className={s.list}>
           {sessions.map((x) => (
-            <li key={x.id} className={s.row}>
-              <NextLink href={`${base}/${label.tab}/${x.id}`} className={s.rowMain}>
-                <span className={s.num}>
-                  <Icon icon={kind === 'lecture' ? Presentation : Users} />
-                  {x.number}
-                </span>
-                <span className={s.rowText}>
-                  <span className={s.rowTitle}>{x.title || `${label.one} ${x.number}`}</span>
-                  <span className={s.rowMeta}>
-                    {[
-                      fmtDate(x.date),
-                      x.documents.length === 0
-                        ? 'no files'
-                        : `${x.documents.length} file${x.documents.length === 1 ? '' : 's'}`,
-                      x.documents.some((d) => d.conversionError) ? 'needs a PDF rendering' : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+            <li key={x.id} className={s.row} data-testid="session-row">
+              <div className={s.rowLine}>
+                <NextLink href={`${base}/${label.tab}/${x.id}`} className={s.rowMain}>
+                  <span className={s.num}>
+                    <Icon icon={kind === 'lecture' ? Presentation : Users} />
+                    {x.number}
                   </span>
-                </span>
-              </NextLink>
-              <span className={s.rowActions}>
+                  <span className={s.rowText}>
+                    <span className={s.rowTitle}>{x.title || `${label.one} ${x.number}`}</span>
+                    <span className={s.rowMeta}>
+                      {[
+                        fmtDate(x.date),
+                        x.documents.length === 0
+                          ? 'no files'
+                          : `${x.documents.length} file${x.documents.length === 1 ? '' : 's'}`,
+                        x.documents.some((d) => d.conversionError) ? 'needs a PDF rendering' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </span>
+                </NextLink>
                 {!lite && (
-                  <button
-                    type="button"
-                    className={s.iconBtn}
-                    title={`Edit ${label.one.toLowerCase()} number, title and date`}
-                    aria-label={`Edit ${x.title || `${label.one} ${x.number}`}`}
-                    onClick={() => setEditing(x)}
-                  >
-                    <Icon icon={Pencil} />
-                  </button>
-                )}
-                {!lite && (
-                  <button
-                    type="button"
-                    className={s.iconBtn}
-                    title={`Delete ${label.one.toLowerCase()}`}
-                    aria-label={`Delete ${x.title || `${label.one} ${x.number}`}`}
-                    disabled={deleting}
-                    onClick={() => removeSession(x)}
-                  >
-                    <Icon icon={Trash2} />
-                  </button>
-                )}
-                {x.documents.map((d) =>
-                  d.originalPath ? (
-                    <a
-                      key={d.id}
-                      href={`/api/projects/${slug}/documents/${d.id}/original`}
+                  <span className={s.rowActions}>
+                    <button
+                      type="button"
                       className={s.iconBtn}
-                      title={`Download ${d.originalName ?? 'deck'}`}
-                      aria-label={`Download ${d.originalName ?? 'deck'}`}
+                      title={`Edit ${label.one.toLowerCase()} number, title and date`}
+                      aria-label={`Edit ${x.title || `${label.one} ${x.number}`}`}
+                      onClick={() => setEditing(x)}
                     >
-                      <Icon icon={Download} />
-                    </a>
-                  ) : d.filePath ? (
-                    <a
-                      key={d.id}
-                      href={`/api/projects/${slug}/documents/${d.id}/file?download=1`}
+                      <Icon icon={Pencil} />
+                    </button>
+                    <button
+                      type="button"
                       className={s.iconBtn}
-                      title={`Download ${d.title}`}
-                      aria-label={`Download ${d.title}`}
+                      title={`Delete ${label.one.toLowerCase()}`}
+                      aria-label={`Delete ${x.title || `${label.one} ${x.number}`}`}
+                      disabled={deleting}
+                      onClick={() => removeSession(x)}
                     >
-                      <Icon icon={FileText} />
-                    </a>
-                  ) : null,
+                      <Icon icon={Trash2} />
+                    </button>
+                  </span>
                 )}
-              </span>
+              </div>
+              {x.documents.length > 0 && (
+                <ul className={s.rowDecks} data-testid="session-decks">
+                  {x.documents.map((d) => (
+                    <li key={d.id} className={s.deckTag}>
+                      <span className={s.deckTagName} title={d.title}>
+                        {d.title}
+                      </span>
+                      {d.originalPath ? (
+                        <a
+                          href={`/api/projects/${slug}/documents/${d.id}/original`}
+                          className={s.deckDel}
+                          title={`Download ${d.originalName ?? 'deck'}`}
+                          aria-label={`Download ${d.originalName ?? 'deck'}`}
+                        >
+                          <Icon icon={Download} />
+                        </a>
+                      ) : d.filePath ? (
+                        <a
+                          href={`/api/projects/${slug}/documents/${d.id}/file?download=1`}
+                          className={s.deckDel}
+                          title={`Download ${d.title}`}
+                          aria-label={`Download ${d.title}`}
+                        >
+                          <Icon icon={FileText} />
+                        </a>
+                      ) : null}
+                      {!lite && (
+                        <button
+                          type="button"
+                          className={s.deckDel}
+                          title={`Move ${d.title} to another ${label.one.toLowerCase()}`}
+                          aria-label={`Move ${d.title}`}
+                          onClick={() => setMoving({ doc: d, sessionId: x.id })}
+                        >
+                          <Icon icon={FolderInput} />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ol>
@@ -232,6 +266,16 @@ export function SessionsList({
           kind={kind}
           session={editing}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {moving && (
+        <MoveDeckDialog
+          key={moving.doc.id}
+          slug={slug}
+          doc={{ id: moving.doc.id, title: moving.doc.title }}
+          sessions={allSessions}
+          currentSessionId={moving.sessionId}
+          onClose={() => setMoving(null)}
         />
       )}
     </div>
