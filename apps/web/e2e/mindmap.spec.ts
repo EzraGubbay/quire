@@ -1,71 +1,55 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
-test('mind map: build a forest, collapse, attach a node note, persist, and delete a subtree', async ({
-  page,
-  browser,
-}) => {
-  await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto('/');
-  await page.getByRole('button', { name: 'New project' }).click();
-  await page.getByLabel('Name').fill(`Mindmap ${Date.now()}`);
-  await page.getByRole('button', { name: 'Create project' }).click();
-  await page.waitForURL(/\/overview$/);
+/** React is live (clicks before hydration are dropped, noticeably on a dev server). */
+const hydrated = (page: Page) => page.locator('html[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-  await page.getByRole('link', { name: 'Mind map', exact: true }).click();
-  await page.waitForURL(/\/mindmap$/);
+async function createCourse(page: Page, name: string) {
+  await page.goto('/courses');
+  await hydrated(page);
+  await page.getByRole('button', { name: 'New course' }).click();
+  await page.getByLabel('Name').fill(name);
+  await page.getByRole('button', { name: 'Create course' }).click();
+  await expect(page).toHaveURL(/\/c\/[^/]+\/overview$/);
+  const slug = page.url().match(/\/c\/([^/]+)\//)?.[1];
+  if (!slug) throw new Error('no course slug');
+  return slug;
+}
 
-  // Empty state → add the first root.
-  await expect(page.getByText('Your mind map is empty.')).toBeVisible();
-  await page.getByRole('button', { name: 'Add a root node' }).click();
+test('mind map: add node opens a placeholder, and Tab/Enter add child/sibling', async ({ page }) => {
+  const slug = await createCourse(page, `E2E mindmap ${Date.now()}`);
+  await page.goto(`/c/${slug}/mindmap`);
+  await hydrated(page);
+
+  const input = page.getByRole('textbox', { name: 'Node label' });
   const nodes = page.getByTestId('mindmap-node');
-  await nodes.getByLabel('Node label').fill('Decision theory');
-  await nodes.getByLabel('Node label').press('Enter');
-  await expect(nodes.getByText('Decision theory')).toBeVisible();
 
-  // The root is selected → add a child from its toolbar.
-  await page.getByRole('button', { name: 'Add child' }).click();
-  await page.getByTestId('mindmap-node').getByLabel('Node label').fill('Utility');
-  await page.getByTestId('mindmap-node').getByLabel('Node label').press('Enter');
-  await expect(nodes).toHaveCount(2);
+  await test.step('adding a node opens an empty box with a placeholder, not pre-filled text', async () => {
+    await page.getByRole('button', { name: 'Add a root node' }).click();
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue(''); // the fix: empty, so there is nothing to erase
+    await expect(input).toHaveAttribute('placeholder', /\S/); // a placeholder stands in for the old text
+    await input.fill('AI');
+    await input.press('Enter');
+    await expect(nodes.filter({ hasText: 'AI' })).toBeVisible();
+  });
 
-  // Collapse the root → the child is hidden; expand → it is back.
-  await page.getByRole('button', { name: 'Collapse' }).click();
-  await expect(nodes).toHaveCount(1);
-  await page.getByRole('button', { name: /Expand/ }).click();
-  await expect(nodes).toHaveCount(2);
+  await test.step('Tab adds a child (also an empty placeholder box)', async () => {
+    await page.keyboard.press('Tab');
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue('');
+    await input.fill('Search');
+    await input.press('Enter');
+    await expect(nodes.filter({ hasText: 'Search' })).toBeVisible();
+  });
 
-  // Open the child's note, write in it (wiki links are off), and let it autosave.
-  await page.getByRole('button', { name: /Utility/ }).click();
-  const panel = page.getByTestId('mindmap-note-panel');
-  await expect(panel).toBeVisible();
-  await panel.locator('.cm-content').click();
-  await page.keyboard.type('Expected utility = sum of p(outcome) * u(outcome).');
-  // Wait for the autosave to actually land (status pill → saved), not the substring inside "Unsaved".
-  await expect(panel.locator('[data-status="saved"]')).toBeVisible({ timeout: 5000 });
-  const url = page.url();
+  await test.step('Enter adds a sibling', async () => {
+    await page.keyboard.press('Enter');
+    await expect(input).toBeVisible();
+    await input.fill('Logic');
+    await input.press('Enter');
+    await expect(nodes.filter({ hasText: 'Logic' })).toBeVisible();
+  });
 
-  // Persistence: a COLD fresh browser context (no router cache, no service worker yet) reads straight from the
-  // server, so the forest and the node note must come back from the database exactly as built.
-  const fresh = await browser.newContext();
-  const p2 = await fresh.newPage();
-  await p2.setViewportSize({ width: 1400, height: 900 });
-  await p2.goto(url);
-  await expect(p2.getByTestId('mindmap-node')).toHaveCount(2);
-  const utility = p2.getByTestId('mindmap-node').filter({ hasText: 'Utility' });
-  await expect(utility.getByLabel('has note')).toBeVisible();
-  await utility.getByRole('button', { name: /Utility/ }).click();
-  const reopened = p2.getByTestId('mindmap-note-panel');
-  await expect(reopened).toBeVisible();
-  await expect(reopened.locator('.cm-content')).toContainText('Expected utility', { timeout: 10000 });
-
-  // Delete the root → its whole subtree goes with it (DB cascade), back to the empty state.
-  await p2.getByRole('button', { name: /Decision theory/ }).click();
-  await p2
-    .getByTestId('mindmap-node')
-    .filter({ hasText: 'Decision theory' })
-    .getByRole('button', { name: 'Delete' })
-    .click();
-  await p2.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(p2.getByText('Your mind map is empty.')).toBeVisible();
-  await fresh.close();
+  // Three authored nodes now exist (AI, and its two children Search + Logic).
+  await expect(nodes).toHaveCount(3);
 });

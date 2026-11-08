@@ -5,13 +5,23 @@ import {
   ChevronRight,
   CornerUpLeft,
   Crosshair,
+  ListPlus,
   Maximize2,
+  Pencil,
   Plus,
   Trash2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { type PointerEvent as ReactPointerEvent, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   createMindMapNodeAction,
   deleteMindMapNodeAction,
@@ -27,8 +37,13 @@ import { type LayoutNode, layoutMindMap } from '@/lib/mindmap-layout';
 import s from './mind-map.module.css';
 import { NodeNotePanel } from './node-note-panel';
 
-/** Fixed node box width (px); edges connect at the left/right middle so this must match the CSS. */
-const NODE_W = 170;
+/**
+ * Max node box width (px). Nodes now shrink-to-fit their label (CSS `width: max-content`) and only grow to
+ * this cap before wrapping, so a short title like "AI" is a small box. It doubles as the fallback width for
+ * edge geometry until a node's real width has been measured. (Sized to also hold the five-button action bar
+ * of a selected node on one row.)
+ */
+const NODE_W = 176;
 const MIN_K = 0.25;
 const MAX_K = 2.5;
 /** Six gentle hues, one per root; the whole subtree inherits its root's hue. */
@@ -52,12 +67,19 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   const [selected, setSelected] = useState<string | null>(null);
   const [openNote, setOpenNote] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  // A just-created node whose rename box should open empty (placeholder) rather than pre-filled with the
+  // default label, so the user types straight over it instead of erasing "New node" first.
+  const [newNodeId, setNewNodeId] = useState<string | null>(null);
   const [reparenting, setReparenting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MindMapNode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ tx: 40, ty: 40, k: 1 });
+  // Measured border-box width of each rendered node, so an edge can meet its parent's real right edge now
+  // that nodes are no longer a fixed width.
+  const [widths, setWidths] = useState<Map<string, number>>(new Map());
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const nodeEls = useRef(new Map<string, HTMLDivElement>());
   // Transient pan / pinch / node-drag state kept in refs so a move doesn't thrash React state.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pan = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
@@ -73,6 +95,32 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
 
   const layout = useMemo(() => layoutMindMap(toLayoutNodes(nodes)), [nodes]);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const childCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of nodes) if (n.parentId) m.set(n.parentId, (m.get(n.parentId) ?? 0) + 1);
+    return m;
+  }, [nodes]);
+
+  // Re-measure node widths only when something that can change a box's width changes — its label, the
+  // selection (the selected node grows an action bar), or whether a node is in its rename box. Keyed on
+  // those (not run every render) so the setWidths it triggers can't feed back into an update loop. Runs
+  // before paint so edges line up with the measured boxes with no flash.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate re-measure triggers — the body reads the DOM via a ref, not these values, and dropping them would stop widths updating.
+  useLayoutEffect(() => {
+    setWidths((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [id, el] of nodeEls.current) {
+        if (!el?.isConnected) continue;
+        const w = Math.round(el.offsetWidth);
+        if (prev.get(id) !== w) {
+          next.set(id, w);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [nodes, selected, renaming]);
 
   // Root hue for every node (walk up to the root, index roots in sort order).
   const hueOf = useMemo(() => {
@@ -214,36 +262,55 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   };
 
   // ---- actions ----
+  // Open a freshly created node straight into its rename box, flagged so the box shows a placeholder.
+  // (Memoized so the keyboard-shortcut effect's dependencies stay stable and it isn't re-bound each render.)
+  const beginNaming = useCallback((node: MindMapNode) => {
+    setNodes((ns) => [...ns, node]);
+    setSelected(node.id);
+    setNewNodeId(node.id);
+    setRenaming(node.id);
+  }, []);
   const addRoot = async () => {
     const res = await createMindMapNodeAction(slug, { parentId: null, label: 'New topic' });
-    if (res.node) {
-      setNodes((ns) => [...ns, res.node as MindMapNode]);
-      setSelected(res.node.id);
-      setRenaming(res.node.id);
-    } else setError(res.error ?? 'Could not add');
+    if (res.node) beginNaming(res.node as MindMapNode);
+    else setError(res.error ?? 'Could not add');
   };
-  const addChild = async (parentId: string) => {
-    const res = await createMindMapNodeAction(slug, { parentId, label: 'New node' });
-    if (res.node) {
-      patchNode(parentId, { collapsed: false });
-      setNodes((ns) => [...ns, res.node as MindMapNode]);
-      setSelected(res.node.id);
-      setRenaming(res.node.id);
-    } else setError(res.error ?? 'Could not add');
-  };
+  const addChild = useCallback(
+    async (parentId: string) => {
+      const res = await createMindMapNodeAction(slug, { parentId, label: 'New node' });
+      if (res.node) {
+        patchNode(parentId, { collapsed: false });
+        beginNaming(res.node as MindMapNode);
+      } else setError(res.error ?? 'Could not add');
+    },
+    [slug, patchNode, beginNaming],
+  );
+  // Add a node beside `node` (same parent — a new root when `node` is a root).
+  const addSibling = useCallback(
+    async (node: MindMapNode) => {
+      const res = await createMindMapNodeAction(slug, { parentId: node.parentId, label: 'New node' });
+      if (res.node) beginNaming(res.node as MindMapNode);
+      else setError(res.error ?? 'Could not add');
+    },
+    [slug, beginNaming],
+  );
   const rename = async (id: string, label: string) => {
     setRenaming(null);
+    setNewNodeId((cur) => (cur === id ? null : cur));
     const clean = label.trim();
     if (!clean) return;
     patchNode(id, { label: clean });
     const res = await renameMindMapNodeAction(slug, id, clean);
     if (res.error) setError(res.error);
   };
-  const toggleCollapse = async (node: MindMapNode) => {
-    const collapsed = !node.collapsed;
-    patchNode(node.id, { collapsed });
-    await toggleMindMapCollapseAction(slug, node.id, collapsed);
-  };
+  const toggleCollapse = useCallback(
+    async (node: MindMapNode) => {
+      const collapsed = !node.collapsed;
+      patchNode(node.id, { collapsed });
+      await toggleMindMapCollapseAction(slug, node.id, collapsed);
+    },
+    [slug, patchNode],
+  );
   const doReparent = async (id: string, parentId: string | null) => {
     setReparenting(null);
     const res = await reparentMindMapNodeAction(slug, id, parentId);
@@ -264,6 +331,108 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     if (res.error) setError(res.error);
   };
 
+  // ---- keyboard shortcuts ----
+  // All single-key, no modifiers: they work the same whether Quire runs as a browser PWA or inside the
+  // Electron shell (Cmd/Ctrl combos would collide with the browser's own, so we avoid them). Active only
+  // when a node is selected and you aren't typing in a field or editing a note.
+  const siblingsOf = useCallback(
+    (parentId: string | null) =>
+      nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.sortOrder - b.sortOrder),
+    [nodes],
+  );
+  // Move the selection highlight. Deliberately independent of the note drawer: the drawer autofocuses its
+  // editor, so pulling it along would capture the keyboard and halt navigation after one step.
+  const select = useCallback((id: string) => setSelected(id), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (renaming) return; // the rename input owns the keyboard while it's open
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      // Enter/Space activate a focused button/link themselves — don't also run the map shortcut (Escape and
+      // the others, which buttons ignore, stay live).
+      if (
+        (e.key === 'Enter' || e.key === ' ') &&
+        t &&
+        (t.tagName === 'BUTTON' || t.tagName === 'A' || t.tagName === 'SELECT')
+      )
+        return;
+
+      if (e.key === 'Escape') {
+        if (reparenting) setReparenting(null);
+        else if (openNote) setOpenNote(null);
+        else if (selected) setSelected(null);
+        else return;
+        e.preventDefault();
+        return;
+      }
+      if (reparenting) return; // don't mutate the tree mid-reparent
+      const node = selected ? byId.get(selected) : null;
+      if (!node) return;
+
+      switch (e.key) {
+        case 'Tab': // add child
+          e.preventDefault();
+          void addChild(node.id);
+          break;
+        case 'Enter': // add sibling
+          e.preventDefault();
+          void addSibling(node);
+          break;
+        case 'F2': // rename
+          e.preventDefault();
+          setNewNodeId(null);
+          setRenaming(node.id);
+          break;
+        case 'Delete':
+        case 'Backspace':
+          e.preventDefault();
+          setConfirmDelete(node);
+          break;
+        case ' ': // collapse / expand
+          e.preventDefault();
+          if ((childCount.get(node.id) ?? 0) > 0) void toggleCollapse(node);
+          break;
+        case 'ArrowUp':
+        case 'ArrowDown': {
+          e.preventDefault();
+          const sibs = siblingsOf(node.parentId);
+          const i = sibs.findIndex((n) => n.id === node.id);
+          const next = sibs[i + (e.key === 'ArrowDown' ? 1 : -1)];
+          if (next) select(next.id);
+          break;
+        }
+        case 'ArrowLeft': // go to parent
+          e.preventDefault();
+          if (node.parentId) select(node.parentId);
+          break;
+        case 'ArrowRight': {
+          // go to first child (expanding if needed)
+          e.preventDefault();
+          const kids = siblingsOf(node.id);
+          if (!kids.length) break;
+          if (node.collapsed) void toggleCollapse(node);
+          const first = kids[0];
+          if (first) select(first.id);
+          break;
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    renaming,
+    reparenting,
+    openNote,
+    selected,
+    byId,
+    childCount,
+    addChild,
+    addSibling,
+    toggleCollapse,
+    siblingsOf,
+    select,
+  ]);
+
   const zoomBy = (factor: number) => {
     const el = canvasRef.current;
     const cx = (el?.clientWidth ?? 600) / 2;
@@ -282,12 +451,6 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     );
     setView({ k, tx: (el.clientWidth - layout.width * k) / 2, ty: 24 });
   };
-
-  const childCount = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const n of nodes) if (n.parentId) m.set(n.parentId, (m.get(n.parentId) ?? 0) + 1);
-    return m;
-  }, [nodes]);
 
   const reparentTarget = reparenting ? byId.get(reparenting) : null;
   const reparentBlocked = reparenting ? descendants(reparenting) : null;
@@ -361,6 +524,9 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
         <div
           ref={canvasRef}
           className={s.canvas}
+          // Focusable so the map keyboard shortcuts have a home that isn't a button; selection is shown on
+          // the node itself, so no focus ring is needed here.
+          tabIndex={0}
           data-testid="mindmap-canvas"
           data-reparenting={reparenting ? 'true' : undefined}
           onPointerDown={onCanvasPointerDown}
@@ -394,7 +560,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                   const c = layout.positions.get(n.id);
                   const p = layout.positions.get(n.parentId);
                   if (!c || !p) return null;
-                  const x1 = p.x + NODE_W;
+                  const x1 = p.x + (widths.get(n.parentId) ?? NODE_W);
                   const y1 = p.y;
                   const x2 = c.x;
                   const y2 = c.y;
@@ -419,6 +585,10 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                 return (
                   <div
                     key={n.id}
+                    ref={(el) => {
+                      if (el) nodeEls.current.set(n.id, el);
+                      else nodeEls.current.delete(n.id);
+                    }}
                     className={s.node}
                     data-selected={selected === n.id ? 'true' : undefined}
                     data-dim={reparenting && blocked ? 'true' : undefined}
@@ -426,7 +596,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                     style={{
                       left: pos.x,
                       top: pos.y,
-                      width: NODE_W,
+                      maxWidth: NODE_W,
                       ['--hue' as string]: String(hue),
                     }}
                     onPointerDown={(e) => onNodePointerDown(e, n)}
@@ -454,13 +624,19 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                         // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened to rename
                         autoFocus
                         className={s.renameInput}
-                        defaultValue={n.label}
+                        // A freshly created node opens empty with the default label as placeholder, so the
+                        // user types straight over it; an existing node opens with its text to edit.
+                        defaultValue={newNodeId === n.id ? '' : n.label}
+                        placeholder={newNodeId === n.id ? n.label : undefined}
                         aria-label="Node label"
                         onPointerDown={(e) => e.stopPropagation()}
                         onBlur={(e) => void rename(n.id, e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') setRenaming(null);
+                          if (e.key === 'Escape') {
+                            setNewNodeId((cur) => (cur === n.id ? null : cur));
+                            setRenaming(null);
+                          }
                         }}
                       />
                     ) : (
@@ -486,7 +662,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                       <div className={s.nodeBar} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          title="Add child"
+                          title="Add child (Tab)"
                           aria-label="Add child"
                           onClick={() => void addChild(n.id)}
                         >
@@ -494,11 +670,22 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                         </button>
                         <button
                           type="button"
-                          title="Rename"
-                          aria-label="Rename"
-                          onClick={() => setRenaming(n.id)}
+                          title="Add sibling (Enter)"
+                          aria-label="Add sibling"
+                          onClick={() => void addSibling(n)}
                         >
-                          <CornerUpLeft style={{ width: 14, height: 14, transform: 'rotate(90deg)' }} />
+                          <Icon icon={ListPlus} size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Rename (F2)"
+                          aria-label="Rename"
+                          onClick={() => {
+                            setNewNodeId(null);
+                            setRenaming(n.id);
+                          }}
+                        >
+                          <Icon icon={Pencil} size={16} />
                         </button>
                         <button
                           type="button"
@@ -510,7 +697,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                         </button>
                         <button
                           type="button"
-                          title="Delete node and its children"
+                          title="Delete node and its children (Delete)"
                           aria-label="Delete"
                           data-danger
                           onClick={() => setConfirmDelete(n)}
@@ -531,7 +718,10 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
             key={openNote}
             slug={slug}
             node={byId.get(openNote) as MindMapNode}
-            onClose={() => setOpenNote(null)}
+            onClose={() => {
+              setOpenNote(null);
+              canvasRef.current?.focus(); // hand the keyboard back to the map
+            }}
             onLabel={(label) => void rename(openNote, label)}
             onNoteSaved={(note) => patchNode(openNote, { note })}
           />

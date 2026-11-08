@@ -64,6 +64,10 @@
 .canvas:active {
   cursor: grabbing;
 }
+.canvas:focus,
+.canvas:focus-visible {
+  outline: none;
+}
 .canvas[data-reparenting="true"] {
   cursor: crosshair;
 }
@@ -105,6 +109,9 @@
   position: absolute;
   transform: translateY(-50%);
   box-sizing: border-box;
+  /* Absolutely-positioned → shrink-to-fit its label, capped by the inline max-width (short titles get a
+     small box, long ones wrap at the cap). min-width keeps tiny labels and the action bar tidy. */
+  min-width: 52px;
   padding: 7px 10px;
   border: 1.5px solid hsl(var(--hue) 45% 58%);
   border-left-width: 5px;
@@ -190,6 +197,7 @@
 
 .nodeBar {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-top: 6px;
   padding-top: 6px;
