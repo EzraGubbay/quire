@@ -7,6 +7,7 @@ import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { AskLauncher } from '@/components/chat/ask-launcher';
+import { LemidaStatusDot } from '@/components/lemida/status-dot';
 import { CommandPalette } from '@/components/palette/command-palette';
 import { PhoneBar } from '@/components/phone-bar';
 import { usePlatform } from '@/components/platform';
@@ -69,6 +70,9 @@ export function AppShell({ project, children }: AppShellProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const pathname = usePathname();
+  // The Lemida sign-in dot belongs to the courses platform: the course list, the sync panel, and any
+  // individual course (the `/c/<slug>` side).
+  const inCourses = pathname.startsWith('/courses') || pathname.startsWith('/c/');
   const router = useRouter();
   const { platform, feature } = usePlatform();
   const base = project ? baseFor(project.kind, project.slug) : null;
@@ -161,6 +165,7 @@ export function AppShell({ project, children }: AppShellProps) {
         user="E"
         actions={
           <>
+            {inCourses && <LemidaStatusDot />}
             {project && <AskLauncher slug={project.slug} />}
             <NextLink
               href={base ? `${base}/settings` : '/settings'}

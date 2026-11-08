@@ -1,0 +1,17 @@
+appId: com.quire.desktop
+productName: Quire
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+mac:
+  # Unsigned for now: no Apple Developer ID, no notarization, no auto-update in this pass.
+  # Open the built app via right-click → Open the first time (Gatekeeper).
+  identity: null
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - dmg
+    - zip

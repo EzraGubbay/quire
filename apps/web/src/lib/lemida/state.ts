@@ -47,4 +47,8 @@ export function agentOnline(state: Pick<LemidaState, 'agentSeenAt'>): boolean {
   return Number.isFinite(seen) && Date.now() - seen < AGENT_STALE_MS;
 }
 
+// The derived sign-in dot colour lives in ./indicator (pure, no DB import) so client components can use it
+// without pulling this module's DB client into the browser bundle. Re-exported here for server-side callers.
+export { type LemidaIndicator, lemidaIndicator } from './indicator';
+
 export type { LemidaSessionStatus };

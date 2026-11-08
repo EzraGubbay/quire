@@ -6,6 +6,10 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+# The apps/desktop workspace member depends on Electron; CI only lints/typechecks/builds it (never runs it),
+# so skip the ~100 MB binary download on every install.
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
 jobs:
   check:
     name: Lint, typecheck, unit tests

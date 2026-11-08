@@ -1,0 +1,27 @@
+.dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: var(--eg-radius-control);
+  color: var(--eg-text-2);
+}
+.dot:hover {
+  background: var(--eg-surface-2);
+}
+.pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--eg-muted);
+  flex-shrink: 0;
+}
+.dot[data-indicator="green"] .pip {
+  background: #22a06b;
+}
+.dot[data-indicator="orange"] .pip {
+  background: #d9822b;
+}
+.dot[data-indicator="red"] .pip {
+  background: #d9534f;
+}

@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Electron main + preload run as CommonJS. This is the simplest combo that "just works" for
+    // preload scripts and __dirname; the base config's ESNext/bundler is for the bundled web app.
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "noEmit": false,
+    // The base turns this on, but it makes Electron's optional-field option bags (webPreferences, etc.)
+    // needlessly painful; the web app disables it too (apps/web/tsconfig.json).
+    "exactOptionalPropertyTypes": false,
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"]
+}
