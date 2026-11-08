@@ -163,12 +163,32 @@ export async function deleteSessionAction(slug: string, id: string): Promise<voi
   redirect(`${projectBase(project)}/${tab}`);
 }
 
-export async function attachToSessionAction(slug: string, documentId: string, sessionId: string | null) {
+/**
+ * Move a deck to a different lecture/recitation (or `null` to unassign it). Validates the target session and
+ * revalidates both the source and target detail routes (not just the list pages) so both reflect the move.
+ */
+export async function moveDeckToSessionAction(
+  slug: string,
+  documentId: string,
+  sessionId: string | null,
+): Promise<ActionState> {
   const project = await projectOr404(slug);
+  const doc = await getDocument(project.id, documentId);
+  if (!doc) return { error: 'Deck not found' };
+  const target = sessionId ? await getSession(project.id, sessionId) : null;
+  if (sessionId && !target) return { error: 'That lecture no longer exists.' };
+  const source = doc.sessionId ? await getSession(project.id, doc.sessionId) : null;
+
   await attachDocumentToSession(project.id, documentId, sessionId);
-  revalidatePath(`${projectBase(project)}/lectures`);
-  revalidatePath(`${projectBase(project)}/recitations`);
-  revalidatePath(`${projectBase(project)}/documents`);
+
+  const base = projectBase(project);
+  revalidatePath(`${base}/lectures`);
+  revalidatePath(`${base}/recitations`);
+  revalidatePath(`${base}/documents`);
+  for (const sess of [source, target]) {
+    if (sess) revalidatePath(`${base}/${sess.kind === 'lecture' ? 'lectures' : 'recitations'}/${sess.id}`);
+  }
+  return { ok: true };
 }
 
 /** Deletes a deck (the PDF/pptx document and its pages); the lecture and its note are untouched. */
