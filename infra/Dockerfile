@@ -8,8 +8,12 @@ WORKDIR /repo
 FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/web/package.json apps/web/
+# apps/desktop is a workspace member (Electron app, built on a Mac — never shipped in this image). Its
+# manifest is copied only so `--frozen-lockfile` sees a complete workspace; `--filter web...` then installs
+# only web and its deps, so Electron/electron-builder never land in the web image.
+COPY apps/desktop/package.json apps/desktop/
 COPY packages/shared/package.json packages/shared/
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter web...
 
 FROM deps AS build
 COPY . .

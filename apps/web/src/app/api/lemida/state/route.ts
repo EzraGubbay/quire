@@ -1,9 +1,21 @@
 // The agent posts its session-probe result and sync summary here; also a heartbeat.
 import { z } from 'zod';
 import { json, readJson } from '@/lib/api';
-import { type LemidaState, saveLemidaState } from '@/lib/lemida/state';
+import { getLemidaState, type LemidaState, saveLemidaState } from '@/lib/lemida/state';
 
 export const dynamic = 'force-dynamic';
+
+/** Current session + heartbeat, read by the global status dot in the courses chrome (it polls this). */
+export async function GET() {
+  const state = await getLemidaState();
+  return json({
+    sessionStatus: state.sessionStatus,
+    checkedAt: state.checkedAt,
+    agentSeenAt: state.agentSeenAt,
+    lastSyncAt: state.lastSyncAt,
+    lastSyncSummary: state.lastSyncSummary,
+  });
+}
 
 const schema = z.object({
   sessionStatus: z.enum(['unknown', 'valid', 'expired']).optional(),

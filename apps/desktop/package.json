@@ -1,0 +1,24 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quire desktop shell (Electron): loads the Pi-hosted Quire and will host the Lemida sync engine.",
+  "author": "Ezra Gubbay",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "pnpm run build && electron .",
+    "dist": "pnpm run build && electron-builder --config electron-builder.yml",
+    "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs"
+  },
+  "dependencies": {
+    "node-html-parser": "^6.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "typescript": "~5.9.3"
+  }
+}

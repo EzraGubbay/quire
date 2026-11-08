@@ -3,7 +3,9 @@
 import { Icon, Mark } from '@ezragubbay/folio';
 import { Moon, Settings, Sun } from 'lucide-react';
 import NextLink from 'next/link';
+import { usePathname } from 'next/navigation';
 import { AskLauncher } from '@/components/chat/ask-launcher';
+import { LemidaStatusDot } from '@/components/lemida/status-dot';
 import { baseFor } from '@/lib/side';
 import type { ShellProject } from './app-shell';
 import s from './phone-bar.module.css';
@@ -12,6 +14,8 @@ import { useTheme } from './providers';
 /** One-row phone header: mark (home), project name, Ask, theme, settings. Tabs live in the bottom TabBar. */
 export function PhoneBar({ project }: { project?: ShellProject }) {
   const { theme, toggle } = useTheme();
+  const pathname = usePathname();
+  const inCourses = pathname.startsWith('/courses') || pathname.startsWith('/c/');
   return (
     <header className={s.bar} data-testid="phone-bar">
       <NextLink href="/" className={s.mark} aria-label="Home">
@@ -25,6 +29,7 @@ export function PhoneBar({ project }: { project?: ShellProject }) {
         <span className={s.project}>Quire</span>
       )}
       <div className={s.actions}>
+        {inCourses && <LemidaStatusDot />}
         {project && <AskLauncher slug={project.slug} />}
         <button
           type="button"
