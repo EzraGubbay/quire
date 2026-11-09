@@ -8,8 +8,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, type Session, session, type WebContents } from 'electron';
 import {
+  decideLoggedIn,
   filenameFrom,
   isAuthWall,
+  type LoginSignals,
   parseMoodleCourse,
   parsePluginfileLinks,
   parseResourceWorkaround,
@@ -161,17 +163,21 @@ async function getHtml(win: BrowserWindow): Promise<string> {
 
 async function isLoggedIn(wc: WebContents): Promise<boolean> {
   try {
-    if (isAuthWall(wc.getURL())) return false;
-    // Guests get a .usermenu too (it holds the "Log in" link), so the only reliable marker is a logout
-    // link — and a visible login link means we're NOT signed in.
-    const script = `(() => {
-      const logout = document.querySelector('a[href*="/login/logout.php"]');
-      if (!logout) return false;
-      const login = document.querySelector('a[href*="/login/index.php"], a[href*="login/index.php?"]');
-      return !login;
-    })()`;
-    const result = await wc.executeJavaScript(script, true);
-    return result === true;
+    const url = wc.getURL();
+    if (isAuthWall(url)) return false;
+    // Gather the signals Moodle exposes and let the pure `decideLoggedIn` judge them. The authoritative one
+    // is the `userloggedin` / `notloggedin` class Moodle puts on <body>; the logout-link / avatar checks are
+    // fallbacks for a theme that omits it. (Keying on the logout link alone used to miss real sign-ins.)
+    const signals = (await wc.executeJavaScript(
+      `(() => ({
+        bodyClass: document.body ? document.body.className : '',
+        hasLogout: !!document.querySelector('a[href*="/login/logout.php"]'),
+        hasLogin: !!document.querySelector('a[href*="/login/index.php"]'),
+        hasAvatar: !!document.querySelector('.usermenu .userbutton, .userpicture, img.userpicture, [data-region="user-menu-toggle"]'),
+      }))()`,
+      true,
+    )) as LoginSignals;
+    return decideLoggedIn(url, signals);
   } catch {
     // Page navigated mid-check (e.g. a 365 redirect) — treat as not-yet.
     return false;
@@ -197,7 +203,16 @@ function hiddenWindow(): BrowserWindow {
  * Open a visible window at the Lemida login so you can sign in by hand (incl. 365 / any bot check).
  * Returns the session status once you're in, or when the window times out / is closed.
  */
-export async function openLogin(): Promise<SessionStatus> {
+// Only one sign-in window at a time. A second request while one is open (an impatient re-click when the
+// panel looked stuck) should surface the existing window, not stack another on the same partition.
+let activeLoginWin: BrowserWindow | null = null;
+
+export async function openLogin(opts: { onHeartbeat?: () => void } = {}): Promise<SessionStatus> {
+  if (activeLoginWin && !activeLoginWin.isDestroyed()) {
+    activeLoginWin.show();
+    activeLoginWin.focus();
+    return 'unknown';
+  }
   await restoreCookies(); // a still-valid session skips the manual step
   const win = new BrowserWindow({
     width: 1100,
@@ -205,6 +220,7 @@ export async function openLogin(): Promise<SessionStatus> {
     title: 'Sign in to Lemida',
     webPreferences: { partition: PARTITION, contextIsolation: true, nodeIntegration: false },
   });
+  activeLoginWin = win;
   let closed = false;
   win.on('closed', () => {
     closed = true;
@@ -217,6 +233,9 @@ export async function openLogin(): Promise<SessionStatus> {
         await saveCookies(); // capture the session cookie while it's live
         return 'valid';
       }
+      // Keep the agent's heartbeat fresh while the user is signing in, so the panel keeps showing "agent
+      // online" instead of going stale during the (possibly minute-long) 365 login.
+      opts.onHeartbeat?.();
       await sleep(2000);
     }
     if (!closed && !win.isDestroyed() && (await isLoggedIn(win.webContents))) {
@@ -226,6 +245,7 @@ export async function openLogin(): Promise<SessionStatus> {
     return 'unknown';
   } finally {
     if (!win.isDestroyed()) win.close();
+    activeLoginWin = null;
   }
 }
 
