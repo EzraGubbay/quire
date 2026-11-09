@@ -52,4 +52,29 @@ test('mind map: add node opens a placeholder, and Tab/Enter add child/sibling', 
 
   // Three authored nodes now exist (AI, and its two children Search + Logic).
   await expect(nodes).toHaveCount(3);
+
+  await test.step('the node fits its label, and the rename box grows as you type', async () => {
+    const ai = nodes.filter({ hasText: 'AI' }).first();
+    const narrow = (await ai.boundingBox())?.width ?? 0;
+
+    // Open the rename box on an existing node (select → Rename), then watch it widen with the text. Clicking
+    // the node also opens the note drawer (whose title field shares the "Node label" name), so scope the
+    // rename input to the canvas.
+    const renameBox = page.getByTestId('mindmap-canvas').getByRole('textbox', { name: 'Node label' });
+    await ai.click();
+    await ai.getByRole('button', { name: 'Rename' }).click();
+    await expect(renameBox).toBeVisible();
+    await renameBox.fill('X');
+    const boxShort = (await renameBox.boundingBox())?.width ?? 0;
+    await renameBox.fill('Parallel Systems and Inference');
+    const boxLong = (await renameBox.boundingBox())?.width ?? 0;
+    expect(boxLong).toBeGreaterThan(boxShort + 20); // the input grew to fit what's typed
+    await renameBox.press('Enter');
+
+    // The saved node is now sized to its label — not collapsed to the ~52px minimum that shredded the text.
+    const wide = nodes.filter({ hasText: 'Parallel' }).first();
+    const wideW = (await wide.boundingBox())?.width ?? 0;
+    expect(wideW).toBeGreaterThan(90);
+    expect(wideW).toBeGreaterThan(narrow);
+  });
 });
