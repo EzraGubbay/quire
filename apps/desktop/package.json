@@ -13,10 +13,12 @@
     "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs"
   },
   "dependencies": {
-    "node-html-parser": "^6.1.13"
+    "node-html-parser": "^6.1.13",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/ws": "^8.5.12",
     "electron": "45.0.0",
     "electron-builder": "26.18.0",
     "typescript": "~5.9.3"

@@ -9,6 +9,9 @@ const path = require('node:path');
 const { parseMoodleCourse, parsePluginfileLinks, filenameFrom, isAuthWall, decideLoggedIn } = require(
   path.join(__dirname, '..', 'dist', 'engine', 'moodle.js'),
 );
+const { mapSameSite, normalizeCdpCookies, parseDevToolsActivePort } = require(
+  path.join(__dirname, '..', 'dist', 'engine', 'brave-login.js'),
+);
 
 const fixture = readFileSync(
   path.join(__dirname, '..', '..', '..', 'tools', 'lemida-agent', 'fixtures', 'course.html'),
@@ -111,6 +114,63 @@ assert.equal(
   'login page → out',
 );
 
+// 7) brave-login cookie harvest helpers (the real-browser sign-in path).
+// SameSite spellings map CDP → Electron.
+assert.equal(mapSameSite('Strict'), 'strict');
+assert.equal(mapSameSite('Lax'), 'lax');
+assert.equal(mapSameSite('None'), 'no_restriction');
+assert.equal(mapSameSite(undefined), 'unspecified');
+
+// normalizeCdpCookies keeps only BIU-host cookies and maps session vs persistent correctly.
+const harvested = normalizeCdpCookies([
+  {
+    name: 'MoodleSession',
+    value: 'abc',
+    domain: 'lemida.biu.ac.il',
+    path: '/',
+    secure: true,
+    httpOnly: true,
+    session: true,
+    expires: -1,
+  },
+  {
+    name: '_px3',
+    value: 'z',
+    domain: '.biu.ac.il',
+    path: '/',
+    secure: true,
+    httpOnly: false,
+    session: false,
+    expires: 1893456000,
+    sameSite: 'None',
+  },
+  {
+    name: 'junk',
+    value: 'nope',
+    domain: 'tracker.example.com',
+    path: '/',
+    secure: true,
+    httpOnly: false,
+    session: false,
+    expires: 1893456000,
+  },
+]);
+assert.equal(harvested.length, 2, 'only BIU-host cookies are kept');
+const ms = harvested.find((c) => c.name === 'MoodleSession');
+assert.ok(ms && ms.expirationDate === undefined, 'session cookie has no expirationDate');
+assert.equal(ms.secure, true);
+assert.equal(ms.httpOnly, true);
+const px = harvested.find((c) => c.name === '_px3');
+assert.equal(px.expirationDate, 1893456000, 'persistent cookie keeps its expiry');
+assert.equal(px.sameSite, 'no_restriction');
+assert.ok(!harvested.some((c) => c.name === 'junk'), 'non-BIU cookie is dropped');
+
+// parseDevToolsActivePort reads the port + browser WS path Chromium writes on launch.
+const dbg = parseDevToolsActivePort('54321\n/devtools/browser/abc-123\n');
+assert.ok(dbg && dbg.port === 54321 && dbg.wsPath === '/devtools/browser/abc-123');
+assert.equal(parseDevToolsActivePort(''), null, 'empty file → null');
+assert.equal(parseDevToolsActivePort('not-a-port\n'), null, 'non-numeric port → null');
+
 console.log(
-  'smoke-parser: OK — 5 activities, course-index merge, pluginfile, filename, auth-wall, sign-in detection all match.',
+  'smoke-parser: OK — 5 activities, course-index merge, pluginfile, filename, auth-wall, sign-in detection, cookie harvest all match.',
 );
