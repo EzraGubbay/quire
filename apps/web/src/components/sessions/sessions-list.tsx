@@ -37,14 +37,17 @@ const LABEL: Record<SessionKind, { one: string; many: string; tab: string }> = {
   recitation: { one: 'Recitation', many: 'Recitations', tab: 'recitations' },
 };
 
-const fmtDate = (iso: string | null) =>
-  iso
-    ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '';
+// Format a YYYY-MM-DD date string deterministically. `toLocaleDateString` depends on the runtime's locale
+// and timezone, so it can render differently on the server (Node, UTC) than in the browser, which tripped a
+// React hydration mismatch on the session rows. Build the "9 Nov 2026" string from the ISO parts instead, so
+// server and client always agree.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtDate = (iso: string | null) => {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso) : null;
+  if (!m) return '';
+  const [, year, month, day] = m;
+  return `${Number(day)} ${MONTHS[Number(month) - 1] ?? ''} ${year}`;
+};
 
 export function SessionsList({
   slug,
