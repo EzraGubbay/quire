@@ -70,6 +70,9 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   // A just-created node whose rename box should open empty (placeholder) rather than pre-filled with the
   // default label, so the user types straight over it instead of erasing "New node" first.
   const [newNodeId, setNewNodeId] = useState<string | null>(null);
+  // The live text in the open rename box. Tracked so the box can grow to fit what you type — a bare <input>
+  // doesn't size to its value — and so a fresh node's box sizes to its placeholder rather than collapsing.
+  const [draft, setDraft] = useState('');
   const [reparenting, setReparenting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MindMapNode | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +105,9 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   }, [nodes]);
 
   // Re-measure node widths only when something that can change a box's width changes — its label, the
-  // selection (the selected node grows an action bar), or whether a node is in its rename box. Keyed on
-  // those (not run every render) so the setWidths it triggers can't feed back into an update loop. Runs
-  // before paint so edges line up with the measured boxes with no flash.
+  // selection (the selected node grows an action bar), whether a node is in its rename box, or the live
+  // rename text (the box grows as you type). Keyed on those (not run every render) so the setWidths it
+  // triggers can't feed back into an update loop. Runs before paint so edges line up with the boxes, no flash.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate re-measure triggers — the body reads the DOM via a ref, not these values, and dropping them would stop widths updating.
   useLayoutEffect(() => {
     setWidths((prev) => {
@@ -120,7 +123,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
       }
       return changed ? next : prev;
     });
-  }, [nodes, selected, renaming]);
+  }, [nodes, selected, renaming, draft]);
 
   // Root hue for every node (walk up to the root, index roots in sort order).
   const hueOf = useMemo(() => {
@@ -268,6 +271,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     setNodes((ns) => [...ns, node]);
     setSelected(node.id);
     setNewNodeId(node.id);
+    setDraft(''); // open empty; the default label shows as placeholder
     setRenaming(node.id);
   }, []);
   const addRoot = async () => {
@@ -381,6 +385,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
         case 'F2': // rename
           e.preventDefault();
           setNewNodeId(null);
+          setDraft(node.label);
           setRenaming(node.id);
           break;
         case 'Delete':
@@ -624,11 +629,15 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                         // biome-ignore lint/a11y/noAutofocus: focus the field the user just opened to rename
                         autoFocus
                         className={s.renameInput}
-                        // A freshly created node opens empty with the default label as placeholder, so the
-                        // user types straight over it; an existing node opens with its text to edit.
-                        defaultValue={newNodeId === n.id ? '' : n.label}
+                        // Controlled so the box can grow as you type. A freshly created node opens empty with
+                        // the default label as placeholder (type straight over it); an existing node opens with
+                        // its text to edit. `size` tracks the live text (falling back to the placeholder when
+                        // empty) so the <input> widens to fit what you type instead of staying a sliver.
+                        value={draft}
+                        size={Math.max((draft || (newNodeId === n.id ? n.label : '')).length + 1, 4)}
                         placeholder={newNodeId === n.id ? n.label : undefined}
                         aria-label="Node label"
+                        onChange={(e) => setDraft(e.target.value)}
                         onPointerDown={(e) => e.stopPropagation()}
                         onBlur={(e) => void rename(n.id, e.target.value)}
                         onKeyDown={(e) => {
@@ -644,7 +653,11 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                         type="button"
                         className={s.label}
                         onPointerDown={(e) => e.stopPropagation()}
-                        onDoubleClick={() => setRenaming(n.id)}
+                        onDoubleClick={() => {
+                          setNewNodeId(null);
+                          setDraft(n.label);
+                          setRenaming(n.id);
+                        }}
                         onClick={() => {
                           if (reparenting) void doReparent(reparenting, n.id);
                           else {
@@ -682,6 +695,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                           aria-label="Rename"
                           onClick={() => {
                             setNewNodeId(null);
+                            setDraft(n.label);
                             setRenaming(n.id);
                           }}
                         >
