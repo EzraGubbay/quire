@@ -5,6 +5,7 @@
 import path from 'node:path';
 import { app } from 'electron';
 import {
+  isSignInInProgress,
   openLogin,
   probe,
   SessionExpired,
@@ -90,7 +91,7 @@ export class LemidaEngine {
       const payload = await this.client.nextCommand();
       if (payload.command) {
         await this.handle(payload.command, payload);
-      } else if (Date.now() - this.lastProbe > PROBE_MS) {
+      } else if (!isSignInInProgress() && Date.now() - this.lastProbe > PROBE_MS) {
         this.lastProbe = Date.now();
         const status = await probe().catch((): SessionStatus => 'expired');
         await this.client.postState({ sessionStatus: status }).catch(() => {});

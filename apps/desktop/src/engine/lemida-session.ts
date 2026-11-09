@@ -1,6 +1,13 @@
-// Electron reimplementation of the agent's Playwright `browser.js`. All Lemida browsing happens on a
-// persistent `persist:lemida` session partition, separate from the main window's default session. Nothing
-// here types credentials or passes a login/bot page — if it lands on one, it reports the session expired.
+// Electron reimplementation of the agent's Playwright `browser.js`. All headless Lemida browsing (probe +
+// sync) happens on a persistent `persist:lemida` session partition, separate from the main window's default
+// session. Nothing here types credentials or passes a login/bot page — if it lands on one, it reports the
+// session expired.
+//
+// Sign-in opens a visible BrowserWindow on this same partition at the Lemida login URL; the user signs in by
+// hand (Microsoft 365 OAuth), and the MoodleSession cookie the callback sets is captured right here — no
+// external browser. A clean-room diagnostic confirmed Electron's embedded Chromium completes the OAuth and
+// receives a live session (cookie `MoodleSessionprod`, with an authenticated `sesskey`); the bot layer does
+// not block it. probe()/sync() then reuse the same partition.
 //
 // Guardrails preserved from the original: SessionExpired on any auth-wall / enrolment landing, and the
 // honest desktop UA (the partition's UA is set to a plain Chrome string so no "Electron" token leaks).
@@ -65,7 +72,14 @@ const LEMIDA = {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 };
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+// True while an interactive sign-in window is open. The engine (probe/sync, which share this partition) must
+// not restore cookies or navigate during that window: injecting a stale MoodleSession or landing a hidden
+// probe on a logged-out page clobbers the live cookie that holds Moodle's OAuth `state`, and the callback is
+// then rejected as a guest. Exposed so the engine can also skip its passive probe while sign-in is in flight.
+let loginInFlight = false;
+export function isSignInInProgress(): boolean {
+  return loginInFlight;
+}
 
 let uaSet = false;
 /** The Lemida partition session, with the plain UA applied once. */
@@ -93,6 +107,7 @@ function cookieUrl(c: Electron.Cookie): string {
 }
 
 export async function restoreCookies(): Promise<void> {
+  if (loginInFlight) return; // never re-inject stale cookies over a live sign-in (clobbers the OAuth session)
   const ses = lemidaSession();
   let raw: string;
   try {
@@ -130,6 +145,8 @@ export async function saveCookies(): Promise<void> {
   const cookies = await ses.cookies.get({});
   await writeFile(cookieFile(), JSON.stringify({ cookies }, null, 2)).catch(() => {});
 }
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // --- navigation helpers ----------------------------------------------------------------------------
 /** Load a URL and resolve once the page has gone quiet (emulates Playwright's `networkidle`). */
@@ -200,57 +217,71 @@ function hiddenWindow(): BrowserWindow {
 
 // --- the three operations --------------------------------------------------------------------------
 /**
- * Open a visible window at the Lemida login so you can sign in by hand (incl. 365 / any bot check).
- * Returns the session status once you're in, or when the window times out / is closed.
+ * Sign in to Lemida in a visible embedded window on the `persist:lemida` partition. The user completes the
+ * Microsoft 365 OAuth by hand; we poll the page until Moodle reports a signed-in session (see
+ * `decideLoggedIn`), then persist the cookies for the next launch. Returns 'valid' once signed in, or
+ * 'unknown' if the user closes the window or the login times out.
  */
-// Only one sign-in window at a time. A second request while one is open (an impatient re-click when the
-// panel looked stuck) should surface the existing window, not stack another on the same partition.
-let activeLoginWin: BrowserWindow | null = null;
-
+// Only one sign-in at a time. A second request while one is in flight (an impatient re-click when the panel
+// looked stuck) is a no-op rather than a second window on the same partition. `loginInFlight` is declared up
+// top so restoreCookies()/probe() can see it.
 export async function openLogin(opts: { onHeartbeat?: () => void } = {}): Promise<SessionStatus> {
-  if (activeLoginWin && !activeLoginWin.isDestroyed()) {
-    activeLoginWin.show();
-    activeLoginWin.focus();
-    return 'unknown';
+  if (loginInFlight) return 'unknown';
+  loginInFlight = true;
+  const ses = lemidaSession(); // make sure the plain desktop UA is applied to the partition before loading
+  // Start every sign-in from a clean Lemida session, the way the working Playwright/Brave flows get one from
+  // a fresh profile. A stale/timed-out MoodleSession (plus PerimeterX block-fcl/__uzm flags) left in the
+  // partition makes Moodle treat the OAuth as a session-timeout (errorcode=4) and bounce to the guest front
+  // page. clearStorageData's `origin` filter does NOT clear cookies, so remove the BIU cookies explicitly;
+  // clear only Lemida's site storage/cache by origin so login.microsoftonline.com (365 SSO) is left intact.
+  try {
+    const all = await ses.cookies.get({});
+    await Promise.all(
+      all
+        .filter((c) => /biu\.ac\.il/i.test(c.domain ?? ''))
+        .map((c) => ses.cookies.remove(cookieUrl(c), c.name).catch(() => {})),
+    );
+    await ses.clearStorageData({
+      origin: 'https://lemida.biu.ac.il',
+      storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage'],
+    });
+    await ses.clearCache();
+  } catch {
+    // A failed clean shouldn't block the sign-in attempt; worst case it behaves as before.
   }
-  await restoreCookies(); // a still-valid session skips the manual step
   const win = new BrowserWindow({
     width: 1100,
     height: 820,
     title: 'Sign in to Lemida',
     webPreferences: { partition: PARTITION, contextIsolation: true, nodeIntegration: false },
   });
-  activeLoginWin = win;
   let closed = false;
   win.on('closed', () => {
     closed = true;
   });
   try {
-    await navigate(win, LEMIDA.loginUrl);
+    // Redirect chains (365 OAuth) can reject loadURL with ERR_ABORTED; ignore and poll the live URL instead.
+    win.loadURL(LEMIDA.loginUrl).catch(() => {});
     const deadline = Date.now() + LEMIDA.loginTimeoutMs;
-    while (Date.now() < deadline && !closed && !win.isDestroyed()) {
-      if (await isLoggedIn(win.webContents)) {
-        await saveCookies(); // capture the session cookie while it's live
+    while (Date.now() < deadline && !closed) {
+      if (!win.isDestroyed() && (await isLoggedIn(win.webContents))) {
+        await saveCookies(); // persist the live session for probe/sync and the next launch
         return 'valid';
       }
-      // Keep the agent's heartbeat fresh while the user is signing in, so the panel keeps showing "agent
-      // online" instead of going stale during the (possibly minute-long) 365 login.
       opts.onHeartbeat?.();
-      await sleep(2000);
-    }
-    if (!closed && !win.isDestroyed() && (await isLoggedIn(win.webContents))) {
-      await saveCookies();
-      return 'valid';
+      await sleep(1500);
     }
     return 'unknown';
   } finally {
-    if (!win.isDestroyed()) win.close();
-    activeLoginWin = null;
+    loginInFlight = false;
+    // destroy(), not close(): a Moodle page's beforeunload can block close() and leave the window hanging.
+    if (!win.isDestroyed()) win.destroy();
   }
 }
 
 /** Load the home page in a hidden window and report whether the reused session is still signed in. */
 export async function probe(): Promise<SessionStatus> {
+  if (loginInFlight) return 'unknown'; // a sign-in owns the partition right now; don't race it
   await restoreCookies();
   const win = hiddenWindow();
   try {
