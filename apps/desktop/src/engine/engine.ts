@@ -106,7 +106,7 @@ export class LemidaEngine {
   private async handle(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
     try {
       if (cmd.kind === 'open_login') {
-        const status = await openLogin();
+        const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
         await this.client.postState({ sessionStatus: status });
         await this.client.completeCommand(cmd.id, 'done', { sessionStatus: status });
         this.pushStatus(status);
@@ -181,13 +181,19 @@ export class LemidaEngine {
   /** Entry point for the native menu / preload IPC: open the embedded sign-in window directly. */
   async signIn(): Promise<{ ok: boolean; reason?: string }> {
     try {
-      const status = await openLogin();
+      const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
       await this.client.postState({ sessionStatus: status }).catch(() => {});
       this.pushStatus(status);
       return status === 'valid' ? { ok: true } : { ok: false, reason: status };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
     }
+  }
+
+  /** Touch the agent heartbeat (updates `agentSeenAt`) without changing the session status. Used to keep the
+   *  panel's "agent online" fresh while a long sign-in window is open and the poll loop is parked. */
+  private heartbeat(): void {
+    void this.client.postState({}).catch(() => {});
   }
 
   private pushStatus(sessionStatus: SessionStatus, lastSyncSummary?: string): void {

@@ -154,3 +154,34 @@ const AUTH_WALL = [/\/login\//i, /login\.microsoftonline\.com/i, /perfdrive\.com
 export function isAuthWall(url: string | null | undefined): boolean {
   return AUTH_WALL.some((re) => re.test(url ?? ''));
 }
+
+/** DOM signals gathered in-page to decide whether a Moodle page is signed in. */
+export interface LoginSignals {
+  /** `document.body.className` — Moodle marks it `userloggedin` / `notloggedin`. */
+  bodyClass: string;
+  hasLogout: boolean;
+  hasLogin: boolean;
+  hasAvatar: boolean;
+}
+
+/**
+ * Decide whether a Lemida/Moodle page is signed in, from the URL and a few DOM signals.
+ *
+ * The earlier check keyed solely on a `logout.php` link being present and an `index.php` login link being
+ * absent. That is brittle — a theme that tucks the logout link behind a user-menu it renders lazily, or
+ * labels it differently, reads as "not signed in", so the sign-in window never recognises success, times out,
+ * and reports the session as not-connected. Moodle itself is the authority: it sets `userloggedin` /
+ * `notloggedin` on `<body>` on every themed page. Prefer that, and keep the link/avatar heuristics as
+ * fallbacks for pages (or a stray redirect) that don't carry the body class. Pure so it can be unit-tested
+ * without a live page.
+ */
+export function decideLoggedIn(url: string | null | undefined, s: LoginSignals): boolean {
+  if (isAuthWall(url)) return false;
+  const classes = s.bodyClass.split(/\s+/);
+  if (classes.includes('notloggedin')) return false;
+  if (classes.includes('userloggedin')) return true;
+  // Themes without the body class: a logout link, or a user-menu avatar, with no login link in sight.
+  if (s.hasLogout && !s.hasLogin) return true;
+  if (s.hasAvatar && !s.hasLogin) return true;
+  return false;
+}
