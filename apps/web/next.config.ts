@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: { bodySizeLimit: '100mb' },
+    // The proxy (this fork's middleware) buffers the request body with a 10 MB default cap, so a deck over
+    // 10 MB was truncated before the upload server action saw it — the multipart form arrived cut off and
+    // threw "Unexpected end of form" (a 500, surfaced to the client as React #441). Lift it to match the
+    // server-action limit so real decks (and the 100 MB client guard) pass through intact.
+    proxyClientMaxBodySize: '100mb',
     // Keep visited dynamic pages in the client router cache briefly: tab switching back is instant.
     // Mutations call revalidatePath/router.refresh, which invalidate it.
     staleTimes: { dynamic: 30, static: 180 },

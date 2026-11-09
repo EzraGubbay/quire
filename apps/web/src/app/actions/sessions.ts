@@ -27,7 +27,11 @@ export interface ActionState {
   created?: number;
 }
 
-const MAX_DECK_BYTES = 200 * 1024 * 1024;
+// Keep this at/under the server-side ceilings (next.config `serverActions.bodySizeLimit` and
+// `proxyClientMaxBodySize`, both 100 MB) so an oversized deck is refused with a clear message instead of
+// being truncated by the proxy into an "Unexpected end of form" 500. Streaming uploads (tracked separately)
+// would let this grow without buffering the whole file in memory.
+const MAX_DECK_BYTES = 100 * 1024 * 1024;
 const DECK_EXT = /\.(pdf|pptx?|key|odp)$/i;
 
 async function projectOr404(slug: string) {
@@ -85,7 +89,7 @@ export async function dropSessionFilesAction(_prev: ActionState, formData: FormD
   if (files.length === 0) return { error: 'Drop a PDF or PowerPoint file.' };
   for (const f of files) {
     if (!DECK_EXT.test(f.name)) return { error: `${f.name}: only PDF, PPTX, KEY or ODP files are accepted.` };
-    if (f.size > MAX_DECK_BYTES) return { error: `${f.name} is larger than 200 MB.` };
+    if (f.size > MAX_DECK_BYTES) return { error: `${f.name} is larger than 100 MB.` };
   }
   const project = await projectOr404(slug);
   const base = projectBase(project);
