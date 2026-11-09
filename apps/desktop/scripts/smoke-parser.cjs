@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 
-const { parseMoodleCourse, parsePluginfileLinks, filenameFrom, isAuthWall } = require(
+const { parseMoodleCourse, parsePluginfileLinks, filenameFrom, isAuthWall, decideLoggedIn } = require(
   path.join(__dirname, '..', 'dist', 'engine', 'moodle.js'),
 );
 
@@ -74,6 +74,43 @@ assert.ok(isAuthWall('https://lemida.biu.ac.il/login/index.php'));
 assert.ok(isAuthWall('https://login.microsoftonline.com/x'));
 assert.ok(!isAuthWall('https://lemida.biu.ac.il/course/view.php?id=9'));
 
+// 6) decideLoggedIn — the sign-in detection that decides when the embedded window has succeeded.
+const home = 'https://lemida.biu.ac.il/my/';
+const NO = { bodyClass: '', hasLogout: false, hasLogin: false, hasAvatar: false };
+// Moodle's body class is authoritative, either way.
+assert.equal(decideLoggedIn(home, { ...NO, bodyClass: 'path-my userloggedin' }), true, 'userloggedin → in');
+assert.equal(
+  decideLoggedIn(home, { ...NO, bodyClass: 'notloggedin', hasLogout: true }),
+  false,
+  'notloggedin → out',
+);
+// A real sign-in that used to be MISSED: logged-in body class but no logout link in the static DOM.
+assert.equal(
+  decideLoggedIn(home, { ...NO, bodyClass: 'userloggedin', hasLogin: false }),
+  true,
+  'userloggedin w/o logout link → in',
+);
+// Fallbacks when the body class is absent.
+assert.equal(decideLoggedIn(home, { ...NO, hasLogout: true }), true, 'logout link, no login link → in');
+assert.equal(decideLoggedIn(home, { ...NO, hasAvatar: true }), true, 'user avatar, no login link → in');
+assert.equal(
+  decideLoggedIn(home, { ...NO, hasLogout: true, hasLogin: true }),
+  false,
+  'login link present → out',
+);
+assert.equal(decideLoggedIn(home, NO), false, 'no signals → out');
+// An auth wall / 365 redirect is never "in", whatever the DOM says.
+assert.equal(
+  decideLoggedIn('https://login.microsoftonline.com/x', { ...NO, bodyClass: 'userloggedin' }),
+  false,
+  'auth wall → out',
+);
+assert.equal(
+  decideLoggedIn('https://lemida.biu.ac.il/login/index.php', { ...NO, hasLogout: true }),
+  false,
+  'login page → out',
+);
+
 console.log(
-  'smoke-parser: OK — 5 activities, course-index merge, pluginfile, filename, auth-wall all match.',
+  'smoke-parser: OK — 5 activities, course-index merge, pluginfile, filename, auth-wall, sign-in detection all match.',
 );
