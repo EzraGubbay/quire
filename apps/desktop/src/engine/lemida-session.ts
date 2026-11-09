@@ -1,12 +1,18 @@
-// Electron reimplementation of the agent's Playwright `browser.js`. All Lemida browsing happens on a
-// persistent `persist:lemida` session partition, separate from the main window's default session. Nothing
-// here types credentials or passes a login/bot page — if it lands on one, it reports the session expired.
+// Electron reimplementation of the agent's Playwright `browser.js`. All headless Lemida browsing (probe +
+// sync) happens on a persistent `persist:lemida` session partition, separate from the main window's default
+// session. Nothing here types credentials or passes a login/bot page — if it lands on one, it reports the
+// session expired.
+//
+// Sign-in is the exception: Lemida's bot-detection rejects Electron's embedded Chromium, so the interactive
+// login is delegated to the user's real browser (Brave) via brave-login.ts, and the cookies it yields are
+// injected into this partition for probe/sync to reuse.
 //
 // Guardrails preserved from the original: SessionExpired on any auth-wall / enrolment landing, and the
 // honest desktop UA (the partition's UA is set to a plain Chrome string so no "Electron" token leaks).
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, type Session, session, type WebContents } from 'electron';
+import { type HarvestedCookie, harvestLemidaSession } from './brave-login';
 import {
   decideLoggedIn,
   filenameFrom,
@@ -64,8 +70,6 @@ const LEMIDA = {
     process.env.LEMIDA_USER_AGENT ??
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 };
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 let uaSet = false;
 /** The Lemida partition session, with the plain UA applied once. */
@@ -129,6 +133,34 @@ export async function saveCookies(): Promise<void> {
   const ses = lemidaSession();
   const cookies = await ses.cookies.get({});
   await writeFile(cookieFile(), JSON.stringify({ cookies }, null, 2)).catch(() => {});
+}
+
+/** Dedicated profile dir for the real-browser sign-in — kept apart from the user's everyday profile. */
+function braveProfileDir(): string {
+  return path.join(app.getPath('userData'), 'lemida-browser-profile');
+}
+
+/** Inject the cookies harvested from the real browser into this partition, so probe/sync reuse the session. */
+async function injectCookies(cookies: HarvestedCookie[]): Promise<void> {
+  const ses = lemidaSession();
+  for (const c of cookies) {
+    const host = c.domain.replace(/^\./, '');
+    try {
+      await ses.cookies.set({
+        url: `${c.secure ? 'https' : 'http'}://${host}${c.path || '/'}`,
+        name: c.name,
+        value: c.value,
+        domain: c.domain,
+        path: c.path,
+        secure: c.secure,
+        httpOnly: c.httpOnly,
+        expirationDate: c.expirationDate,
+        sameSite: c.sameSite,
+      });
+    } catch {
+      // A single malformed cookie shouldn't sink the whole harvest.
+    }
+  }
 }
 
 // --- navigation helpers ----------------------------------------------------------------------------
@@ -200,52 +232,31 @@ function hiddenWindow(): BrowserWindow {
 
 // --- the three operations --------------------------------------------------------------------------
 /**
- * Open a visible window at the Lemida login so you can sign in by hand (incl. 365 / any bot check).
- * Returns the session status once you're in, or when the window times out / is closed.
+ * Sign in to Lemida through the user's real browser (Brave), because Lemida's bot-detection rejects
+ * Electron's embedded Chromium (see brave-login.ts). Launches the browser at the Lemida login, waits for a
+ * confirmed sign-in, then injects the harvested cookies into this partition so probe/sync reuse the session.
+ * Returns the session status once you're in, or when it times out / the browser is closed.
  */
-// Only one sign-in window at a time. A second request while one is open (an impatient re-click when the
-// panel looked stuck) should surface the existing window, not stack another on the same partition.
-let activeLoginWin: BrowserWindow | null = null;
+// Only one sign-in at a time. A second request while one is in flight (an impatient re-click when the panel
+// looked stuck) is a no-op rather than a second browser on the same profile.
+let harvestInFlight = false;
 
 export async function openLogin(opts: { onHeartbeat?: () => void } = {}): Promise<SessionStatus> {
-  if (activeLoginWin && !activeLoginWin.isDestroyed()) {
-    activeLoginWin.show();
-    activeLoginWin.focus();
-    return 'unknown';
-  }
-  await restoreCookies(); // a still-valid session skips the manual step
-  const win = new BrowserWindow({
-    width: 1100,
-    height: 820,
-    title: 'Sign in to Lemida',
-    webPreferences: { partition: PARTITION, contextIsolation: true, nodeIntegration: false },
-  });
-  activeLoginWin = win;
-  let closed = false;
-  win.on('closed', () => {
-    closed = true;
-  });
+  if (harvestInFlight) return 'unknown';
+  harvestInFlight = true;
   try {
-    await navigate(win, LEMIDA.loginUrl);
-    const deadline = Date.now() + LEMIDA.loginTimeoutMs;
-    while (Date.now() < deadline && !closed && !win.isDestroyed()) {
-      if (await isLoggedIn(win.webContents)) {
-        await saveCookies(); // capture the session cookie while it's live
-        return 'valid';
-      }
-      // Keep the agent's heartbeat fresh while the user is signing in, so the panel keeps showing "agent
-      // online" instead of going stale during the (possibly minute-long) 365 login.
-      opts.onHeartbeat?.();
-      await sleep(2000);
-    }
-    if (!closed && !win.isDestroyed() && (await isLoggedIn(win.webContents))) {
-      await saveCookies();
-      return 'valid';
-    }
-    return 'unknown';
+    const result = await harvestLemidaSession({
+      loginUrl: LEMIDA.loginUrl,
+      profileDir: braveProfileDir(),
+      timeoutMs: LEMIDA.loginTimeoutMs,
+      onHeartbeat: opts.onHeartbeat,
+    });
+    if (result.status !== 'valid') return result.status;
+    await injectCookies(result.cookies);
+    await saveCookies(); // persist the live session for the next launch
+    return 'valid';
   } finally {
-    if (!win.isDestroyed()) win.close();
-    activeLoginWin = null;
+    harvestInFlight = false;
   }
 }
 
