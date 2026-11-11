@@ -6,12 +6,14 @@
   "author": "Ezra Gubbay",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/ui && cp src/ui/*.html dist/ui/",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "pnpm run build && electron .",
     "dist": "pnpm run build && electron-builder --config electron-builder.yml",
     "install-app": "bash scripts/install-app.sh",
-    "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs"
+    "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs",
+    "smoke:totp": "pnpm run build && node scripts/smoke-totp.cjs",
+    "test": "pnpm run build && node scripts/smoke-totp.cjs && node scripts/smoke-parser.cjs"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13"
