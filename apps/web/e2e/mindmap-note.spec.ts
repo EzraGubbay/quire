@@ -22,15 +22,16 @@ test('mind map: a node note renders by default (math typeset) and Edit toggles t
   await page.goto(`/c/${slug}/mindmap`);
   await hydrated(page);
 
-  // Add a root node to attach the note to.
+  // Add a root node to attach the note to (its rename box lives in the canvas; the note drawer isn't open yet).
   await page.getByRole('button', { name: 'Add a root node' }).click();
-  const label = page.getByRole('textbox', { name: 'Node label' });
-  await label.fill('Integrals');
-  await label.press('Enter');
+  const canvasLabel = page.getByTestId('mindmap-canvas').getByRole('textbox', { name: 'Node label' });
+  await canvasLabel.fill('Integrals');
+  await canvasLabel.press('Enter');
   const node = page.getByTestId('mindmap-node').filter({ hasText: 'Integrals' }).first();
+  await expect(node).toBeVisible();
 
-  // Click the node to open the note drawer. An empty note opens in the editor; type a note with math.
-  await node.click();
+  // Click the node's label to open the note drawer. An empty note opens in the editor; type a note with math.
+  await node.getByRole('button', { name: 'Integrals' }).click();
   const panel = page.getByTestId('mindmap-note-panel');
   await expect(panel).toBeVisible();
   const noteEditor = panel.locator('.cm-content');
