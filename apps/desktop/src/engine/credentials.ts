@@ -6,7 +6,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, safeStorage } from 'electron';
-import { generateTOTP, parseOtpauthOrSecret, secondsRemaining } from './totp';
+import { base32Decode, generateTOTP, parseOtpauthOrSecret, secondsRemaining } from './totp';
+
+/** A secret is usable only if it decodes to at least one byte; an all-non-Base32 string would otherwise
+ *  silently yield a (meaningless) code, making junk input look valid in the dialog preview. */
+function isUsableSecret(secret: string | undefined): secret is string {
+  return !!secret && base32Decode(secret).length > 0;
+}
 
 interface Vault {
   username?: string;
@@ -93,7 +99,7 @@ export async function getTotpSecret(): Promise<string | undefined> {
 /** The current code from the *stored* secret (for the helper bar). Null if no secret is set. */
 export async function currentCode(): Promise<TotpCode | null> {
   const secret = (await read()).totpSecret;
-  if (!secret) return null;
+  if (!isUsableSecret(secret)) return null;
   try {
     return { code: generateTOTP(secret), secondsRemaining: secondsRemaining() };
   } catch {
@@ -104,7 +110,7 @@ export async function currentCode(): Promise<TotpCode | null> {
 /** The current code from a *provided* secret (for the settings dialog's live preview, before saving). */
 export function previewCode(secretInput: string): TotpCode | null {
   const secret = parseOtpauthOrSecret(secretInput);
-  if (!secret) return null;
+  if (!isUsableSecret(secret)) return null;
   try {
     return { code: generateTOTP(secret), secondsRemaining: secondsRemaining() };
   } catch {

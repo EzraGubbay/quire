@@ -27,6 +27,10 @@ for (const v of VECTORS) {
 // Base32 decode: the vector secret decodes to the ASCII seed.
 assert.equal(base32Decode(SECRET).toString('utf8'), '12345678901234567890', 'base32 decode roundtrip');
 
+// An all-non-Base32 string decodes to zero bytes — the basis for rejecting junk keys in the dialog preview.
+assert.equal(base32Decode('!!!!').length, 0, 'garbage decodes to empty');
+assert.equal(base32Decode('').length, 0, 'empty decodes to empty');
+
 // Spaces / lowercase in a pasted setup key are tolerated.
 assert.equal(
   generateTOTP('gezd gnbv gy3t qojq gezd gnbv gy3t qojq', { t: 59000 }),
