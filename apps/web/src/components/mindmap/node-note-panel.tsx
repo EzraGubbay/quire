@@ -1,11 +1,13 @@
 'use client';
 
 import { Button, Icon } from '@ezragubbay/folio';
-import { X } from 'lucide-react';
+import { Check, Pencil, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { updateMindMapNoteAction } from '@/app/actions/mindmap';
+import { MarkdownView } from '@/components/documents/markdown-view';
 import { MarkdownEditor } from '@/components/editor/markdown-editor';
 import type { MindMapNode } from '@/db/schema';
+import { renderMarkdownClient } from '@/lib/markdown-client';
 import s from './mind-map.module.css';
 
 type Status = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -29,6 +31,10 @@ export function NodeNotePanel({
 }) {
   const [body, setBody] = useState(node.note);
   const [status, setStatus] = useState<Status>('idle');
+  // A node that already has a note opens rendered (the common case — you select a node to read it); an empty one
+  // opens straight in the editor so there's somewhere to type. "Edit" toggles between the two.
+  const [editing, setEditing] = useState(() => !node.note.trim());
+  const [html, setHtml] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bodyRef = useRef(node.note);
 
@@ -68,6 +74,26 @@ export function NodeNotePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Render the note to HTML for the view mode (MathJax typesets it via MarkdownView). Re-runs when the body changes
+  // so switching back from the editor shows the latest text.
+  useEffect(() => {
+    if (editing) return;
+    let alive = true;
+    void renderMarkdownClient(body).then((h) => {
+      if (alive) setHtml(h);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [editing, body]);
+
+  // Leaving edit mode: flush any pending autosave immediately so the rendered view reflects the saved text.
+  const stopEditing = () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (bodyRef.current !== node.note && status !== 'saving') void save(bodyRef.current);
+    setEditing(false);
+  };
+
   return (
     <aside className={s.panel} data-testid="mindmap-note-panel" aria-label="Node note">
       <div className={s.panelBar}>
@@ -95,21 +121,38 @@ export function NodeNotePanel({
         <Button
           variant="ghost"
           size="sm"
+          icon={<Icon icon={editing ? Check : Pencil} />}
+          aria-label={editing ? 'Finish editing note' : 'Edit note'}
+          onClick={() => (editing ? stopEditing() : setEditing(true))}
+        >
+          {editing ? 'Done' : 'Edit'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           icon={<Icon icon={X} />}
           aria-label="Close note"
           onClick={onClose}
         />
       </div>
-      <div className={s.panelEditor}>
-        <MarkdownEditor
-          value={body}
-          onChange={onChange}
-          wikilinks={false}
-          toolbar={false}
-          placeholderText="A free-form note for this node. Markdown and $TeX$ work; no wiki links."
-          autoFocus
-        />
-      </div>
+      {editing ? (
+        <div className={s.panelEditor}>
+          <MarkdownEditor
+            value={body}
+            onChange={onChange}
+            wikilinks={false}
+            toolbar={false}
+            placeholderText="A free-form note for this node. Markdown and $TeX$ work; no wiki links."
+            autoFocus
+          />
+        </div>
+      ) : body.trim() ? (
+        <div className={s.panelView} data-testid="mindmap-note-rendered">
+          <MarkdownView html={html} />
+        </div>
+      ) : (
+        <p className={s.panelEmpty}>No note yet. Select Edit to add one.</p>
+      )}
     </aside>
   );
 }
