@@ -369,8 +369,18 @@ export function normalizeMathDelimiters(md: string): string {
  * open with a newline, so they don't match and are left untouched.
  */
 function promoteDisplayMath(text: string): string {
+  // Process line by line, and leave list-item / blockquote lines untouched: injecting blank lines around the
+  // math on such a line would break it out of its list or quote. Elsewhere, lift a single-line `$$…$$` onto its
+  // own lines so micromark renders it as display.
+  const listOrQuote = /^\s*(?:[-*+]|\d{1,9}[.)]|>)\s/;
   return text
-    .replace(/\$\$([^\n]+?)\$\$/g, (_, inner: string) => `\n\n$$\n${inner.trim()}\n$$\n\n`)
+    .split('\n')
+    .map((line) =>
+      listOrQuote.test(line)
+        ? line
+        : line.replace(/\$\$([^\n]+?)\$\$/g, (_, inner: string) => `\n\n$$\n${inner.trim()}\n$$\n\n`),
+    )
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n');
 }
 

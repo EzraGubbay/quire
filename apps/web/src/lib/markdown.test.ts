@@ -37,6 +37,11 @@ describe('normalizeMathDelimiters', () => {
     const src = 'before\n\n$$\n\\int f\n$$\n\nafter';
     expect(normalizeMathDelimiters(src)).toBe(src);
   });
+  it('leaves $$…$$ inside a list item or blockquote inline (no block break-out)', () => {
+    expect(normalizeMathDelimiters('- Euler $$e^{i\\pi}+1=0$$')).toBe('- Euler $$e^{i\\pi}+1=0$$');
+    expect(normalizeMathDelimiters('> see $$x^2$$ here')).toBe('> see $$x^2$$ here');
+    expect(normalizeMathDelimiters('1. first $$a+b$$')).toBe('1. first $$a+b$$');
+  });
   it('renders LaTeX-delimited math through MathJax spans', async () => {
     const html = await renderMarkdown('Energy \\(E = mc^2\\).');
     expect(html).toContain('class="math math-inline">\\(E = mc^2\\)');
