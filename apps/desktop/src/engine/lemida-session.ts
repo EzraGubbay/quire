@@ -14,6 +14,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, type Session, session, type WebContents } from 'electron';
+import { closeHelper, openHelper } from './credential-bar';
 import {
   decideLoggedIn,
   filenameFrom,
@@ -259,6 +260,9 @@ export async function openLogin(opts: { onHeartbeat?: () => void } = {}): Promis
   win.on('closed', () => {
     closed = true;
   });
+  // Dock the credential helper to this window so the user can autofill username / password / TOTP. It targets
+  // this window's webContents and closes with it; it never touches the main Quire app window.
+  openHelper(win, win.webContents);
   try {
     // Redirect chains (365 OAuth) can reject loadURL with ERR_ABORTED; ignore and poll the live URL instead.
     win.loadURL(LEMIDA.loginUrl).catch(() => {});
@@ -274,6 +278,7 @@ export async function openLogin(opts: { onHeartbeat?: () => void } = {}): Promis
     return 'unknown';
   } finally {
     loginInFlight = false;
+    closeHelper();
     // destroy(), not close(): a Moodle page's beforeunload can block close() and leave the window hanging.
     if (!win.isDestroyed()) win.destroy();
   }

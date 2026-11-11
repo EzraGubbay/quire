@@ -13,9 +13,12 @@ import {
   shell,
 } from 'electron';
 import { loadConfig } from './config';
+import { fillStep } from './engine/credential-bar';
+import * as creds from './engine/credentials';
 import { LemidaEngine } from './engine/engine';
 
 let mainWindow: BrowserWindow | null = null;
+let credentialsWindow: BrowserWindow | null = null;
 let engine: LemidaEngine | null = null;
 
 /**
@@ -32,6 +35,34 @@ export function getMainWindow(): BrowserWindow | null {
 async function signInToLemida(): Promise<{ ok: boolean; reason?: string }> {
   if (!engine) return { ok: false, reason: 'engine-not-ready' };
   return engine.signIn();
+}
+
+// --- Lemida credentials -----------------------------------------------------------------------------
+// A small dialog to store the BIU username / password / TOTP setup key (encrypted in the Keychain via the
+// `credentials` module). Opened from the Lemida menu and from the sign-in helper's "Edit credentials…" link.
+function openCredentialsWindow(): void {
+  if (credentialsWindow && !credentialsWindow.isDestroyed()) {
+    credentialsWindow.focus();
+    return;
+  }
+  credentialsWindow = new BrowserWindow({
+    width: 460,
+    height: 600,
+    title: 'Lemida credentials',
+    resizable: false,
+    minimizable: false,
+    parent: mainWindow ?? undefined,
+    backgroundColor: '#1C1915',
+    webPreferences: {
+      preload: path.join(__dirname, 'ui/credentials-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  void credentialsWindow.loadFile(path.join(__dirname, 'ui/credentials.html'));
+  credentialsWindow.on('closed', () => {
+    credentialsWindow = null;
+  });
 }
 
 function createWindow(quireUrl: string): BrowserWindow {
@@ -103,6 +134,10 @@ function buildMenu(): void {
             void signInToLemida();
           },
         },
+        {
+          label: 'Credentials…',
+          click: () => openCredentialsWindow(),
+        },
       ],
     },
     { role: 'windowMenu' },
@@ -114,6 +149,20 @@ app.whenReady().then(() => {
   const config = loadConfig();
 
   ipcMain.handle('lemida:sign-in', (_event: IpcMainInvokeEvent) => signInToLemida());
+
+  // Credential vault + autofill. These channels are only reachable from our own trusted preloads (the sign-in
+  // helper and the credentials dialog); the Pi-served main window's preload does not expose them.
+  ipcMain.handle('lemida-creds:status', () => creds.status());
+  ipcMain.handle('lemida-creds:save', (_e: IpcMainInvokeEvent, data: creds.CredInput) => creds.save(data));
+  ipcMain.handle('lemida-creds:preview-totp', (_e: IpcMainInvokeEvent, secret: string) =>
+    creds.previewCode(secret),
+  );
+  ipcMain.handle('lemida-creds:current-totp', () => creds.currentCode());
+  ipcMain.handle('lemida-creds:open-settings', () => openCredentialsWindow());
+  ipcMain.handle(
+    'lemida-fill',
+    (_e: IpcMainInvokeEvent, { field }: { field: Parameters<typeof fillStep>[0] }) => fillStep(field),
+  );
 
   buildMenu();
   mainWindow = createWindow(config.quireUrl);

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline';"
+    />
+    <title>Lemida sign-in helper</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #1c1915;
+        --panel: #262220;
+        --line: #3a342f;
+        --text: #efe9e1;
+        --muted: #a89f93;
+        --accent: #c9a227;
+        --accent-ink: #1c1915;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background: transparent;
+        user-select: none;
+        cursor: default;
+      }
+      .card {
+        height: 100%;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        -webkit-app-region: drag; /* let the user nudge the panel */
+      }
+      .title {
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      button,
+      .link {
+        -webkit-app-region: no-drag;
+        font: inherit;
+      }
+      button {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        border-radius: 7px;
+        padding: 7px 10px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 600;
+      }
+      #setup,
+      #ready {
+        flex-direction: column;
+        gap: 9px;
+      }
+      .muted {
+        color: var(--muted);
+        -webkit-app-region: no-drag;
+      }
+      .totp {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+      .code {
+        font: 600 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.12em;
+        -webkit-app-region: no-drag;
+        user-select: text;
+        flex: 1;
+      }
+      .ring {
+        width: 22px;
+        height: 22px;
+        flex: none;
+      }
+      .mini {
+        padding: 5px 8px;
+        font-size: 12px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+      }
+      .row > button {
+        flex: 1;
+      }
+      .link {
+        background: none;
+        border: none;
+        color: var(--muted);
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+      }
+      .link:hover {
+        color: var(--accent);
+      }
+      #toast {
+        min-height: 14px;
+        font-size: 11px;
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="title">Lemida sign-in</div>
+
+      <!-- Shown when no credentials are stored yet (display toggled from JS). -->
+      <div id="setup" style="display: none">
+        <div class="muted">No saved credentials. Add them to enable autofill.</div>
+        <button type="button" class="primary" id="setup-btn">Set up credentials…</button>
+      </div>
+
+      <!-- Shown when credentials exist. -->
+      <div id="ready" style="display: none">
+        <button type="button" class="primary" id="fill-btn">Autofill this step</button>
+        <div class="totp" id="totp-box">
+          <span class="code" id="code">······</span>
+          <svg class="ring" id="ring" viewBox="0 0 22 22" aria-hidden="true">
+            <circle cx="11" cy="11" r="9" fill="none" stroke="#3a342f" stroke-width="2"></circle>
+            <circle
+              id="ring-fg"
+              cx="11"
+              cy="11"
+              r="9"
+              fill="none"
+              stroke="#c9a227"
+              stroke-width="2"
+              stroke-linecap="round"
+              transform="rotate(-90 11 11)"
+            ></circle>
+          </svg>
+        </div>
+        <div class="row" id="code-actions">
+          <button type="button" class="mini" id="copy-btn">Copy code</button>
+          <button type="button" class="mini" id="fillcode-btn">Fill code</button>
+        </div>
+        <button type="button" class="link" id="edit-link">Edit credentials…</button>
+      </div>
+
+      <div id="toast"></div>
+    </div>
+
+    <script>
+      const bar = window.lemidaBar;
+      const $ = (id) => document.getElementById(id);
+      const CIRC = 2 * Math.PI * 9;
+      let toastTimer = null;
+      let hasCreds = false;
+
+      function toast(msg) {
+        $("toast").textContent = msg;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          $("toast").textContent = "";
+        }, 2200);
+      }
+
+      async function refreshStatus() {
+        const s = (await bar.status().catch(() => null)) || {
+          hasUsername: false,
+          hasPassword: false,
+          hasTotp: false,
+        };
+        hasCreds = s.hasPassword || s.hasTotp || s.hasUsername;
+        $("setup").style.display = hasCreds ? "none" : "flex";
+        $("ready").style.display = hasCreds ? "flex" : "none";
+        $("totp-box").style.display = s.hasTotp ? "flex" : "none";
+        $("code-actions").style.display = s.hasTotp ? "flex" : "none";
+      }
+
+      async function tickTotp() {
+        if (!hasCreds) return;
+        const t = await bar.currentTotp().catch(() => null);
+        if (!t) {
+          $("code").textContent = "······";
+          return;
+        }
+        $("code").textContent = t.code.replace(/(\d{3})(\d{3})/, "$1 $2");
+        const frac = t.secondsRemaining / 30;
+        $("ring-fg").setAttribute("stroke-dasharray", `${(CIRC * frac).toFixed(1)} ${CIRC.toFixed(1)}`);
+      }
+
+      $("setup-btn").onclick = () => bar.openSettings();
+      $("edit-link").onclick = () => bar.openSettings();
+
+      $("fill-btn").onclick = async () => {
+        const r = await bar.fill("auto").catch(() => ({ filled: false }));
+        toast(r.filled ? `Filled ${r.step}` : "Nothing to fill on this step");
+      };
+      $("fillcode-btn").onclick = async () => {
+        const r = await bar.fill("totp").catch(() => ({ filled: false }));
+        toast(r.filled ? "Code filled" : "No code field here");
+      };
+      $("copy-btn").onclick = async () => {
+        const t = await bar.currentTotp().catch(() => null);
+        if (t) {
+          await navigator.clipboard.writeText(t.code).catch(() => {});
+          toast("Code copied");
+        }
+      };
+
+      refreshStatus();
+      tickTotp();
+      setInterval(tickTotp, 1000);
+      // Re-check status when the window regains focus (e.g. after saving credentials).
+      window.addEventListener("focus", refreshStatus);
+    </script>
+  </body>
+</html>
