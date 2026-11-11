@@ -278,6 +278,18 @@
   min-height: 0;
   overflow: auto;
 }
+.panelView {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+.panelEmpty {
+  margin: 0;
+  padding: 12px 2px;
+  color: var(--eg-muted);
+  font: 400 14px / 1.5 var(--eg-font-ui);
+}
 
 .confirmText {
   margin: 0 0 4px;

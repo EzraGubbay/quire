@@ -352,11 +352,36 @@ export function normalizeMathDelimiters(md: string): string {
     .map((part, i) =>
       i % 2 === 1
         ? part
-        : part
-            .replace(/\\\[([\s\S]*?)\\\]/g, (_, t) => `$$${t}$$`)
-            .replace(/\\\(([\s\S]*?)\\\)/g, (_, t) => `$${t}$`),
+        : promoteDisplayMath(
+            part
+              .replace(/\\\[([\s\S]*?)\\\]/g, (_, t) => `$$${t}$$`)
+              .replace(/\\\(([\s\S]*?)\\\)/g, (_, t) => `$${t}$`),
+          ),
     )
     .join('');
+}
+
+/**
+ * `$$…$$` is display (block) math by convention, but the micromark math extension only treats `$$` as display when it
+ * opens its own line with the content on the line(s) below; a single-line `$$x$$` is parsed as a two-dollar *inline*
+ * fence and renders inline. Lift each single-line `$$…$$` into that block form (fence on its own line, content below),
+ * which also correctly breaks it out of surrounding prose the way display math should. Multi-line `$$` blocks already
+ * open with a newline, so they don't match and are left untouched.
+ */
+function promoteDisplayMath(text: string): string {
+  // Process line by line, and leave list-item / blockquote lines untouched: injecting blank lines around the
+  // math on such a line would break it out of its list or quote. Elsewhere, lift a single-line `$$…$$` onto its
+  // own lines so micromark renders it as display.
+  const listOrQuote = /^\s*(?:[-*+]|\d{1,9}[.)]|>)\s/;
+  return text
+    .split('\n')
+    .map((line) =>
+      listOrQuote.test(line)
+        ? line
+        : line.replace(/\$\$([^\n]+?)\$\$/g, (_, inner: string) => `\n\n$$\n${inner.trim()}\n$$\n\n`),
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
 }
 
 /** Markdown → HTML. Math stays as TeX inside `.math` spans/divs for MathJax to typeset in the browser. */

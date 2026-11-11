@@ -24,14 +24,34 @@ describe('renderMarkdown', () => {
 });
 
 describe('normalizeMathDelimiters', () => {
-  it('converts LaTeX delimiters outside code', () => {
-    expect(normalizeMathDelimiters('a \\(x^2\\) b\n\\[\\int f\\]\n`\\(keep\\)`')).toBe(
-      'a $x^2$ b\n$$\\int f$$\n`\\(keep\\)`',
-    );
+  it('converts LaTeX delimiters outside code, leaving code spans alone', () => {
+    const out = normalizeMathDelimiters('a \\(x^2\\) b\n\\[\\int f\\]\n`\\(keep\\)`');
+    expect(out).toContain('a $x^2$ b'); // inline \(…\) → $…$
+    expect(out).toContain('$$\n\\int f\n$$'); // display \[…\] → block $$ on its own lines
+    expect(out).toContain('`\\(keep\\)`'); // code span untouched
+  });
+  it('promotes a single-line $$…$$ into a display block', () => {
+    expect(normalizeMathDelimiters('see $$E=mc^2$$ now')).toContain('$$\nE=mc^2\n$$');
+  });
+  it('leaves a multi-line $$ block untouched', () => {
+    const src = 'before\n\n$$\n\\int f\n$$\n\nafter';
+    expect(normalizeMathDelimiters(src)).toBe(src);
+  });
+  it('leaves $$…$$ inside a list item or blockquote inline (no block break-out)', () => {
+    expect(normalizeMathDelimiters('- Euler $$e^{i\\pi}+1=0$$')).toBe('- Euler $$e^{i\\pi}+1=0$$');
+    expect(normalizeMathDelimiters('> see $$x^2$$ here')).toBe('> see $$x^2$$ here');
+    expect(normalizeMathDelimiters('1. first $$a+b$$')).toBe('1. first $$a+b$$');
   });
   it('renders LaTeX-delimited math through MathJax spans', async () => {
     const html = await renderMarkdown('Energy \\(E = mc^2\\).');
     expect(html).toContain('class="math math-inline">\\(E = mc^2\\)');
+  });
+  it('renders single-line $$…$$ as display math and $…$ as inline', async () => {
+    const block = await renderMarkdown('see $$\\int f$$ here');
+    expect(block).toContain('class="math math-display">\\['); // display delimiters \[ … \]
+    const inline = await renderMarkdown('value $x$ here');
+    expect(inline).toContain('class="math math-inline">\\('); // inline delimiters \( … \)
+    expect(inline).not.toContain('math-display');
   });
 });
 

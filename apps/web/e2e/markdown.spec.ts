@@ -18,7 +18,17 @@ test('write a Markdown document with math and a wiki link, then annotate it', as
   await page.waitForURL(/\/edit$/);
   const editor = page.locator('.cm-content');
   await editor.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  const selectAll = `${mod}+A`;
+
+  // Math macro: Cmd/Ctrl+M inserts inline $…$ with the caret parked between. (Cmd/Ctrl+Shift+M for block $$…$$
+  // mirrors the existing Mod-Shift-e wiring; Playwright's synthetic Shift+Meta+letter doesn't carry Shift
+  // reliably, so the block/display path is covered by the render assertion below instead of a keypress here.)
+  await page.keyboard.press(`${mod}+m`);
+  await page.keyboard.type('x');
+  await expect(editor).toContainText('$x$');
+
+  await page.keyboard.press(selectAll);
   await page.keyboard.type(
     '# Routing summary\n\nThe bound is tight when the router matches the posterior, see [[ELBO tightness]].\n\nInline $\\lambda H(q)$ and display:\n\n$$\\int f(x)\\,dx$$\n',
   );
@@ -32,6 +42,8 @@ test('write a Markdown document with math and a wiki link, then annotate it', as
   await expect(page.getByRole('heading', { name: 'Routing summary' })).toBeVisible();
   await expect(page.locator('a[data-wikilink="ELBO tightness"]')).toBeVisible();
   await expect(page.locator('[class*="markdown-view"] mjx-container').first()).toBeVisible();
+  // The single-line `$$…$$` renders as display (block) math, not inline.
+  await expect(page.locator('mjx-container[display="true"]')).toBeVisible();
 
   // Annotate a selection in the rendered text.
   const para = page.getByText('The bound is tight when', { exact: false });
