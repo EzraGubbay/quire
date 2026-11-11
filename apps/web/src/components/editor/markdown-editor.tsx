@@ -254,11 +254,13 @@ export function MarkdownEditor({
           ),
           // Formatting + math shortcuts. `Mod-` is Cmd on macOS, Ctrl elsewhere (CodeMirror). Each wraps the selection,
           // or with no selection drops the markers and parks the caret between them; the `**`/`*`/`==`/`$` markers
-          // render through the live-formatting ViewPlugin. These dodge the editor's Alt-based term labels (Alt+t/q/…)
-          // and browser Cmd keys. We avoid Cmd-M for math — macOS minimises the window on Cmd-M, an OS shortcut a page
-          // can't reliably suppress — and use E for "equation" instead. Final set:
+          // render through the live-formatting ViewPlugin. These dodge the editor's Alt-based term labels (Alt+t/q/…).
+          // Math has two mnemonics: E for "equation" and M for "math". (Cmd-M is the macOS minimise shortcut, but it
+          // reaches the editor here, so it's bound by request.) Mod-m / Mod-Shift-m insert the single-line `$…$` /
+          // `$$…$$` forms with the caret parked in the middle; `$$…$$` renders as display (see normalizeMathDelimiters).
+          // Final set:
           //   Mod-b  bold **…**      Mod-i  italic *…*      Mod-Shift-h  highlight ==…==
-          //   Mod-e  inline math $…$                        Mod-Shift-e  display math $$ … $$ (content on its own line)
+          //   Mod-e / Mod-m  inline math $…$                Mod-Shift-e / Mod-Shift-m  display math $$…$$
           ...(
             [
               ['Mod-b', '**', '**', false],
@@ -266,6 +268,8 @@ export function MarkdownEditor({
               ['Mod-Shift-h', '==', '==', false],
               ['Mod-e', '$', '$', false],
               ['Mod-Shift-e', '$$', '$$', true],
+              ['Mod-m', '$', '$', false],
+              ['Mod-Shift-m', '$$', '$$', false],
             ] as const
           ).map(([key, before, after, block]) => ({
             key,
