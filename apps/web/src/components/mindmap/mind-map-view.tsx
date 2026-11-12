@@ -33,7 +33,7 @@ import {
 } from '@/app/actions/mindmap';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import type { MindMapNode } from '@/db/schema';
-import { type LayoutNode, layoutMindMap } from '@/lib/mindmap-layout';
+import { type LayoutNode, layoutMindMap, MINDMAP_LAYOUT } from '@/lib/mindmap-layout';
 import s from './mind-map.module.css';
 import { NodeNotePanel } from './node-note-panel';
 
@@ -41,9 +41,10 @@ import { NodeNotePanel } from './node-note-panel';
  * Max node box width (px). Nodes now shrink-to-fit their label (CSS `width: max-content`) and only grow to
  * this cap before wrapping, so a short title like "AI" is a small box. It doubles as the fallback width for
  * edge geometry until a node's real width has been measured. (Sized to also hold the five-button action bar
- * of a selected node on one row.)
+ * of a selected node on one row.) Shared with the layout, which uses it to keep auto-placed nodes clear of
+ * their neighbours.
  */
-const NODE_W = 176;
+const NODE_W = MINDMAP_LAYOUT.NODE_W;
 const MIN_K = 0.25;
 const MAX_K = 2.5;
 /** Six gentle hues, one per root; the whole subtree inherits its root's hue. */
