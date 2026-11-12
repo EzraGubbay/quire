@@ -76,6 +76,11 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   const [draft, setDraft] = useState('');
   const [reparenting, setReparenting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MindMapNode | null>(null);
+  // Multi-select: Cmd/Ctrl-click gathers several nodes into `multi` to move or delete as a group. `selected`
+  // stays the single anchor (keyboard nav, the per-node action bar); `multi` drives the group operations and,
+  // when non-empty, the selection highlight.
+  const [multi, setMulti] = useState<ReadonlySet<string>>(() => new Set());
+  const [confirmDeleteMany, setConfirmDeleteMany] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ tx: 40, ty: 40, k: 1 });
   // Measured border-box width of each rendered node, so an edge can meet its parent's real right edge now
@@ -95,6 +100,9 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     px: number;
     py: number;
     moved: boolean;
+    // When the pressed node is part of a multi-selection, every member moves together; each entry holds a
+    // member's start position so the same delta can be applied to all.
+    group?: { id: string; px: number; py: number }[];
   } | null>(null);
 
   const layout = useMemo(() => layoutMindMap(toLayoutNodes(nodes)), [nodes]);
@@ -229,13 +237,45 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     });
   };
 
+  // Add/remove a node from the multi-selection. If nothing was multi-selected yet, seed it with the current
+  // single anchor so Cmd-clicking a second node selects both. Keeps `selected` as the anchor; closes the note.
+  const toggleMulti = (id: string) => {
+    setMulti((m) => {
+      const next = new Set(m);
+      if (next.size === 0 && selected && selected !== id) next.add(selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setSelected(id);
+    setOpenNote(null);
+  };
+
   // ---- node drag (reposition) ----
   const onNodePointerDown = (e: ReactPointerEvent, node: MindMapNode) => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
     const pos = layout.positions.get(node.id);
     if (!pos) return;
-    drag.current = { id: node.id, startX: e.clientX, startY: e.clientY, px: pos.x, py: pos.y, moved: false };
+    // Dragging a member of a multi-selection moves the whole group; capture each member's start position.
+    const group =
+      multi.size > 1 && multi.has(node.id)
+        ? [...multi]
+            .map((id) => {
+              const p = layout.positions.get(id);
+              return p ? { id, px: p.x, py: p.y } : null;
+            })
+            .filter((g): g is { id: string; px: number; py: number } => g !== null)
+        : undefined;
+    drag.current = {
+      id: node.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      px: pos.x,
+      py: pos.y,
+      moved: false,
+      group,
+    };
   };
   const onNodePointerMove = (e: ReactPointerEvent) => {
     const d = drag.current;
@@ -244,24 +284,30 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     const dy = (e.clientY - d.startY) / view.k;
     if (!d.moved && Math.hypot(dx, dy) < 4) return;
     d.moved = true;
-    patchNode(d.id, { x: d.px + dx, y: d.py + dy });
+    if (d.group) for (const g of d.group) patchNode(g.id, { x: g.px + dx, y: g.py + dy });
+    else patchNode(d.id, { x: d.px + dx, y: d.py + dy });
   };
-  const onNodePointerUp = (node: MindMapNode) => {
+  const onNodePointerUp = (e: ReactPointerEvent, node: MindMapNode) => {
     const d = drag.current;
     drag.current = null;
     if (!d) return;
     if (!d.moved) {
       // A tap, not a drag.
       if (reparenting) void doReparent(reparenting, node.id);
+      else if (e.metaKey || e.ctrlKey) toggleMulti(node.id);
       else {
+        setMulti(new Set());
         setSelected(node.id);
         setOpenNote(node.id);
       }
       return;
     }
-    const final = byId.get(node.id);
-    if (final && final.x !== null && final.y !== null) {
-      void moveMindMapNodeAction(slug, node.id, final.x, final.y);
+    // Persist the moved node — or every member of a moved group.
+    for (const id of d.group ? d.group.map((g) => g.id) : [d.id]) {
+      const final = byId.get(id);
+      if (final && final.x !== null && final.y !== null) {
+        void moveMindMapNodeAction(slug, id, final.x, final.y);
+      }
     }
   };
 
@@ -335,6 +381,32 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     const res = await deleteMindMapNodeAction(slug, node.id);
     if (res.error) setError(res.error);
   };
+  // Delete every node in a multi-selection (and their descendants). Optimistically drop the whole union, then
+  // delete only the top-most selected nodes server-side — a delete cascades to descendants, so deleting a node
+  // whose ancestor is also selected would hit an already-gone row.
+  const removeMany = async (ids: string[]) => {
+    setConfirmDeleteMany(null);
+    const gone = new Set<string>();
+    for (const id of ids) for (const g of descendants(id)) gone.add(g);
+    setNodes((ns) => ns.filter((n) => !gone.has(n.id)));
+    if (openNote && gone.has(openNote)) setOpenNote(null);
+    if (selected && gone.has(selected)) setSelected(null);
+    setMulti(new Set());
+    const set = new Set(ids);
+    const underAnother = (id: string) => {
+      let p = byId.get(id)?.parentId ?? null;
+      while (p) {
+        if (set.has(p)) return true;
+        p = byId.get(p)?.parentId ?? null;
+      }
+      return false;
+    };
+    for (const id of ids) {
+      if (underAnother(id)) continue;
+      const res = await deleteMindMapNodeAction(slug, id);
+      if (res.error) setError(res.error);
+    }
+  };
 
   // ---- keyboard shortcuts ----
   // All single-key, no modifiers: they work the same whether Quire runs as a browser PWA or inside the
@@ -347,7 +419,10 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   );
   // Move the selection highlight. Deliberately independent of the note drawer: the drawer autofocuses its
   // editor, so pulling it along would capture the keyboard and halt navigation after one step.
-  const select = useCallback((id: string) => setSelected(id), []);
+  const select = useCallback((id: string) => {
+    setSelected(id);
+    setMulti(new Set()); // moving the single selection exits multi-select
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (renaming) return; // the rename input owns the keyboard while it's open
@@ -364,6 +439,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
 
       if (e.key === 'Escape') {
         if (reparenting) setReparenting(null);
+        else if (multi.size) setMulti(new Set());
         else if (openNote) setOpenNote(null);
         else if (selected) setSelected(null);
         else return;
@@ -392,7 +468,8 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
         case 'Delete':
         case 'Backspace':
           e.preventDefault();
-          setConfirmDelete(node);
+          if (multi.size > 1) setConfirmDeleteMany([...multi]);
+          else setConfirmDelete(node);
           break;
         case ' ': // collapse / expand
           e.preventDefault();
@@ -430,6 +507,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
     reparenting,
     openNote,
     selected,
+    multi,
     byId,
     childCount,
     addChild,
@@ -596,7 +674,9 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                       else nodeEls.current.delete(n.id);
                     }}
                     className={s.node}
-                    data-selected={selected === n.id ? 'true' : undefined}
+                    data-selected={
+                      (multi.size > 0 ? multi.has(n.id) : selected === n.id) ? 'true' : undefined
+                    }
                     data-dim={reparenting && blocked ? 'true' : undefined}
                     data-testid="mindmap-node"
                     style={{
@@ -607,7 +687,7 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                     }}
                     onPointerDown={(e) => onNodePointerDown(e, n)}
                     onPointerMove={onNodePointerMove}
-                    onPointerUp={() => onNodePointerUp(n)}
+                    onPointerUp={(e) => onNodePointerUp(e, n)}
                   >
                     {kids > 0 && (
                       <button
@@ -659,20 +739,26 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
                           setDraft(n.label);
                           setRenaming(n.id);
                         }}
-                        onClick={() => {
+                        onClick={(e) => {
                           if (reparenting) void doReparent(reparenting, n.id);
+                          else if (e.metaKey || e.ctrlKey) toggleMulti(n.id);
                           else {
+                            setMulti(new Set());
                             setSelected(n.id);
                             setOpenNote(n.id);
                           }
                         }}
-                        title={n.note.trim() ? 'Has a note — click to open' : 'Click to open the note'}
+                        title={
+                          n.note.trim()
+                            ? 'Has a note — click to open (⌘-click to multi-select)'
+                            : 'Click to open the note (⌘-click to multi-select)'
+                        }
                       >
                         <span className={s.labelText}>{n.label || 'Untitled'}</span>
                         {n.note.trim() && <span className={s.noteDot} role="img" aria-label="has note" />}
                       </button>
                     )}
-                    {selected === n.id && !reparenting && (
+                    {selected === n.id && multi.size < 2 && !reparenting && (
                       <div className={s.nodeBar} onPointerDown={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -755,6 +841,27 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
               Cancel
             </Button>
             <Button variant="primary" data-danger onClick={() => void remove(confirmDelete)}>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {confirmDeleteMany && (
+        <Dialog
+          open
+          title={`Delete ${confirmDeleteMany.length} nodes?`}
+          onClose={() => setConfirmDeleteMany(null)}
+        >
+          <p className={s.confirmText}>
+            Delete <strong>{confirmDeleteMany.length} selected nodes</strong> and all of their descendants?
+            This can't be undone.
+          </p>
+          <DialogActions>
+            <Button variant="secondary" onClick={() => setConfirmDeleteMany(null)}>
+              Cancel
+            </Button>
+            <Button variant="primary" data-danger onClick={() => void removeMany(confirmDeleteMany)}>
               Delete
             </Button>
           </DialogActions>
