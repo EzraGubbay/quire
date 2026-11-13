@@ -238,16 +238,20 @@ export function MindMapView({ slug, initialNodes }: { slug: string; initialNodes
   };
 
   // Add/remove a node from the multi-selection. If nothing was multi-selected yet, seed it with the current
-  // single anchor so Cmd-clicking a second node selects both. Keeps `selected` as the anchor; closes the note.
+  // single anchor so Cmd-clicking a second node selects both. When the toggle leaves one or zero nodes, collapse
+  // to a plain single-select of the remainder so the highlight, action bar and anchor never disagree.
   const toggleMulti = (id: string) => {
-    setMulti((m) => {
-      const next = new Set(m);
-      if (next.size === 0 && selected && selected !== id) next.add(selected);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    setSelected(id);
+    const next = new Set(multi);
+    if (next.size === 0 && selected && selected !== id) next.add(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    if (next.size > 1) {
+      setMulti(next);
+      setSelected(id);
+    } else {
+      setMulti(new Set());
+      setSelected([...next][0] ?? null);
+    }
     setOpenNote(null);
   };
 
