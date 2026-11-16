@@ -12,8 +12,9 @@
     "dist": "pnpm run build && electron-builder --config electron-builder.yml",
     "install-app": "bash scripts/install-app.sh",
     "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs",
+    "smoke:sync": "pnpm run build && node scripts/smoke-sync.cjs",
     "smoke:totp": "pnpm run build && node scripts/smoke-totp.cjs",
-    "test": "pnpm run build && node scripts/smoke-totp.cjs && node scripts/smoke-parser.cjs"
+    "test": "pnpm run build && node scripts/smoke-totp.cjs && node scripts/smoke-parser.cjs && node scripts/smoke-sync.cjs"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13"
