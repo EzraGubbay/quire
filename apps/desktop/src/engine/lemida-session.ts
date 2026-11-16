@@ -25,6 +25,7 @@ import {
   parseResourceWorkaround,
   type Resource,
 } from './moodle';
+import { reconcileResources } from './reconcile';
 
 export type SessionStatus = 'valid' | 'expired' | 'unknown';
 
@@ -393,7 +394,6 @@ export async function syncCourse(
   await restoreCookies();
   const ses = lemidaSession();
   const win = hiddenWindow();
-  const stats: SyncStats = { resources: 0, downloaded: 0, skipped: 0 };
   try {
     const landed = await navigate(win, course.lemidaUrl);
     if (isAuthWall(landed)) throw new SessionExpired(landed);
@@ -402,20 +402,11 @@ export async function syncCourse(
       throw new SessionExpired(`${landed} (not enrolled, or signed in only as a guest — sign in again)`);
     }
     const resources = await gatherResources(win);
-    stats.resources = resources.length;
-    for (const resource of resources) {
-      if (!full && seen.has(resource.href)) {
-        stats.skipped++;
-        continue;
-      }
-      const downloads = await collectDownloads(ses, resource);
-      for (const dl of downloads) {
-        await onFile(dl, resource);
-        stats.downloaded++;
-      }
-      seen.add(resource.href);
-    }
-    return stats;
+    return await reconcileResources(
+      resources,
+      { seen, full },
+      { collect: (r) => collectDownloads(ses, r), onFile },
+    );
   } finally {
     if (!win.isDestroyed()) win.close();
   }
