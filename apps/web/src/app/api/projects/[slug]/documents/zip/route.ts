@@ -62,6 +62,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
 
   const archive = archiver('zip', { zlib: { level: 9 } });
   archive.on('warning', () => {}); // ENOENT etc. are already filtered above; don't crash the stream.
+  // An IO error after the response has started streaming (e.g. a file deleted between the stat check and
+  // the read) can't change the status code; abort the truncated download rather than crash the worker.
+  archive.on('error', () => archive.destroy());
   for (const e of entries) {
     if (e.abs) archive.append(createReadStream(e.abs), { name: e.name });
     else archive.append(e.body ?? '', { name: e.name });
