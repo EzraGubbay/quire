@@ -29,7 +29,18 @@ Claude Desktop's remote-connector UI expects OAuth, so bridge the remote endpoin
    `qk_replace_with_your_key` with your `QUIRE_API_KEY`.
 3. Restart Claude Desktop. "quire" appears under tools; try *"list my Quire courses"*.
 
-> Claude Code support is added in a follow-up (an `.mcp.json` with the native `http` transport — no bridge).
+## Connect Claude Code
+
+Claude Code speaks the `http` transport natively, so no bridge — the repo ships a project-scoped
+[`.mcp.json`](../../.mcp.json) that registers the server with a `${QUIRE_API_KEY}` header. Just:
+
+1. Export your key where Claude Code runs: `export QUIRE_API_KEY=qk_...` (never commit it).
+2. Open this repo in Claude Code and approve the `quire` MCP server, or add it yourself:
+   ```sh
+   claude mcp add --transport http quire https://quire.ezragubbay.com/mcp \
+     --header "Authorization: Bearer $QUIRE_API_KEY"
+   ```
+3. Run `/mcp` to confirm `quire` is connected and its tools are listed.
 
 ## Verify / debug
 

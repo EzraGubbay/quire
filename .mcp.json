@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "quire": {
+      "type": "http",
+      "url": "https://quire.ezragubbay.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${QUIRE_API_KEY}"
+      }
+    }
+  }
+}
