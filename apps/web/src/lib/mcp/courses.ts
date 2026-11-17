@@ -201,6 +201,8 @@ async function sizeOnDisk(rel: string): Promise<number> {
 
 export interface ResolvedFile {
   kind: 'binary' | 'markdown';
+  /** The representation actually resolved — drives which download route the fallback URL points at. */
+  format: FileFormat;
   mimeType: string;
   filename: string;
   slug: string;
@@ -224,7 +226,7 @@ export async function resolveFile(
   if (!doc) throw new Error(`No file "${fileId}" in course "${project.slug}"`);
   const chosen: FileFormat =
     format ?? (doc.filePath ? 'pdf' : doc.kind === 'markdown' ? 'markdown' : 'original');
-  const base = { slug: project.slug, docId: doc.id };
+  const base = { slug: project.slug, docId: doc.id, format: chosen };
 
   if (chosen === 'markdown') {
     if (doc.kind !== 'markdown') throw new Error('This file has no markdown body.');
@@ -261,4 +263,7 @@ export async function resolveFile(
   };
 }
 
-export const readFileBytes = (rel: string): Promise<Buffer> => readStoredFile(rel);
+export const readFileBytes = (rel: string): Promise<Buffer> =>
+  readStoredFile(rel).catch(() => {
+    throw new Error('File is missing on disk.');
+  });

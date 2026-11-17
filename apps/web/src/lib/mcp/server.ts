@@ -7,9 +7,14 @@ import {
   listAllFileResources,
   listCourseFiles,
   listCourses,
+  type ResolvedFile,
   readFileBytes,
   resolveFile,
 } from './courses';
+
+const FORMATS = ['pdf', 'original', 'markdown'] as const;
+const asFormat = (v: string | null): FileFormat | undefined =>
+  v && (FORMATS as readonly string[]).includes(v) ? (v as FileFormat) : undefined;
 
 const MAX_INLINE_BYTES = Number(process.env.MCP_MAX_INLINE_BYTES ?? 10 * 1024 * 1024);
 const PUBLIC_BASE = (process.env.QUIRE_PUBLIC_URL ?? 'https://quire.ezragubbay.com').replace(/\/+$/, '');
@@ -22,8 +27,11 @@ const text = (value: unknown): { content: Content[] } => ({
   content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
 });
 
-const downloadUrl = (slug: string, docId: string) =>
-  `${PUBLIC_BASE}/api/projects/${encodeURIComponent(slug)}/documents/${encodeURIComponent(docId)}/file?download=1`;
+// The original (.pptx/.key/…) is served by the /original route; everything else downloads as the PDF.
+const downloadUrl = (r: ResolvedFile): string => {
+  const base = `${PUBLIC_BASE}/api/projects/${encodeURIComponent(r.slug)}/documents/${encodeURIComponent(r.docId)}`;
+  return r.format === 'original' ? `${base}/original` : `${base}/file?download=1`;
+};
 
 async function fileToolResult(
   course: string,
@@ -35,7 +43,7 @@ async function fileToolResult(
   if (r.sizeBytes > MAX_INLINE_BYTES) {
     return text(
       `"${r.filename}" is ${mb(r.sizeBytes)} MB, over the ${mb(MAX_INLINE_BYTES)} MB inline limit. ` +
-        `Download it at ${downloadUrl(r.slug, r.docId)} (send the Authorization: Bearer header), ` +
+        `Download it at ${downloadUrl(r)} (send the Authorization: Bearer header), ` +
         `or read the resource quire://course/${r.slug}/file/${r.docId}.`,
     );
   }
@@ -91,8 +99,7 @@ export function registerQuireMcp(server: McpServer): void {
     async (uri, variables) => {
       const slug = String(variables.slug);
       const docId = String(variables.docId);
-      const format = (uri.searchParams.get('format') as FileFormat | null) ?? undefined;
-      const r = await resolveFile(slug, docId, format);
+      const r = await resolveFile(slug, docId, asFormat(uri.searchParams.get('format')));
       if (r.kind === 'markdown') {
         return { contents: [{ uri: uri.href, mimeType: r.mimeType, text: r.text ?? '' }] };
       }
@@ -102,7 +109,7 @@ export function registerQuireMcp(server: McpServer): void {
             {
               uri: uri.href,
               mimeType: 'text/plain',
-              text: `${r.filename} is ${mb(r.sizeBytes)} MB, over the ${mb(MAX_INLINE_BYTES)} MB inline limit. Download: ${downloadUrl(r.slug, r.docId)}`,
+              text: `${r.filename} is ${mb(r.sizeBytes)} MB, over the ${mb(MAX_INLINE_BYTES)} MB inline limit. Download: ${downloadUrl(r)}`,
             },
           ],
         };
