@@ -25,7 +25,10 @@ function bearerOk(req: NextRequest): boolean {
 
 const withSession = auth((req) => {
   if (req.auth?.user) return NextResponse.next();
-  if (req.nextUrl.pathname.startsWith('/api/')) return new NextResponse('Unauthorized', { status: 401 });
+  // API and MCP clients get a clean 401; only browser page routes redirect to sign-in.
+  if (req.nextUrl.pathname.startsWith('/api/') || req.nextUrl.pathname.startsWith('/mcp')) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
   const signIn = new URL('/api/auth/signin', req.nextUrl.origin);
   signIn.searchParams.set('callbackUrl', req.nextUrl.pathname + req.nextUrl.search);
   return NextResponse.redirect(signIn);
