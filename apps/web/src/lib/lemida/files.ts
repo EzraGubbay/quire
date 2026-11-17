@@ -43,6 +43,11 @@ export async function getLemidaFile(id: string): Promise<LemidaFile | undefined>
   return row;
 }
 
+/** Every Lemida-imported file row for a project — carries the detected/corrected type label and placement. */
+export async function lemidaFilesByProject(projectId: string): Promise<LemidaFile[]> {
+  return db.select().from(lemidaFiles).where(eq(lemidaFiles.projectId, projectId));
+}
+
 async function ensureFolder(projectId: string, name: string) {
   const existing = (await listFolders(projectId, 'documents')).find((f) => f.name === name && !f.parentId);
   return existing ?? createFolder(projectId, name, null, 'documents');
