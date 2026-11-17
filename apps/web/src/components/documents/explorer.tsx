@@ -171,6 +171,15 @@ export function Explorer({ slug, folders, documents, activeDocumentId, openAdd =
         <div className={s.mainHead}>
           <h1 className={s.title}>{title}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
+            {documents.length > 0 && (
+              <a
+                href={`/api/projects/${slug}/documents/zip`}
+                className={s.chip}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Icon icon={Download} /> Download ZIP
+              </a>
+            )}
             <NextLink
               href={`${base}/discover`}
               className={s.chip}
