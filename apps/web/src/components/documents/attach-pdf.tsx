@@ -1,20 +1,28 @@
 'use client';
 
 import { Button, PaperHeader, Prose } from '@ezragubbay/folio';
-import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useRef } from 'react';
-import { type ActionState, attachPdfAction } from '@/app/actions/documents';
+import { useRef } from 'react';
+import { useUploads } from '@/components/uploads/upload-provider';
 import type { Document } from '@/db/schema';
 import s from './document-view.module.css';
 
 /** A paper record without a file yet: show what we know and take a PDF upload. */
 export function AttachPdf({ slug, document: doc }: { slug: string; document: Document }) {
-  const router = useRouter();
-  const [state, action, pending] = useActionState<ActionState, FormData>(attachPdfAction, {});
+  const { enqueue } = useUploads();
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (state.ok) router.refresh();
-  }, [state.ok, router]);
+  const submit = () => {
+    const input = inputRef.current;
+    const file = input?.files?.[0];
+    if (!input || !file) return;
+    const body = new FormData();
+    body.set('file', file);
+    enqueue({
+      name: file.name,
+      url: `/api/projects/${encodeURIComponent(slug)}/documents/${encodeURIComponent(doc.id)}/pdf`,
+      body,
+    });
+    input.value = '';
+  };
   return (
     <div className={s.paper}>
       <Prose>
@@ -28,9 +36,7 @@ export function AttachPdf({ slug, document: doc }: { slug: string; document: Doc
           ].filter((m): m is string => Boolean(m))}
         />
         {doc.abstract && <p className={s.abstract}>{doc.abstract}</p>}
-        <form action={action} className={s.attach}>
-          <input type="hidden" name="slug" value={slug} />
-          <input type="hidden" name="documentId" value={doc.id} />
+        <div className={s.attach}>
           {doc.originalPath ? (
             <p>
               {doc.conversionError ?? 'This deck has no PDF rendering yet.'}{' '}
@@ -59,18 +65,12 @@ export function AttachPdf({ slug, document: doc }: { slug: string; document: Doc
             accept="application/pdf,.pdf"
             required
             aria-label="PDF file"
-            onChange={() => inputRef.current?.form?.requestSubmit()}
+            onChange={submit}
           />
-          <Button
-            type="button"
-            variant="primary"
-            disabled={pending}
-            onClick={() => inputRef.current?.click()}
-          >
-            {pending ? 'Uploading and reading…' : doc.originalPath ? 'Add rendering (PDF)' : 'Attach PDF'}
+          <Button type="button" variant="primary" onClick={() => inputRef.current?.click()}>
+            {doc.originalPath ? 'Add rendering (PDF)' : 'Attach PDF'}
           </Button>
-          {state.error && <p role="alert">{state.error}</p>}
-        </form>
+        </div>
       </Prose>
     </div>
   );
