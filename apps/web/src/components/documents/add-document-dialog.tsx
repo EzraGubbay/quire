@@ -4,6 +4,7 @@ import { Button } from '@ezragubbay/folio';
 import { useActionState, useRef, useState } from 'react';
 import { type ActionState, createMarkdownAction, importReferenceAction } from '@/app/actions/documents';
 import { usePlatform } from '@/components/platform';
+import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
 import { useUploads } from '@/components/uploads/upload-provider';
@@ -88,6 +89,7 @@ function UploadForm({
   onCancel: () => void;
 }) {
   const { enqueue } = useUploads();
+  const { base } = useProject();
   const [fileName, setFileName] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -100,7 +102,12 @@ function UploadForm({
         const body = new FormData(e.currentTarget);
         const file = body.get('file');
         if (!(file instanceof File) || file.size === 0) return;
-        enqueue({ name: file.name, url: `/api/projects/${encodeURIComponent(slug)}/documents/upload`, body });
+        enqueue({
+          name: file.name,
+          url: `/api/projects/${encodeURIComponent(slug)}/documents/upload`,
+          body,
+          openOnDone: (id) => `${base}/documents/${id}`,
+        });
         onCancel();
       }}
     >

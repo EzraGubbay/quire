@@ -10,6 +10,11 @@ export interface EnqueueArgs {
   /** Route handler to POST the multipart body to. */
   url: string;
   body: FormData;
+  /**
+   * New-document uploads: where to open the result (given the new id). Only followed if the user is still on the
+   * page they started from; otherwise the upload just refreshes in the background.
+   */
+  openOnDone?: (id: string) => string;
 }
 
 interface UploadCtx {
@@ -41,9 +46,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const xhrs = useRef(new Map<string, XMLHttpRequest>());
   const seq = useRef(0);
 
-  const enqueue = useCallback(({ name, url, body }: EnqueueArgs) => {
+  const enqueue = useCallback(({ name, url, body, openOnDone }: EnqueueArgs) => {
     const id = `up-${Date.now()}-${++seq.current}`;
     dispatch({ type: 'enqueue', id, name });
+    const originPath = window.location.pathname;
     const xhr = new XMLHttpRequest();
     xhrs.current.set(id, xhr);
     xhr.open('POST', url);
@@ -54,7 +60,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       xhrs.current.delete(id);
       if (xhr.status >= 200 && xhr.status < 300) {
         dispatch({ type: 'done', id });
-        routerRef.current.refresh();
+        let newId: unknown;
+        try {
+          newId = JSON.parse(xhr.responseText)?.id;
+        } catch {}
+        if (openOnDone && typeof newId === 'string' && window.location.pathname === originPath)
+          routerRef.current.push(openOnDone(newId));
+        else routerRef.current.refresh();
       } else dispatch({ type: 'error', id, error: errorOf(xhr) });
     };
     xhr.onerror = () => {
