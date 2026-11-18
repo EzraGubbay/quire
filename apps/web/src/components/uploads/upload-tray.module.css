@@ -6,6 +6,9 @@
   gap: 8px;
   z-index: 60;
   width: min(320px, calc(100vw - 32px));
+  /* The tray floats over the UI (incl. bottom sheets); let clicks pass through it — only its own
+     controls (the close button) capture events — so it never blocks the app underneath. */
+  pointer-events: none;
 }
 :global(html[data-platform="phone"]) .tray {
   bottom: calc(76px + env(safe-area-inset-bottom, 0px));
@@ -13,6 +16,9 @@
 .item {
   display: grid;
   gap: 8px;
+  /* Shrink to the tray's width instead of the filename's intrinsic width (grid items default to
+     min-width:auto, which would let a long name push the item past the viewport — caught by tablet.spec). */
+  min-width: 0;
   padding: 10px 12px;
   border-radius: var(--eg-radius-card);
   background: var(--eg-text);
@@ -24,6 +30,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Let the flex row shrink so the name's ellipsis engages instead of widening the tray. */
+  min-width: 0;
 }
 .name {
   flex: 1;
@@ -42,6 +50,7 @@
   color: inherit;
   opacity: 0.7;
   cursor: pointer;
+  pointer-events: auto;
   font-size: 18px;
   line-height: 1;
   padding: 2px 6px;
