@@ -1,0 +1,17 @@
+[
+  {
+    "fileId": "6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10",
+    "title": "Lecture 3 - Convolution",
+    "type": "lecture",
+    "session": {
+      "number": 3,
+      "title": "Lecture 3"
+    },
+    "pageCount": 42,
+    "sizeBytes": 1048576,
+    "hasPdf": true,
+    "hasOriginal": true,
+    "hasMarkdown": false,
+    "updatedAt": "2026-11-02T09:30:00Z"
+  }
+]
