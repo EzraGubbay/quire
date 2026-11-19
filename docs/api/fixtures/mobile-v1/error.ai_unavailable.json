@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "ai_unavailable",
+    "message": "The AI service is currently unavailable"
+  }
+}

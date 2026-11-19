@@ -15,7 +15,7 @@ Quire has two sides, switched from the app bar: **Research** (projects, below) a
 - **Experiments**: a tracker for runs, metrics, artifacts, and observations, fed by a small Python client from wherever your code runs.
 - **AI**: chat over the project, ask about a document, and discover new sources. Cost-capped, provider-agnostic.
 
-The full specification and decision log is in [`docs/spec.md`](docs/spec.md).
+The full specification and decision log is in [`docs/spec.md`](docs/spec.md). The mobile app API is documented in [`docs/mobile-api.md`](docs/mobile-api.md).
 
 ## Layout
 
