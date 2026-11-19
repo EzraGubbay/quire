@@ -2,15 +2,12 @@
 
 import { Button } from '@ezragubbay/folio';
 import { useActionState, useRef, useState } from 'react';
-import {
-  type ActionState,
-  createMarkdownAction,
-  importReferenceAction,
-  uploadPdfAction,
-} from '@/app/actions/documents';
+import { type ActionState, createMarkdownAction, importReferenceAction } from '@/app/actions/documents';
 import { usePlatform } from '@/components/platform';
+import { useProject } from '@/components/project-context';
 import { Dialog, DialogActions } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/field';
+import { useUploads } from '@/components/uploads/upload-provider';
 import type { Folder } from '@/db/schema';
 import { parseReference } from '@/lib/ingest';
 import s from './documents.module.css';
@@ -91,14 +88,29 @@ function UploadForm({
   defaultFolderId: string | null;
   onCancel: () => void;
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(uploadPdfAction, {});
+  const { enqueue } = useUploads();
+  const { base } = useProject();
   const [fileName, setFileName] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const phone = usePlatform().platform === 'phone';
   return (
-    <form action={action} className={s.form}>
-      <input type="hidden" name="slug" value={slug} />
+    <form
+      className={s.form}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const body = new FormData(e.currentTarget);
+        const file = body.get('file');
+        if (!(file instanceof File) || file.size === 0) return;
+        enqueue({
+          name: file.name,
+          url: `/api/projects/${encodeURIComponent(slug)}/documents/upload`,
+          body,
+          openOnDone: (id) => `${base}/documents/${id}`,
+        });
+        onCancel();
+      }}
+    >
       <div
         className={s.dropzone}
         data-over={over}
@@ -138,17 +150,12 @@ function UploadForm({
         </label>
       </div>
       <FolderSelect folders={folders} defaultFolderId={defaultFolderId} />
-      {state.error && (
-        <p className={s.muted} role="alert">
-          {state.error}
-        </p>
-      )}
       <DialogActions>
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={pending || !fileName}>
-          {pending ? 'Uploading and reading…' : 'Add PDF'}
+        <Button type="submit" variant="primary" disabled={!fileName}>
+          Add PDF
         </Button>
       </DialogActions>
     </form>

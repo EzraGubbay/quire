@@ -4,6 +4,8 @@ import { FolioProvider } from '@ezragubbay/folio';
 import { MathJaxContext } from 'better-react-mathjax';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ToastProvider } from '@/components/ui/toast';
+import { UploadProvider } from '@/components/uploads/upload-provider';
+import { UploadTray } from '@/components/uploads/upload-tray';
 import type { ThemeSetting } from '@/lib/theme';
 
 type Theme = 'light' | 'dark';
@@ -98,7 +100,12 @@ export function Providers({ children, themeSetting }: { children: ReactNode; the
     <ThemeContext.Provider value={value}>
       <FolioProvider theme={theme}>
         <MathJaxContext version={3} src="/mathjax/tex-mml-chtml.js" config={MATHJAX}>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <UploadProvider>
+              {children}
+              <UploadTray />
+            </UploadProvider>
+          </ToastProvider>
         </MathJaxContext>
       </FolioProvider>
     </ThemeContext.Provider>

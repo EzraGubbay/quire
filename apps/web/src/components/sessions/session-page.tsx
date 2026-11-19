@@ -5,11 +5,12 @@ import type { SessionKind } from '@quire/shared';
 import { ArrowLeft, FolderInput, Trash2, Upload } from 'lucide-react';
 import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
-import { type ActionState, deleteDeckAction, dropSessionFilesAction } from '@/app/actions/sessions';
+import { useRef, useState, useTransition } from 'react';
+import { deleteDeckAction } from '@/app/actions/sessions';
 import { DocumentView } from '@/components/documents/document-view';
 import { useProject } from '@/components/project-context';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useUploads } from '@/components/uploads/upload-provider';
 import type { Annotation, Document, Note, Session } from '@/db/schema';
 import type { SessionWithDocuments } from '@/lib/sessions';
 import { MoveDeckDialog } from './move-deck-dialog';
@@ -174,13 +175,22 @@ function NoDeck({
   backHref: string;
   title: string;
 }) {
-  const router = useRouter();
-  const [state, action, pending] = useActionState<ActionState, FormData>(dropSessionFilesAction, {});
+  const { enqueue } = useUploads();
   const input = useRef<HTMLInputElement>(null);
-  const form = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (state.ok) router.refresh();
-  }, [state.ok, router]);
+  const submit = () => {
+    const el = input.current;
+    if (!el?.files) return;
+    for (const file of Array.from(el.files)) {
+      const body = new FormData();
+      body.set('file', file);
+      enqueue({
+        name: file.name,
+        url: `/api/projects/${encodeURIComponent(slug)}/sessions/${encodeURIComponent(session.id)}/deck`,
+        body,
+      });
+    }
+    el.value = '';
+  };
   return (
     <div className={s.wrap}>
       <div className={s.head}>
@@ -191,33 +201,24 @@ function NoDeck({
           <h1 className={s.title}>{title}</h1>
         </div>
       </div>
-      <form ref={form} action={action} className={s.hiddenForm}>
-        <input type="hidden" name="slug" value={slug} />
-        <input type="hidden" name="kind" value={session.kind} />
-        <input type="hidden" name="sessionId" value={session.id} />
-        <input
-          ref={input}
-          type="file"
-          name="files"
-          multiple
-          accept=".pdf,.pptx,.ppt,.key,.odp,application/pdf"
-          onChange={() => form.current?.requestSubmit()}
-        />
-      </form>
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        aria-label="Deck files"
+        accept=".pdf,.pptx,.ppt,.key,.odp,application/pdf"
+        onChange={submit}
+      />
       <EmptyState
         title="No deck yet"
         actions={
-          <Button
-            variant="primary"
-            icon={<Icon icon={Upload} />}
-            disabled={pending}
-            onClick={() => input.current?.click()}
-          >
-            {pending ? 'Uploading…' : 'Attach a deck (PDF or PPTX)'}
+          <Button variant="primary" icon={<Icon icon={Upload} />} onClick={() => input.current?.click()}>
+            Attach a deck (PDF or PPTX)
           </Button>
         }
       >
-        {state.error ?? 'Attach the slides to read them here beside your notes.'}
+        Attach the slides to read them here beside your notes.
       </EmptyState>
     </div>
   );
