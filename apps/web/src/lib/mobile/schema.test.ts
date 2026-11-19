@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { z } from 'zod';
+import type { z } from 'zod';
 import {
   API_VERSION,
   ChatStreamEvent,
@@ -44,7 +44,10 @@ const EXPECTED_OPERATIONS = [
 interface Resp {
   key: string;
   status: string;
-  content: Record<string, { schema?: unknown; example?: unknown; examples?: Record<string, { value: unknown }> }>;
+  content: Record<
+    string,
+    { schema?: unknown; example?: unknown; examples?: Record<string, { value: unknown }> }
+  >;
 }
 
 function responses(): Resp[] {
@@ -54,7 +57,8 @@ function responses(): Resp[] {
       // biome-ignore lint/suspicious/noExplicitAny: OpenAPI operation node
       const op = item[m] as any;
       if (!op) continue;
-      for (const [status, r] of Object.entries<{ content?: Resp['content'] }>(op.responses)) {
+      for (const [status, r0] of Object.entries<{ $ref?: string; content?: Resp['content'] }>(op.responses)) {
+        const r = r0.$ref ? spec.components.responses[r0.$ref.split('/').pop() as string] : r0;
         out.push({ key: `${m.toUpperCase()} ${path}`, status, content: r.content ?? {} });
       }
     }
@@ -102,6 +106,17 @@ describe('OpenAPI document', () => {
     }
   });
 
+  it('every $ref resolves inside the document', () => {
+    const refs = [...raw.matchAll(/\$ref: '#\/([^']+)'/g)].map((m) => m[1] as string);
+    expect(refs.length).toBeGreaterThan(20);
+    for (const ref of refs) {
+      const hit = ref
+        .split('/')
+        .reduce<unknown>((n, k) => (n as Record<string, unknown> | undefined)?.[k], spec);
+      expect(hit, ref).toBeDefined();
+    }
+  });
+
   it('error codes in the spec match the zod enum', () => {
     expect(spec.components.schemas.ErrorCode.enum).toEqual([...ERROR_CODES]);
     expect([...ERROR_CODES]).toEqual([
@@ -135,7 +150,9 @@ describe('response examples vs zod (drift guard)', () => {
       const json = r.content['application/json'];
       if (!json) continue;
       const isError = !r.status.startsWith('2');
-      const schema = isError ? ErrorEnvelope : responseSchemas[`${r.key} ${r.status}`];
+      const schema = isError
+        ? ErrorEnvelope
+        : (responseSchemas as Record<string, z.ZodType>)[`${r.key} ${r.status}`];
       expect(schema, `no zod schema registered for ${r.key} ${r.status}`).toBeDefined();
       for (const ex of examplesOf(json)) {
         const res = (schema as z.ZodType).safeParse(ex);
@@ -148,13 +165,17 @@ describe('response examples vs zod (drift guard)', () => {
 
   it('every registered response schema is documented in the spec', () => {
     const documented = new Set(
-      all.filter((r) => r.content['application/json'] && r.status.startsWith('2')).map((r) => `${r.key} ${r.status}`),
+      all
+        .filter((r) => r.content['application/json'] && r.status.startsWith('2'))
+        .map((r) => `${r.key} ${r.status}`),
     );
     for (const k of Object.keys(responseSchemas)) expect(documented.has(k), k).toBe(true);
   });
 
   it('NDJSON stream examples are lines that each parse as a ChatStreamEvent', () => {
-    const r = all.find((x) => x.key === 'POST /courses/{course}/threads/{threadId}/messages' && x.status === '200');
+    const r = all.find(
+      (x) => x.key === 'POST /courses/{course}/threads/{threadId}/messages' && x.status === '200',
+    );
     const nd = r?.content['application/x-ndjson'];
     expect(nd).toBeDefined();
     for (const ex of examplesOf(nd as Resp['content'][string])) {

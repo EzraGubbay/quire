@@ -1,5 +1,5 @@
-import { ERROR_CODES, ErrorEnvelope } from './schema';
 import { fail, ok } from './respond';
+import { ERROR_CODES, ErrorEnvelope } from './schema';
 
 describe('ok', () => {
   it('returns the data as JSON with status 200 by default', async () => {
