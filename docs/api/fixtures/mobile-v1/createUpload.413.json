@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "Upload is larger than 100 MB"
+  }
+}
