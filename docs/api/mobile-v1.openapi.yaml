@@ -1,0 +1,787 @@
+openapi: 3.1.0
+info:
+  title: Quire Mobile API
+  version: 1.0.0
+  description: |
+    HTTP contract between the Quire web app (`apps/web`) and the native mobile clients.
+
+    ## Versioning policy
+    - This document describes **v1**, served under `/api/mobile/v1`.
+    - Within v1 changes are **additive only**: new endpoints, new optional request fields and new response
+      fields. Clients must ignore unknown response fields. Existing fields are never removed, renamed,
+      retyped or made stricter.
+    - Breaking changes ship as a new base path, `/api/mobile/v2`, with v1 kept running alongside it.
+    - `GET /me` returns `apiVersion` (semver, `1.x.y`); additive releases bump the minor version.
+
+    ## Errors
+    Every non-2xx response (and every `error` stream event) uses the envelope
+    `{ "error": { "code": string, "message": string } }`. `code` is one of `unauthorized`, `not_found`,
+    `invalid_request`, `rate_limited`, `ai_unavailable`, `internal`.
+
+    ## Authentication
+    A per-device bearer token minted by exchanging a short-lived single-use pairing code (`POST /auth/pair`).
+    Pairing codes are minted by the web app (session-authenticated `POST /api/mobile/pairing-codes`, outside
+    v1). Every operation except `/auth/pair` requires the bearer token and answers 401 `unauthorized`
+    otherwise, in every deployment mode.
+
+    The zod schemas in `apps/web/src/lib/mobile/schema.ts` are the code-side twin of this document; a test
+    parses every example below with them.
+servers:
+  - url: /api/mobile/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: courses
+  - name: notes
+  - name: chat
+  - name: uploads
+
+paths:
+  /auth/pair:
+    post:
+      summary: Exchange a pairing code for a device token
+      operationId: pairDevice
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PairRequest' }
+            example: { code: AbC12345, deviceName: Pixel 9 }
+      responses:
+        '200':
+          description: Token minted. The raw token is returned exactly once.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PairResponse' }
+              example:
+                token: qd_live_3f9a8c7e6d5b4a3928171605f4e3d2c1
+                device: { id: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a, name: Pixel 9 }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /me:
+    get:
+      summary: Current principal and API version
+      operationId: getMe
+      tags: [auth]
+      responses:
+        '200':
+          description: The authenticated principal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+              example:
+                login: local
+                apiVersion: 1.0.0
+                device: { id: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a, name: Pixel 9, createdAt: '2026-11-01T08:00:00Z' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /auth/token:
+    delete:
+      summary: Revoke the calling token
+      operationId: revokeToken
+      tags: [auth]
+      responses:
+        '204':
+          description: Token revoked; it is rejected from now on.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses:
+    get:
+      summary: List courses
+      operationId: listCourses
+      tags: [courses]
+      responses:
+        '200':
+          description: Course summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CourseSummary' }
+              example:
+                - slug: signals-and-systems
+                  id: 1b4e28ba-2fa1-41d2-883f-0016d3cca427
+                  name: Signals and Systems
+                  code: '044130'
+                  semester: Winter 2026
+                  type: lecture
+                  fileCount: 12
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    get:
+      summary: Get a course with counts
+      operationId: getCourse
+      tags: [courses]
+      responses:
+        '200':
+          description: Course detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseDetail' }
+              example:
+                slug: signals-and-systems
+                id: 1b4e28ba-2fa1-41d2-883f-0016d3cca427
+                name: Signals and Systems
+                code: '044130'
+                semester: Winter 2026
+                type: lecture
+                fileCount: 12
+                counts:
+                  sessions: { lecture: 13, recitation: 12 }
+                  files: { lecture: 13, homework: 5 }
+                  notes: 4
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    get:
+      summary: List lectures and recitations with their deck file ids
+      operationId: listSessions
+      tags: [courses]
+      responses:
+        '200':
+          description: Sessions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CourseSession' }
+              example:
+                - kind: lecture
+                  number: 3
+                  title: Lecture 3
+                  date: '2026-11-02'
+                  fileIds: [6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10]
+                  noteId: 0d6f6c3e-4f5a-4b0b-8f0e-9a6b1d2c3e4f
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/files:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    get:
+      summary: List labelled course files
+      operationId: listFiles
+      tags: [courses]
+      responses:
+        '200':
+          description: Files.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CourseFile' }
+              example:
+                - fileId: 6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10
+                  title: Lecture 3 - Convolution
+                  type: lecture
+                  session: { number: 3, title: Lecture 3 }
+                  pageCount: 42
+                  sizeBytes: 1048576
+                  hasPdf: true
+                  hasOriginal: true
+                  hasMarkdown: false
+                  updatedAt: '2026-11-02T09:30:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/files/{fileId}:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+      - $ref: '#/components/parameters/FileId'
+    get:
+      summary: Get one course file
+      operationId: getFile
+      tags: [courses]
+      responses:
+        '200':
+          description: The file.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseFile' }
+              example:
+                fileId: 6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10
+                title: Homework 2
+                type: homework
+                folder: Homework
+                pageCount: 4
+                sizeBytes: 204800
+                hasPdf: true
+                hasOriginal: false
+                hasMarkdown: false
+                updatedAt: '2026-11-02T09:30:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/files/{fileId}/content:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+      - $ref: '#/components/parameters/FileId'
+    get:
+      summary: Stream a file's bytes (Range + strong ETag)
+      description: |
+        Supports `Range` (206 with `Content-Range`, 416 when unsatisfiable) and `If-None-Match` (304).
+        Responses carry `Accept-Ranges: bytes`, a strong `ETag` and a `Content-Disposition` filename.
+      operationId: getFileContent
+      tags: [courses]
+      parameters:
+        - name: format
+          in: query
+          required: false
+          schema: { type: string, enum: [pdf, original, markdown], default: pdf }
+        - name: Range
+          in: header
+          required: false
+          schema: { type: string }
+          example: bytes=0-99
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Full file body.
+          headers:
+            ETag: { schema: { type: string }, description: Strong validator. }
+            Accept-Ranges: { schema: { type: string, enum: [bytes] } }
+            Content-Disposition: { schema: { type: string } }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+            text/markdown:
+              schema: { type: string }
+              example: '# Lecture 3\n\nConvolution ...'
+        '206':
+          description: Partial body for a satisfiable `Range`.
+          headers:
+            Content-Range: { schema: { type: string }, example: 'bytes 0-99/1048576' }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '304':
+          description: 'If-None-Match matched the current ETag; empty body.'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '416':
+          description: Range not satisfiable.
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/notes:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    get:
+      summary: List notes (read-only)
+      operationId: listNotes
+      tags: [notes]
+      responses:
+        '200':
+          description: Note metadata.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NoteSummary' }
+              example:
+                - id: 0d6f6c3e-4f5a-4b0b-8f0e-9a6b1d2c3e4f
+                  slug: lecture-3-notes
+                  title: Lecture 3 notes
+                  session: { kind: lecture, number: 3 }
+                  updatedAt: '2026-11-02T12:00:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/notes/{noteId}:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+      - name: noteId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Read a note as raw Markdown
+      operationId: getNote
+      tags: [notes]
+      responses:
+        '200':
+          description: Note with Markdown body.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Note' }
+              example:
+                id: 0d6f6c3e-4f5a-4b0b-8f0e-9a6b1d2c3e4f
+                slug: lecture-3-notes
+                title: Lecture 3 notes
+                updatedAt: '2026-11-02T12:00:00Z'
+                markdown: "# Lecture 3\n\nConvolution slides one signal over another."
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /threads:
+    get:
+      summary: Recent chat threads across courses
+      operationId: listRecentThreads
+      tags: [chat]
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Threads, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Thread' }
+              example:
+                - id: a3c5d7e9-1b2d-4f60-9a8b-7c6d5e4f3a2b
+                  courseSlug: signals-and-systems
+                  title: New chat
+                  documentId: null
+                  createdAt: '2026-11-03T10:00:00Z'
+                  updatedAt: '2026-11-03T10:05:00Z'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/threads:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    get:
+      summary: List a course's chat threads
+      operationId: listThreads
+      tags: [chat]
+      parameters:
+        - name: documentId
+          in: query
+          required: false
+          description: Only threads scoped to this document.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Threads, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Thread' }
+              example:
+                - id: a3c5d7e9-1b2d-4f60-9a8b-7c6d5e4f3a2b
+                  courseSlug: signals-and-systems
+                  title: New chat
+                  documentId: 6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10
+                  createdAt: '2026-11-03T10:00:00Z'
+                  updatedAt: '2026-11-03T10:05:00Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+    post:
+      summary: Create a chat thread
+      operationId: createThread
+      tags: [chat]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateThreadRequest' }
+            example: {}
+      responses:
+        '201':
+          description: Thread created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Thread' }
+              example:
+                id: a3c5d7e9-1b2d-4f60-9a8b-7c6d5e4f3a2b
+                courseSlug: signals-and-systems
+                title: New chat
+                documentId: null
+                createdAt: '2026-11-03T10:00:00Z'
+                updatedAt: '2026-11-03T10:00:00Z'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/threads/{threadId}:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+      - $ref: '#/components/parameters/ThreadId'
+    delete:
+      summary: Delete a chat thread
+      operationId: deleteThread
+      tags: [chat]
+      responses:
+        '204':
+          description: Thread deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /courses/{course}/threads/{threadId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+      - $ref: '#/components/parameters/ThreadId'
+    get:
+      summary: Thread history
+      description: Citations never carry the web-only `href`.
+      operationId: listMessages
+      tags: [chat]
+      responses:
+        '200':
+          description: Messages, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChatMessage' }
+              example:
+                - id: c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f
+                  role: user
+                  content: What is convolution?
+                  citations: []
+                  error: null
+                  createdAt: '2026-11-03T10:01:00Z'
+                - id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                  role: assistant
+                  content: Convolution slides one signal over another [1].
+                  citations:
+                    - { n: 1, kind: document, id: 6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10, title: Lecture 3 - Convolution, pageNo: 7 }
+                  error: null
+                  createdAt: '2026-11-03T10:01:05Z'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+    post:
+      summary: Ask a question; the answer streams as NDJSON
+      description: |
+        Streams one JSON event per line: `user` first, zero or more `delta`, then `done` or `error`.
+        Failures before the stream starts use the normal error envelope (e.g. 503 `ai_unavailable`).
+      operationId: postMessage
+      tags: [chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostMessageRequest' }
+            example: { question: What is convolution? }
+      responses:
+        '200':
+          description: NDJSON event stream (`ChatStreamEvent` per line).
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+              example: |
+                {"type":"user","message":{"id":"c1d2e3f4-0a1b-4c2d-8e3f-4a5b6c7d8e9f","role":"user","content":"What is convolution?","citations":[],"error":null,"createdAt":"2026-11-03T10:01:00Z"}}
+                {"type":"delta","text":"Convolution slides "}
+                {"type":"delta","text":"one signal over another [1]."}
+                {"type":"done","message":{"id":"7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d","role":"assistant","content":"Convolution slides one signal over another [1].","citations":[{"n":1,"kind":"document","id":"6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10","title":"Lecture 3 - Convolution","pageNo":7}],"error":null,"createdAt":"2026-11-03T10:01:05Z"}}
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '503': { $ref: '#/components/responses/AiUnavailable' }
+
+  /courses/{course}/uploads:
+    parameters:
+      - $ref: '#/components/parameters/Course'
+    post:
+      summary: Upload a file for background processing (provisional, QMOB-E1-S8)
+      operationId: createUpload
+      tags: [uploads]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema: { type: string, format: binary }
+      responses:
+        '202':
+          description: Accepted; poll `GET /uploads/{uploadId}`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadJob' }
+              example: { uploadId: 5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a, status: queued }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /uploads/{uploadId}:
+    parameters:
+      - name: uploadId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Poll an upload job (provisional, QMOB-E1-S8)
+      operationId: getUpload
+      tags: [uploads]
+      responses:
+        '200':
+          description: Job state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadJob' }
+              example:
+                uploadId: 5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a
+                status: done
+                fileId: 6f1c2a52-8b0e-4c6a-9d63-2a3a7c1d9e10
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Per-device token from `POST /auth/pair`.
+
+  parameters:
+    Course:
+      name: course
+      in: path
+      required: true
+      description: Course slug or UUID.
+      schema: { type: string }
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ThreadId:
+      name: threadId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Missing, malformed, unknown or revoked bearer token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: unauthorized, message: Missing or invalid bearer token } }
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: not_found, message: No course found for "no-such-course" } }
+    InvalidRequest:
+      description: Malformed body, parameter or pairing code.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: invalid_request, message: 'code: Invalid pairing code' } }
+    RateLimited:
+      description: Too many requests.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: rate_limited, message: Too many requests; retry later } }
+    AiUnavailable:
+      description: The AI provider is unavailable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: ai_unavailable, message: The AI service is currently unavailable } }
+    Internal:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: internal, message: Internal server error } }
+
+  schemas:
+    ErrorCode:
+      type: string
+      enum: [unauthorized, not_found, invalid_request, rate_limited, ai_unavailable, internal]
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string }
+    Device:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+    PairRequest:
+      type: object
+      required: [code, deviceName]
+      properties:
+        code: { type: string, pattern: '^[0-9A-Za-z]{8}$' }
+        deviceName: { type: string, minLength: 1, maxLength: 100 }
+    PairResponse:
+      type: object
+      required: [token, device]
+      properties:
+        token: { type: string }
+        device: { $ref: '#/components/schemas/Device' }
+    Me:
+      type: object
+      required: [login, apiVersion, device]
+      properties:
+        login: { type: string }
+        apiVersion: { type: string, pattern: '^1\.\d+\.\d+$' }
+        device: { $ref: '#/components/schemas/Device' }
+    CourseSummary:
+      type: object
+      required: [slug, id, name, code, semester, type, fileCount]
+      properties:
+        slug: { type: string }
+        id: { type: string }
+        name: { type: string }
+        code: { type: string }
+        semester: { type: string }
+        type: { type: string }
+        fileCount: { type: integer, minimum: 0 }
+    CourseDetail:
+      allOf:
+        - $ref: '#/components/schemas/CourseSummary'
+        - type: object
+          required: [counts]
+          properties:
+            counts:
+              type: object
+              required: [sessions, files, notes]
+              properties:
+                sessions: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+                files: { type: object, additionalProperties: { type: integer, minimum: 0 } }
+                notes: { type: integer, minimum: 0 }
+    CourseSession:
+      type: object
+      required: [kind, number, title, date, fileIds, noteId]
+      properties:
+        kind: { type: string, enum: [lecture, recitation] }
+        number: { type: integer }
+        title: { type: string }
+        date: { type: [string, 'null'] }
+        fileIds: { type: array, items: { type: string } }
+        noteId: { type: [string, 'null'] }
+    CourseFile:
+      type: object
+      required: [fileId, title, type, pageCount, sizeBytes, hasPdf, hasOriginal, hasMarkdown, updatedAt]
+      properties:
+        fileId: { type: string }
+        title: { type: string }
+        type: { type: string, enum: [lecture, recitation, homework, exam, book, paper, other] }
+        session:
+          type: object
+          required: [number, title]
+          properties:
+            number: { type: integer }
+            title: { type: string }
+        folder: { type: string }
+        pageCount: { type: [integer, 'null'] }
+        sizeBytes: { type: [integer, 'null'] }
+        hasPdf: { type: boolean }
+        hasOriginal: { type: boolean }
+        hasMarkdown: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    NoteSummary:
+      type: object
+      required: [id, slug, title, updatedAt]
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        title: { type: string }
+        folder: { type: string }
+        session:
+          type: object
+          required: [kind, number]
+          properties:
+            kind: { type: string, enum: [lecture, recitation] }
+            number: { type: integer }
+        updatedAt: { type: string, format: date-time }
+    Note:
+      allOf:
+        - $ref: '#/components/schemas/NoteSummary'
+        - type: object
+          required: [markdown]
+          properties:
+            markdown: { type: string }
+    Thread:
+      type: object
+      required: [id, courseSlug, title, documentId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        courseSlug: { type: string }
+        title: { type: string }
+        documentId: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateThreadRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        documentId: { type: string }
+    Citation:
+      type: object
+      additionalProperties: false
+      required: [n, kind, id, title]
+      properties:
+        n: { type: integer, minimum: 1 }
+        kind: { type: string }
+        id: { type: string }
+        title: { type: string }
+        pageNo: { type: integer }
+    ChatMessage:
+      type: object
+      required: [id, role, content, citations, error, createdAt]
+      properties:
+        id: { type: string }
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        citations: { type: array, items: { $ref: '#/components/schemas/Citation' } }
+        error: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    PostMessageRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 8000 }
+    UploadJob:
+      type: object
+      required: [uploadId, status]
+      properties:
+        uploadId: { type: string }
+        status: { type: string, enum: [queued, processing, done, failed] }
+        fileId: { type: string }
+        error: { type: string }
