@@ -208,7 +208,7 @@ test.describe
 
     // ── File content: streaming, Range, ETag (QMOB-E1-S5 / #36) ──────────────────────────────────────
 
-    test.fixme('QMOB-E1-S5 · file content streams the full PDF with a strong ETag', async ({ request }) => {
+    test('QMOB-E1-S5 · file content streams the full PDF with a strong ETag', async ({ request }) => {
       expect(lectureFileId).toBeTruthy();
       const res = await authedGet(
         request,
@@ -226,7 +226,7 @@ test.describe
       expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     });
 
-    test.fixme('QMOB-E1-S5 · a Range request returns 206 with Content-Range', async ({ request }) => {
+    test('QMOB-E1-S5 · a Range request returns 206 with Content-Range', async ({ request }) => {
       expect(lectureFileId).toBeTruthy();
       const url = `${BASE}/courses/${seeded.slug}/files/${lectureFileId}/content?format=pdf`;
       const ranged = await authedGet(request, url, { Range: 'bytes=0-99' });
@@ -239,7 +239,7 @@ test.describe
       expect(bad.status()).toBe(416);
     });
 
-    test.fixme('QMOB-E1-S5 · If-None-Match with the current ETag yields 304', async ({ request }) => {
+    test('QMOB-E1-S5 · If-None-Match with the current ETag yields 304', async ({ request }) => {
       expect(etag).toBeTruthy();
       const res = await authedGet(
         request,
