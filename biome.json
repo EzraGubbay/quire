@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/.next", "!**/dist", "!**/node_modules", "!**/drizzle/meta"]
+    "includes": ["**", "!**/.next", "!**/dist", "!**/node_modules", "!**/drizzle/meta", "!docs/api/fixtures"]
   },
   "formatter": {
     "enabled": true,
