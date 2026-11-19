@@ -1,17 +1,9 @@
 import { z } from 'zod';
-import { answer, BudgetError, ProviderError } from '@/lib/ai/answer';
 import { aiConfigured } from '@/lib/ai/provider';
 import { apiError, projectFromSlug, readJson } from '@/lib/api';
-import {
-  addMessage,
-  dropFailedAfter,
-  getThread,
-  lastUserMessage,
-  listMessages,
-  renameThread,
-  touchThread,
-} from '@/lib/chat';
-import { projectBase } from '@/lib/projects';
+import { getThread } from '@/lib/chat';
+import { NDJSON_HEADERS } from '@/lib/chat-stream';
+import { startChatTurn } from '@/lib/chat-turn';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,71 +26,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
   if (!aiConfigured()) return apiError('AI is not configured: set OPENAI_API_KEY on the server.', 503);
   const body = await readJson(req, schema);
   if (!body.ok) return body.res;
-  const retry = 'retry' in body.data;
-  let question: string;
-  let userMsg: Awaited<ReturnType<typeof addMessage>> | undefined;
-  if ('retry' in body.data) {
-    const last = await lastUserMessage(threadId);
-    if (!last) return apiError('nothing to retry', 400);
-    await dropFailedAfter(threadId, last.createdAt);
-    question = last.content;
-    userMsg = last;
-  } else question = body.data.question;
-  const history = (await listMessages(threadId))
-    .filter((m) => !m.error && m.id !== userMsg?.id)
-    .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
-  if (!retry) {
-    userMsg = await addMessage(threadId, { role: 'user', content: question });
-    if (history.length === 0) await renameThread(threadId, question.slice(0, 80));
-  }
-
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (obj: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`));
-      send({ type: 'user', message: userMsg });
-      try {
-        const res = await answer({
-          projectId: project.id,
-          base: projectBase(project),
-          projectName: project.name,
-          question,
-          history,
-          documentId: thread.documentId,
-          mode: thread.mode,
-          course: project.kind === 'course',
-          onDelta: (text) => send({ type: 'delta', text }),
-          signal: req.signal,
-        });
-        const saved = await addMessage(threadId, {
-          role: 'assistant',
-          content: res.text,
-          citations: res.citations,
-          model: res.model,
-          fallback: res.fallback ?? false,
-          inputTokens: res.usage.input,
-          outputTokens: res.usage.output,
-          costUsd: res.costUsd,
-        });
-        await touchThread(threadId);
-        send({ type: 'done', message: saved, fallback: res.fallback ?? false });
-      } catch (err) {
-        const kind =
-          err instanceof BudgetError ? 'budget' : err instanceof ProviderError ? err.kind : 'other';
-        const message = (err as Error).message;
-        const partial = err instanceof ProviderError ? err.partial : '';
-        const saved = await addMessage(threadId, { role: 'assistant', content: partial, error: message });
-        send({ type: 'error', message, kind, saved });
-      } finally {
-        controller.close();
-      }
-    },
+  const stream = await startChatTurn({
+    project,
+    thread,
+    input: body.data,
+    signal: req.signal,
   });
-  return new Response(stream, {
-    headers: {
-      'content-type': 'application/x-ndjson; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-accel-buffering': 'no',
-    },
-  });
+  if (!stream) return apiError('nothing to retry', 400);
+  return new Response(stream, { headers: NDJSON_HEADERS });
 }

@@ -115,7 +115,7 @@ test.describe
 
     // ── Courses, sessions, files (QMOB-E1-S4 / #35) ──────────────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S4 · GET /courses lists course summaries', async ({ request }) => {
+    test('QMOB-E1-S4 · GET /courses lists course summaries', async ({ request }) => {
       const res = await authedGet(request, `${BASE}/courses`);
       expect(res.status()).toBe(200);
       const courses = (await res.json()) as Array<{
@@ -133,7 +133,7 @@ test.describe
       expect(ours?.fileCount).toBeGreaterThanOrEqual(2);
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course} returns the summary with counts; unknown → 404', async ({
+    test('QMOB-E1-S4 · GET /courses/{course} returns the summary with counts; unknown → 404', async ({
       request,
     }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}`);
@@ -150,7 +150,7 @@ test.describe
       await expectEnvelope(await authedGet(request, `${BASE}/courses/no-such-course`), 404, 'not_found');
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/sessions lists lectures and recitations with deck file ids', async ({
+    test('QMOB-E1-S4 · GET /courses/{course}/sessions lists lectures and recitations with deck file ids', async ({
       request,
     }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}/sessions`);
@@ -167,7 +167,7 @@ test.describe
       expect(sessions.some((s) => s.kind === 'recitation' && s.fileIds.length > 0)).toBeTruthy();
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/files lists labelled CourseFiles', async ({ request }) => {
+    test('QMOB-E1-S4 · GET /courses/{course}/files lists labelled CourseFiles', async ({ request }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}/files`);
       expect(res.status()).toBe(200);
       const files = (await res.json()) as Array<{
@@ -190,7 +190,7 @@ test.describe
       lectureFileId = lecture?.fileId ?? '';
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/files/{fileId} returns one CourseFile; unknown → 404', async ({
+    test('QMOB-E1-S4 · GET /courses/{course}/files/{fileId} returns one CourseFile; unknown → 404', async ({
       request,
     }) => {
       expect(lectureFileId).toBeTruthy();
@@ -208,7 +208,7 @@ test.describe
 
     // ── File content: streaming, Range, ETag (QMOB-E1-S5 / #36) ──────────────────────────────────────
 
-    test.fixme('QMOB-E1-S5 · file content streams the full PDF with a strong ETag', async ({ request }) => {
+    test('QMOB-E1-S5 · file content streams the full PDF with a strong ETag', async ({ request }) => {
       expect(lectureFileId).toBeTruthy();
       const res = await authedGet(
         request,
@@ -226,7 +226,7 @@ test.describe
       expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     });
 
-    test.fixme('QMOB-E1-S5 · a Range request returns 206 with Content-Range', async ({ request }) => {
+    test('QMOB-E1-S5 · a Range request returns 206 with Content-Range', async ({ request }) => {
       expect(lectureFileId).toBeTruthy();
       const url = `${BASE}/courses/${seeded.slug}/files/${lectureFileId}/content?format=pdf`;
       const ranged = await authedGet(request, url, { Range: 'bytes=0-99' });
@@ -239,7 +239,7 @@ test.describe
       expect(bad.status()).toBe(416);
     });
 
-    test.fixme('QMOB-E1-S5 · If-None-Match with the current ETag yields 304', async ({ request }) => {
+    test('QMOB-E1-S5 · If-None-Match with the current ETag yields 304', async ({ request }) => {
       expect(etag).toBeTruthy();
       const res = await authedGet(
         request,
@@ -252,7 +252,7 @@ test.describe
 
     // ── Notes: read-only Markdown (QMOB-E1-S6 / #37) ─────────────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S6 · notes list and read return metadata and raw Markdown', async ({ request }) => {
+    test('QMOB-E1-S6 · notes list and read return metadata and raw Markdown', async ({ request }) => {
       const list = await authedGet(request, `${BASE}/courses/${seeded.slug}/notes`);
       expect(list.status()).toBe(200);
       const notes = (await list.json()) as Array<{
@@ -283,7 +283,7 @@ test.describe
 
     // ── Chat: threads + NDJSON streaming answer (QMOB-E1-S7 / #38) ────────────────────────────────────
 
-    test.fixme('QMOB-E1-S7 · create a chat thread and list recent threads', async ({ request }) => {
+    test('QMOB-E1-S7 · create a chat thread and list recent threads', async ({ request }) => {
       const res = await request.post(`${BASE}/courses/${seeded.slug}/threads`, {
         headers: bearer(),
         data: {},
@@ -299,9 +299,7 @@ test.describe
       expect(threads.some((t) => t.id === threadId)).toBeTruthy();
     });
 
-    test.fixme('QMOB-E1-S7 · posting a question streams NDJSON answer events (AI_MOCK=1)', async ({
-      request,
-    }) => {
+    test('QMOB-E1-S7 · posting a question streams NDJSON answer events (AI_MOCK=1)', async ({ request }) => {
       expect(threadId).toBeTruthy();
       const res = await request.post(`${BASE}/courses/${seeded.slug}/threads/${threadId}/messages`, {
         headers: bearer(),
