@@ -20,7 +20,7 @@ const bodySchema = z.union([
 async function lookup(ctx: Ctx) {
   const { course, threadId } = await ctx.params;
   const project = await getProjectBySlug(course);
-  if (!project || project.kind !== 'course') return { response: fail('not_found', 'Course not found') };
+  if (project?.kind !== 'course') return { response: fail('not_found', 'Course not found') };
   const thread = await getThread(project.id, threadId);
   if (!thread) return { response: fail('not_found', 'Thread not found') };
   return { project, thread };

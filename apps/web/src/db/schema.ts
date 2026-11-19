@@ -828,6 +828,8 @@ export const mobileUploadJobs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('mobile_upload_jobs_owner_course_key_uq').on(t.ownerLogin, t.courseId, t.idempotencyKey)],
+  (t) => [
+    uniqueIndex('mobile_upload_jobs_owner_course_key_uq').on(t.ownerLogin, t.courseId, t.idempotencyKey),
+  ],
 );
 export type MobileUploadJob = typeof mobileUploadJobs.$inferSelect;
