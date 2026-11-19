@@ -518,7 +518,7 @@ paths:
     parameters:
       - $ref: '#/components/parameters/Course'
     post:
-      summary: Upload a file for background processing (provisional, QMOB-E1-S8)
+      summary: Upload a PDF for background processing (idempotent)
       operationId: createUpload
       tags: [uploads]
       parameters:
@@ -538,9 +538,20 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/UploadJob' }
               example: { uploadId: 5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a, status: queued }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '400':
+          description: Missing/blank `Idempotency-Key`, or a Content-Type other than `application/pdf`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example: { error: { code: invalid_request, message: Idempotency-Key header is required } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '413':
+          description: Body larger than 100 MB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+              example: { error: { code: invalid_request, message: Upload is larger than 100 MB } }
         '500': { $ref: '#/components/responses/Internal' }
 
   /uploads/{uploadId}:
@@ -550,7 +561,7 @@ paths:
         required: true
         schema: { type: string }
     get:
-      summary: Poll an upload job (provisional, QMOB-E1-S8)
+      summary: Poll an upload job
       operationId: getUpload
       tags: [uploads]
       responses:

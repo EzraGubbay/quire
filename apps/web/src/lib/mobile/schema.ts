@@ -180,7 +180,7 @@ export const ChatStreamEvent = z.discriminatedUnion('type', [
 ]);
 export type ChatStreamEvent = z.infer<typeof ChatStreamEvent>;
 
-// ── Uploads (shape provisional until QMOB-E1-S8) ────────────────────────────────────────────────────
+// ── Uploads (QMOB-E1-S8) ────────────────────────────────────────────────────
 
 export const UploadStatus = z.enum(['queued', 'processing', 'done', 'failed']);
 export const UploadJob = z.object({

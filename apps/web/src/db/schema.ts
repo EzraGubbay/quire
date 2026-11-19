@@ -26,6 +26,7 @@ import { relations } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -39,6 +40,8 @@ import {
   uuid,
   vector,
 } from 'drizzle-orm/pg-core';
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 
 export const projectStatus = pgEnum('project_status', PROJECT_STATUSES);
 export const projectKind = pgEnum('project_kind', PROJECT_KINDS);
@@ -802,3 +805,31 @@ export const mobilePairingCodes = pgTable('mobile_pairing_codes', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
 });
+
+/**
+ * Mobile upload jobs (QMOB-E1-S8). One row per accepted `POST /courses/{course}/uploads`; the unique index on
+ * (owner, course, idempotency key) makes a retried POST converge on the same job. `data` holds the raw PDF
+ * until the background task has ingested it, then is cleared.
+ */
+export const mobileUploadJobs = pgTable(
+  'mobile_upload_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerLogin: text('owner_login').notNull(),
+    courseId: uuid('course_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    idempotencyKey: text('idempotency_key').notNull(),
+    /** queued | processing | done | failed */
+    status: text('status').notNull().default('queued'),
+    data: bytea('data'),
+    fileId: uuid('file_id').references(() => documents.id, { onDelete: 'set null' }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('mobile_upload_jobs_owner_course_key_uq').on(t.ownerLogin, t.courseId, t.idempotencyKey),
+  ],
+);
+export type MobileUploadJob = typeof mobileUploadJobs.$inferSelect;
