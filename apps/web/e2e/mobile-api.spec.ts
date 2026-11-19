@@ -252,7 +252,7 @@ test.describe
 
     // ── Notes: read-only Markdown (QMOB-E1-S6 / #37) ─────────────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S6 · notes list and read return metadata and raw Markdown', async ({ request }) => {
+    test('QMOB-E1-S6 · notes list and read return metadata and raw Markdown', async ({ request }) => {
       const list = await authedGet(request, `${BASE}/courses/${seeded.slug}/notes`);
       expect(list.status()).toBe(200);
       const notes = (await list.json()) as Array<{
