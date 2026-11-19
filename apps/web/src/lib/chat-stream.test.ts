@@ -71,7 +71,11 @@ describe('chatEventStream (web shape)', () => {
         }),
       ),
     );
-    expect(events.at(-1)).toMatchObject({ type: 'error', kind: 'quota', saved: 'FAIL:quota hit:part' });
+    expect(events.at(-1)).toMatchObject({
+      type: 'error',
+      kind: 'quota',
+      saved: 'FAIL:quota hit:part',
+    });
   });
 });
 
@@ -80,7 +84,12 @@ describe('chatEventStream (custom shape)', () => {
     const shape: ChatStreamShape<string> = {
       user: (m) => ({ type: 'user', message: `m-${m}` }),
       done: (m) => ({ type: 'done', message: `m-${m}` }),
-      error: (info) => ({ type: 'error', code: 'internal', message: info.message, kind: info.kind }),
+      error: (info) => ({
+        type: 'error',
+        code: 'internal',
+        message: info.message,
+        kind: info.kind,
+      }),
     };
     const events = await lines(
       chatEventStream(

@@ -38,7 +38,16 @@ describe('toMessage / toThread', () => {
   });
 
   it('maps a thread row', () => {
-    const t = toThread({ id: 't1', title: 'New chat', documentId: null, createdAt: at, updatedAt: at }, 'c');
+    const t = toThread(
+      {
+        id: 't1',
+        title: 'New chat',
+        documentId: null,
+        createdAt: at,
+        updatedAt: at,
+      },
+      'c',
+    );
     expect(Thread.parse(t)).toEqual(t);
     expect(t.courseSlug).toBe('c');
   });
@@ -54,11 +63,24 @@ describe('error codes and stream shape', () => {
   });
 
   it('shapes events that satisfy ChatStreamEvent', () => {
-    const row = { id: 'm1', role: 'user', content: 'q', citations: [], error: null, createdAt: at };
+    const row = {
+      id: 'm1',
+      role: 'user',
+      content: 'q',
+      citations: [],
+      error: null,
+      createdAt: at,
+    };
     const s = mobileStreamShape();
     expect(ChatStreamEvent.parse(s.user(row))).toBeTruthy();
-    expect(ChatStreamEvent.parse(s.done(row, true))).toMatchObject({ fallback: true });
+    expect(ChatStreamEvent.parse(s.done(row, true))).toMatchObject({
+      fallback: true,
+    });
     const e = ChatStreamEvent.parse(s.error({ message: 'm', kind: 'budget', saved: row }));
-    expect(e).toMatchObject({ type: 'error', code: 'rate_limited', kind: 'budget' });
+    expect(e).toMatchObject({
+      type: 'error',
+      code: 'rate_limited',
+      kind: 'budget',
+    });
   });
 });

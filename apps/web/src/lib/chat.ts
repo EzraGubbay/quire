@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gt, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { type ChatMessage, type ChatThread, chatMessages, chatThreads } from '@/db/schema';
+import { type ChatMessage, type ChatThread, chatMessages, chatThreads, projects } from '@/db/schema';
 
 /** Newest first. With `documentId`, only the chats scoped to that document. */
 export async function listThreads(projectId: string, documentId?: string | null): Promise<ChatThread[]> {
@@ -14,6 +14,20 @@ export async function listThreads(projectId: string, documentId?: string | null)
     )
     .orderBy(desc(chatThreads.updatedAt))
     .limit(100);
+}
+
+/** Most recently active threads across all courses, newest first, with their course slug. */
+export async function listRecentCourseThreads(
+  limit: number,
+): Promise<Array<{ thread: ChatThread; courseSlug: string }>> {
+  const rows = await db
+    .select({ thread: chatThreads, courseSlug: projects.slug })
+    .from(chatThreads)
+    .innerJoin(projects, eq(chatThreads.projectId, projects.id))
+    .where(eq(projects.kind, 'course'))
+    .orderBy(desc(chatThreads.updatedAt))
+    .limit(limit);
+  return rows;
 }
 
 /** The last question in a thread (for a retry after a failed answer). */
