@@ -115,7 +115,7 @@ test.describe
 
     // ── Courses, sessions, files (QMOB-E1-S4 / #35) ──────────────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S4 · GET /courses lists course summaries', async ({ request }) => {
+    test('QMOB-E1-S4 · GET /courses lists course summaries', async ({ request }) => {
       const res = await authedGet(request, `${BASE}/courses`);
       expect(res.status()).toBe(200);
       const courses = (await res.json()) as Array<{
@@ -133,7 +133,7 @@ test.describe
       expect(ours?.fileCount).toBeGreaterThanOrEqual(2);
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course} returns the summary with counts; unknown → 404', async ({
+    test('QMOB-E1-S4 · GET /courses/{course} returns the summary with counts; unknown → 404', async ({
       request,
     }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}`);
@@ -150,7 +150,7 @@ test.describe
       await expectEnvelope(await authedGet(request, `${BASE}/courses/no-such-course`), 404, 'not_found');
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/sessions lists lectures and recitations with deck file ids', async ({
+    test('QMOB-E1-S4 · GET /courses/{course}/sessions lists lectures and recitations with deck file ids', async ({
       request,
     }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}/sessions`);
@@ -167,7 +167,7 @@ test.describe
       expect(sessions.some((s) => s.kind === 'recitation' && s.fileIds.length > 0)).toBeTruthy();
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/files lists labelled CourseFiles', async ({ request }) => {
+    test('QMOB-E1-S4 · GET /courses/{course}/files lists labelled CourseFiles', async ({ request }) => {
       const res = await authedGet(request, `${BASE}/courses/${seeded.slug}/files`);
       expect(res.status()).toBe(200);
       const files = (await res.json()) as Array<{
@@ -190,7 +190,7 @@ test.describe
       lectureFileId = lecture?.fileId ?? '';
     });
 
-    test.fixme('QMOB-E1-S4 · GET /courses/{course}/files/{fileId} returns one CourseFile; unknown → 404', async ({
+    test('QMOB-E1-S4 · GET /courses/{course}/files/{fileId} returns one CourseFile; unknown → 404', async ({
       request,
     }) => {
       expect(lectureFileId).toBeTruthy();

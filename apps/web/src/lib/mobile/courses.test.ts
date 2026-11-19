@@ -1,5 +1,5 @@
 import type { Document, Session } from '@/db/schema';
-import type { CourseFile as McpCourseFile, CourseSummary } from '@/lib/mcp/courses';
+import type { CourseSummary, CourseFile as McpCourseFile } from '@/lib/mcp/courses';
 import { toCourseDetail, toCourseFile, toCourseSession } from './courses';
 import { CourseDetail, CourseFile, CourseSession } from './schema';
 
