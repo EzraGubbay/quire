@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  type AuthStore,
   authenticate,
   createPairingCode,
   exchangePairingCode,
@@ -7,7 +8,6 @@ import {
   PAIRING_CODE_TTL_MS,
   revokeToken,
   type TokenRow,
-  type AuthStore,
 } from './auth';
 
 /** In-memory AuthStore; mirrors the atomic semantics of the SQL store. */
@@ -25,7 +25,13 @@ function memoryStore() {
       return c.ownerLogin;
     },
     async insertToken(row) {
-      const full: TokenRow = { ...row, createdAt: new Date(), lastUsedAt: null, revokedAt: null };
+      const full: TokenRow = {
+        ...row,
+        id: crypto.randomUUID(),
+        createdAt: new Date(),
+        lastUsedAt: null,
+        revokedAt: null,
+      };
       tokens.push(full);
       return full;
     },
@@ -85,8 +91,8 @@ describe('exchangePairingCode', () => {
     expect(r?.token.length).toBeGreaterThanOrEqual(32);
     expect(r?.device.name).toBe('Pixel');
     expect(m.tokens).toHaveLength(1);
-    expect(m.tokens[0].tokenHash).toBe(hashSecret(r?.token ?? ''));
-    expect(m.tokens[0].ownerLogin).toBe('alice');
+    expect(m.tokens[0]?.tokenHash).toBe(hashSecret(r?.token ?? ''));
+    expect(m.tokens[0]?.ownerLogin).toBe('alice');
     expect(JSON.stringify(m.tokens)).not.toContain(r?.token);
   });
 
@@ -122,7 +128,7 @@ describe('authenticate', () => {
     const now = new Date('2026-02-02T00:00:00Z');
     const p = await authenticate(req(token), m.store, now);
     expect(p).toMatchObject({ login: 'bob', tokenId: device.id, deviceName: 'Pixel' });
-    expect(m.tokens[0].lastUsedAt).toEqual(now);
+    expect(m.tokens[0]?.lastUsedAt).toEqual(now);
   });
 
   it('rejects missing, malformed, wrong and non-bearer credentials', async () => {
@@ -135,14 +141,14 @@ describe('authenticate', () => {
     expect(
       await authenticate(new Request('http://x', { headers: { authorization: 'Bearer ' } }), m.store),
     ).toBeNull();
-    expect(m.tokens[0].lastUsedAt).toBeNull();
+    expect(m.tokens[0]?.lastUsedAt).toBeNull();
   });
 
   it('rejects a revoked token', async () => {
     const { token, device } = await paired();
     await revokeToken(device.id, m.store);
     expect(await authenticate(req(token), m.store)).toBeNull();
-    expect(m.tokens[0].revokedAt).not.toBeNull();
+    expect(m.tokens[0]?.revokedAt).not.toBeNull();
   });
 
   it('scopes identity per device owner', async () => {

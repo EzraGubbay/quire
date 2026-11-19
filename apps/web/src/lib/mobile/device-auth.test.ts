@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { requireDevice } from './device-auth';
 import type { Principal } from './auth';
+import { requireDevice } from './device-auth';
 
 const principal: Principal = { login: 'local', tokenId: 'd1', deviceName: 'Pixel', createdAt: new Date() };
 
