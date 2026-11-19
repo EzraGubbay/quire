@@ -14,6 +14,10 @@ const PUBLIC_PREFIXES = [
   // pdf.js fetches these from inside its worker; public like the worker itself (fonts and CMaps are not private).
   '/pdfjs/',
   '/mathjax/',
+  // Mobile API v1: handlers do their own per-device bearer auth (src/lib/mobile/device-auth.ts), so a
+  // missing/invalid token gets the JSON 401 envelope rather than the session gate. The trailing slash
+  // matters: it excludes /api/mobile/pairing-codes (the mint route), which stays session-gated.
+  '/api/mobile/v1/',
 ];
 
 function bearerOk(req: NextRequest): boolean {

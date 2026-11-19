@@ -72,7 +72,7 @@ test.describe
 
     // ── Auth: pairing, identity, rejection (QMOB-E1-S2 / #33) ────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S2 · pair: mint a code, then exchange it once for a per-device token', async ({
+    test('QMOB-E1-S2 · pair: mint a code, then exchange it once for a per-device token', async ({
       request,
     }) => {
       // The mint route is a web-session route behind the proxy; under AUTH_MODE=none it mints for `local`.
@@ -94,7 +94,7 @@ test.describe
       await expectEnvelope(replay, 400, 'invalid_request');
     });
 
-    test.fixme('QMOB-E1-S2 · GET /me returns the principal and the API version', async ({ request }) => {
+    test('QMOB-E1-S2 · GET /me returns the principal and the API version', async ({ request }) => {
       const res = await authedGet(request, `${BASE}/me`);
       expect(res.status()).toBe(200);
       const me = (await res.json()) as { login: string; apiVersion: string; device?: { name?: string } };
@@ -103,9 +103,7 @@ test.describe
       expect(me.device?.name).toBe(DEVICE);
     });
 
-    test.fixme('QMOB-E1-S2 · requests without a token are rejected with 401 unauthorized', async ({
-      request,
-    }) => {
+    test('QMOB-E1-S2 · requests without a token are rejected with 401 unauthorized', async ({ request }) => {
       await expectEnvelope(await request.get(`${BASE}/me`), 401, 'unauthorized');
       await expectEnvelope(await request.get(`${BASE}/courses`), 401, 'unauthorized');
       await expectEnvelope(
@@ -365,7 +363,7 @@ test.describe
 
     // ── Revoke, then 401 (QMOB-E1-S2 / #33) — last, so earlier steps still have a live token ──────────
 
-    test.fixme('QMOB-E1-S2 · revoke the device token, after which the token is rejected with 401', async ({
+    test('QMOB-E1-S2 · revoke the device token, after which the token is rejected with 401', async ({
       request,
     }) => {
       const revoked = await request.delete(`${BASE}/auth/token`, { headers: bearer() });
