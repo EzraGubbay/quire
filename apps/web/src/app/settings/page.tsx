@@ -4,6 +4,7 @@ import { AiPanel } from '@/components/settings/ai-panel';
 import { DebugPanel } from '@/components/settings/debug-panel';
 import { FeaturesPanel } from '@/components/settings/features-panel';
 import { MacrosPanel } from '@/components/settings/macros-panel';
+import { MobileDevicesPanel } from '@/components/settings/mobile-devices-panel';
 import s from '@/components/settings/settings.module.css';
 import { SpendPanel } from '@/components/settings/spend-panel';
 import { ThemePanel } from '@/components/settings/theme-panel';
@@ -12,6 +13,7 @@ import { aiConfigured } from '@/lib/ai/provider';
 import { getAiSettings } from '@/lib/ai/settings';
 import { getDebugSetting, listClientLogs, listSessions } from '@/lib/debug';
 import { listMacros } from '@/lib/macros';
+import { currentWebLogin, listDevices } from '@/lib/mobile/devices';
 import { currentFeature } from '@/lib/platform-server';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +27,8 @@ export default async function SettingsPage() {
     currentFeature('settings.flags'),
     getDebugSetting(),
   ]);
+  const login = await currentWebLogin();
+  const devices = login ? await listDevices(login) : [];
   const lite = full.level === 'lite';
   const [sessions, logs] = lite
     ? [[], []]
@@ -43,6 +47,7 @@ export default async function SettingsPage() {
           <AiPanel settings={ai} summary={summary} configured={aiConfigured()} />
         )}
         {!lite && <MacrosPanel scope="global" macros={macros} />}
+        <MobileDevicesPanel devices={devices} />
         <DebugPanel serverOn={debug} sessions={sessions} logs={logs} full={!lite} />
         {flags.level === 'on' && <FeaturesPanel />}
         {lite && (
