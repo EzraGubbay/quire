@@ -783,3 +783,22 @@ export type LemidaCommand = typeof lemidaCommands.$inferSelect;
 export type MindMapNode = typeof mindMapNodes.$inferSelect;
 export type NewMindMapNode = typeof mindMapNodes.$inferInsert;
 export type NewLemidaCommand = typeof lemidaCommands.$inferInsert;
+
+/** Per-device mobile API tokens (`/api/mobile/v1`). Only the SHA-256 of the token is stored, never the token. */
+export const mobileTokens = pgTable('mobile_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerLogin: text('owner_login').notNull(),
+  deviceName: text('device_name').notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
+/** Short-lived single-use pairing codes minted from the web session; stored hashed. */
+export const mobilePairingCodes = pgTable('mobile_pairing_codes', {
+  codeHash: text('code_hash').primaryKey(),
+  ownerLogin: text('owner_login').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+});

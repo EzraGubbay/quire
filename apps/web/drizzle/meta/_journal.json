@@ -71,6 +71,13 @@
       "when": 1793788136150,
       "tag": "0009_true_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795051449721,
+      "tag": "0010_shocking_masque",
+      "breakpoints": true
     }
   ]
 }
