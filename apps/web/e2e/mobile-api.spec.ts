@@ -341,9 +341,9 @@ test.describe
       }
     });
 
-    // ── Upload: async + resumable (QMOB-E1-S8 / #39) — stays fixme after E1 per #40 ───────────────────
+    // ── Upload: async + idempotent (QMOB-E1-S8 / #39) ─────────────────────────────────────────────────
 
-    test.fixme('QMOB-E1-S8 · upload a PDF, get a job, and poll it to completion', async ({ request }) => {
+    test('QMOB-E1-S8 · upload a PDF, get a job, and poll it to completion', async ({ request }) => {
       const create = await request.post(`${BASE}/courses/${seeded.slug}/uploads`, {
         headers: { ...bearer(), 'Idempotency-Key': `e2e-${Date.now()}`, 'Content-Type': 'application/pdf' },
         data: Buffer.from('%PDF-1.4\n'),
