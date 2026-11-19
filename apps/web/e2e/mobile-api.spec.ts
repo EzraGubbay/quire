@@ -283,7 +283,7 @@ test.describe
 
     // ── Chat: threads + NDJSON streaming answer (QMOB-E1-S7 / #38) ────────────────────────────────────
 
-    test.fixme('QMOB-E1-S7 · create a chat thread and list recent threads', async ({ request }) => {
+    test('QMOB-E1-S7 · create a chat thread and list recent threads', async ({ request }) => {
       const res = await request.post(`${BASE}/courses/${seeded.slug}/threads`, {
         headers: bearer(),
         data: {},
@@ -299,9 +299,7 @@ test.describe
       expect(threads.some((t) => t.id === threadId)).toBeTruthy();
     });
 
-    test.fixme('QMOB-E1-S7 · posting a question streams NDJSON answer events (AI_MOCK=1)', async ({
-      request,
-    }) => {
+    test('QMOB-E1-S7 · posting a question streams NDJSON answer events (AI_MOCK=1)', async ({ request }) => {
       expect(threadId).toBeTruthy();
       const res = await request.post(`${BASE}/courses/${seeded.slug}/threads/${threadId}/messages`, {
         headers: bearer(),
