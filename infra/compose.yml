@@ -39,6 +39,8 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       DISABLE_AUTOUPDATER: '1'
       GOTENBERG_URL: http://gotenberg:3000
+      # Firebase service-account JSON, base64 on one line; written into .env by deploy.yml. Empty = push disabled.
+      FCM_SERVICE_ACCOUNT_JSON_BASE64: ${FCM_SERVICE_ACCOUNT_JSON_BASE64:-}
     volumes:
       - files:/data/files
     ports:

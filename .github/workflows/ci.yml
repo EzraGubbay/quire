@@ -43,6 +43,8 @@ jobs:
       FILES_DIR: ${{ github.workspace }}/data/files
       AUTH_MODE: none
       AI_MOCK: '1'
+      # Push without a credential: the fake transport records and logs instead of calling FCM.
+      PUSH_TRANSPORT: fake
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
