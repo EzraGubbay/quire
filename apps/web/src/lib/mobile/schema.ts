@@ -2,9 +2,10 @@
 // docs/api/mobile-v1.openapi.yaml is the written contract; schema.test.ts parses every example in it with
 // these schemas so spec and code cannot drift. Pure zod — safe to import from anywhere (no server/db).
 import { z } from 'zod';
+import { PUSH_CATEGORIES } from './push/events';
 
 /** Semver of the v1 contract. Additive-only within v1; breaking changes ship as /v2. */
-export const API_VERSION = '1.0.0';
+export const API_VERSION = '1.1.0';
 
 // ── Error envelope ──────────────────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export const ERROR_CODES = [
   'rate_limited',
   'ai_unavailable',
   'internal',
+  'push_unavailable',
 ] as const;
 export const ErrorCode = z.enum(ERROR_CODES);
 export type ErrorCode = z.infer<typeof ErrorCode>;
@@ -30,6 +32,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   rate_limited: 429,
   ai_unavailable: 503,
   internal: 500,
+  push_unavailable: 503,
 };
 
 // ── Shared primitives ───────────────────────────────────────────────────────────────────────────────
@@ -191,6 +194,46 @@ export const UploadJob = z.object({
 });
 export type UploadJob = z.infer<typeof UploadJob>;
 
+// ── Push (QMOB-E8-S2a, ADR 0003 §3.1) ───────────────────────────────────────────────────────────────
+
+export const PushCategory = z.enum(PUSH_CATEGORIES);
+export type PushCategory = z.infer<typeof PushCategory>;
+export const PushPlatform = z.enum(['android']);
+
+/** `categories` accepts any strings: unknown ones are ignored (forward compatible with newer apps). */
+export const PushRegistrationRequest = z.object({
+  fcmToken: z.string().min(1).max(4096),
+  platform: PushPlatform,
+  appVersion: z.string().max(32).optional(),
+  categories: z.array(z.string().max(64)).max(32),
+});
+export type PushRegistrationRequest = z.infer<typeof PushRegistrationRequest>;
+
+/** The device's registration. Never carries the FCM token. */
+export const PushRegistration = z.strictObject({
+  deviceId: Id,
+  platform: PushPlatform,
+  appVersion: z.string().nullable(),
+  categories: z.array(PushCategory),
+  createdAt: Iso,
+  updatedAt: Iso,
+});
+export type PushRegistration = z.infer<typeof PushRegistration>;
+
+export const PutPushRegistrationResponse = z.object({
+  registration: PushRegistration,
+  pushEnabled: z.boolean(),
+});
+export const PushRegistrationState = z.object({
+  registration: PushRegistration.nullable(),
+  pushEnabled: z.boolean(),
+});
+export type PushRegistrationState = z.infer<typeof PushRegistrationState>;
+
+export const TestPushOutcome = z.enum(['sent', 'unregistered', 'retryable', 'failed']);
+export const TestPushResult = z.object({ eventId: Id, outcome: TestPushOutcome });
+export type TestPushResult = z.infer<typeof TestPushResult>;
+
 // ── Registry: success response schema per operation (drift test + handlers) ─────────────────────────
 
 /** Keyed `"METHOD /path status"` exactly as in the OpenAPI document (path relative to /api/mobile/v1). */
@@ -210,4 +253,7 @@ export const responseSchemas = {
   'GET /courses/{course}/threads/{threadId}/messages 200': z.array(ChatMessage),
   'POST /courses/{course}/uploads 202': UploadJob,
   'GET /uploads/{uploadId} 200': UploadJob,
+  'PUT /push/registration 200': PutPushRegistrationResponse,
+  'GET /push/registration 200': PushRegistrationState,
+  'POST /push/test 200': TestPushResult,
 } as const satisfies Record<string, z.ZodType>;

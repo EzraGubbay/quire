@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildFixtures, FIXTURES_DIR, SPEC_PATH } from './fixtures';
+import { PUSH_TYPES, PushPayload, pushFixtureName, pushFixtures } from './push/events';
 import { ChatStreamEvent, ErrorEnvelope } from './schema';
 
 const specText = readFileSync(SPEC_PATH, 'utf8');
@@ -16,6 +17,23 @@ describe('mobile contract fixtures', () => {
     expect(names).toContain('error.unauthorized.json');
     expect(names).toContain('postMessage.200.normal.ndjson');
     expect(names).toContain('postMessage.200.error-mid-stream.ndjson');
+    for (const n of [
+      'putPushRegistration.request.json',
+      'putPushRegistration.200.json',
+      'getPushRegistration.200.json',
+      'sendTestPush.200.json',
+      'error.push_unavailable.json',
+    ])
+      expect(names).toContain(n);
+  });
+
+  it('has one push payload fixture per push type, generated from the events.ts builders', () => {
+    const push = [...built].filter(([n]) => n.startsWith('push.'));
+    expect(push.map(([n]) => n).sort()).toEqual(PUSH_TYPES.map(pushFixtureName).sort());
+    for (const [name, c] of push) {
+      expect(PushPayload.safeParse(JSON.parse(c)).success, name).toBe(true);
+      expect(c).toBe(`${JSON.stringify(pushFixtures().get(name), null, 2)}\n`);
+    }
   });
 
   it('committed fixtures are up to date (run `pnpm --filter web mobile:fixtures`)', () => {
@@ -29,7 +47,7 @@ describe('mobile contract fixtures', () => {
 
   it('error fixtures parse as the error envelope', () => {
     const errs = [...built].filter(([n]) => n.startsWith('error.'));
-    expect(errs.length).toBe(6);
+    expect(errs.length).toBe(7);
     for (const [, c] of errs) expect(ErrorEnvelope.safeParse(JSON.parse(c)).success).toBe(true);
   });
 

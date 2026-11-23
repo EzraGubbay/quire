@@ -1,0 +1,11 @@
+{
+  "v": "1",
+  "type": "homework.due",
+  "course": "signals-and-systems",
+  "courseId": "3f0b1c7e-2a7d-4d8e-9b1a-6c5e4f3a2b10",
+  "assignmentId": "0e9d8c7b-6a5f-4e3d-9c2b-1a0f9e8d7c6b",
+  "number": "3",
+  "dueAt": "2026-11-24T21:59:00.000Z",
+  "fileId": "9c4e2b1a-7d3f-4a6b-8e2c-1f0a9b8c7d6e",
+  "eventId": "7a1c2f0e-5b7d-4c2a-9a51-0f3e6d1b2c44"
+}

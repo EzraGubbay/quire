@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Quire Mobile API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     HTTP contract between the Quire web app (`apps/web`) and the native mobile clients.
 
@@ -16,7 +16,8 @@ info:
     ## Errors
     Every non-2xx response (and every `error` stream event) uses the envelope
     `{ "error": { "code": string, "message": string } }`. `code` is one of `unauthorized`, `not_found`,
-    `invalid_request`, `rate_limited`, `ai_unavailable`, `internal`.
+    `invalid_request`, `rate_limited`, `ai_unavailable`, `internal`, `push_unavailable` (only `POST /push/test`
+    returns it).
 
     ## Authentication
     A per-device bearer token minted by exchanging a short-lived single-use pairing code (`POST /auth/pair`).
@@ -36,6 +37,7 @@ tags:
   - name: notes
   - name: chat
   - name: uploads
+  - name: push
 
 paths:
   /auth/pair:
@@ -76,7 +78,7 @@ paths:
               schema: { $ref: '#/components/schemas/Me' }
               example:
                 login: local
-                apiVersion: 1.0.0
+                apiVersion: 1.1.0
                 device: { id: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a, name: Pixel 9, createdAt: '2026-11-01T08:00:00Z' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/Internal' }
@@ -578,6 +580,97 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/Internal' }
 
+  /push/registration:
+    put:
+      summary: Create or refresh this device's push registration (idempotent)
+      description: |
+        One registration per paired device, keyed by the calling device token (never a client-supplied id). The
+        same body always yields the same state. If the FCM token is registered under another device (re-pairing
+        on the same phone), it moves to the caller. Registrations are stored even when `pushEnabled` is false, so
+        pushes start as soon as the server's credential appears.
+      operationId: putPushRegistration
+      tags: [push]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushRegistrationRequest' }
+            example:
+              fcmToken: '<fcm registration token>'
+              platform: android
+              appVersion: 1.1.0
+              categories: [files, deadlines, notes]
+      responses:
+        '200':
+          description: The device's registration. Never carries the FCM token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutPushRegistrationResponse' }
+              example:
+                registration:
+                  deviceId: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a
+                  platform: android
+                  appVersion: 1.1.0
+                  categories: [files, deadlines, notes]
+                  createdAt: '2026-11-24T09:00:00.000Z'
+                  updatedAt: '2026-11-24T09:00:00.000Z'
+                pushEnabled: true
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+    get:
+      summary: This device's push registration
+      operationId: getPushRegistration
+      tags: [push]
+      responses:
+        '200':
+          description: The registration, or null when this device has none.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PushRegistrationState' }
+              example:
+                registration:
+                  deviceId: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a
+                  platform: android
+                  appVersion: 1.1.0
+                  categories: [files, deadlines, notes]
+                  createdAt: '2026-11-24T09:00:00.000Z'
+                  updatedAt: '2026-11-24T09:00:00.000Z'
+                pushEnabled: true
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+    delete:
+      summary: Delete this device's push registration
+      operationId: deletePushRegistration
+      tags: [push]
+      responses:
+        '204':
+          description: Deleted, or there was nothing to delete.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /push/test:
+    post:
+      summary: Send a test notification to this device, synchronously
+      description: |
+        Sends `push.test` to the calling device within the request (no body), bypassing categories and
+        coalescing, and reports FCM's answer as `outcome`. At most one request per 30 s per device. Returns 400
+        `invalid_request` when the device has no registration and 503 `push_unavailable` when push is disabled.
+      operationId: sendTestPush
+      tags: [push]
+      responses:
+        '200':
+          description: FCM's answer. Nothing is queued for a later retry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestPushResult' }
+              example: { eventId: 7a1c2f0e-5b7d-4c2a-9a51-0f3e6d1b2c44, outcome: sent }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '503': { $ref: '#/components/responses/PushUnavailable' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -640,11 +733,17 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
           example: { error: { code: internal, message: Internal server error } }
+    PushUnavailable:
+      description: Push is not set up on this server (no or invalid FCM credential). Only `POST /push/test` returns it.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { error: { code: push_unavailable, message: Push notifications are not set up on this server } }
 
   schemas:
     ErrorCode:
       type: string
-      enum: [unauthorized, not_found, invalid_request, rate_limited, ai_unavailable, internal]
+      enum: [unauthorized, not_found, invalid_request, rate_limited, ai_unavailable, internal, push_unavailable]
     ErrorEnvelope:
       type: object
       required: [error]
@@ -805,3 +904,55 @@ components:
         status: { type: string, enum: [queued, processing, done, failed] }
         fileId: { type: string }
         error: { type: string }
+    PushCategory:
+      type: string
+      enum: [files, deadlines, notes]
+    PushRegistrationRequest:
+      type: object
+      required: [fcmToken, platform, categories]
+      properties:
+        fcmToken: { type: string, minLength: 1, maxLength: 4096, description: Never echoed or logged. }
+        platform: { type: string, enum: [android] }
+        appVersion: { type: string, maxLength: 32 }
+        categories:
+          type: array
+          maxItems: 32
+          description: Unknown values are ignored and left out of the response; duplicates collapse.
+          items: { type: string, maxLength: 64 }
+    PushRegistration:
+      type: object
+      additionalProperties: false
+      required: [deviceId, platform, appVersion, categories, createdAt, updatedAt]
+      properties:
+        deviceId: { type: string, description: The calling device (`mobile_tokens.id`). }
+        platform: { type: string, enum: [android] }
+        appVersion: { type: [string, 'null'] }
+        categories: { type: array, items: { $ref: '#/components/schemas/PushCategory' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PutPushRegistrationResponse:
+      type: object
+      required: [registration, pushEnabled]
+      properties:
+        registration: { $ref: '#/components/schemas/PushRegistration' }
+        pushEnabled: { type: boolean, description: Whether this server can send at all (FCM credential present and valid). }
+    PushRegistrationState:
+      type: object
+      required: [registration, pushEnabled]
+      properties:
+        registration:
+          oneOf:
+            - $ref: '#/components/schemas/PushRegistration'
+            - type: 'null'
+        pushEnabled: { type: boolean }
+    TestPushResult:
+      type: object
+      required: [eventId, outcome]
+      properties:
+        eventId: { type: string, format: uuid }
+        outcome:
+          type: string
+          enum: [sent, unregistered, retryable, failed]
+          description: |
+            `sent`: FCM accepted the message. `unregistered`: FCM answered UNREGISTERED and the registration has
+            already been deleted; register again. `retryable` / `failed`: FCM failed; nothing is queued.

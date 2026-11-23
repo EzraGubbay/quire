@@ -1,0 +1,15 @@
+{
+  "registration": {
+    "deviceId": "9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a",
+    "platform": "android",
+    "appVersion": "1.1.0",
+    "categories": [
+      "files",
+      "deadlines",
+      "notes"
+    ],
+    "createdAt": "2026-11-24T09:00:00.000Z",
+    "updatedAt": "2026-11-24T09:00:00.000Z"
+  },
+  "pushEnabled": true
+}
