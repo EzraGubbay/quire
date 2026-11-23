@@ -83,17 +83,29 @@ describe('files.added coalescing', () => {
     expect(fake.sent[0]?.data).toMatchObject({ count: '1', fileId: 'doc-1' });
   });
 
-  it('a steady trickle is capped at 10 min after the first import; a row past the cap forms the next batch', async () => {
+  it('a steady trickle is capped at 10 min after the first import, as one batch', async () => {
     await device('fcm-A');
     for (let i = 0; i < 10; i++) await importFile(i, at(i * 60 * S)); // one a minute, 0–9 min
-    // Every older row is held at the cap; the newest starts at its own now + 90 s, which is past it.
-    for (const r of m.rows.slice(0, 9)) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
-    expect(m.rows[9]?.notBefore).toEqual(at(9 * 60 * S + COALESCE_DELAY_MS));
+    for (const r of m.rows) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
     await dispatch(at(COALESCE_CAP_MS));
     expect(fake.sent).toHaveLength(1);
-    expect(fake.sent[0]?.data).toMatchObject({ count: '9', fileId: 'doc-8' });
-    await dispatch(at(9 * 60 * S + COALESCE_DELAY_MS));
-    expect(fake.sent[1]?.data).toMatchObject({ count: '1', fileId: 'doc-9' });
+    expect(fake.sent[0]?.data).toMatchObject({ count: '10', fileId: 'doc-9' });
+    expect(m.rows.every((r) => r.sentAt)).toBe(true);
+  });
+
+  it('a burst ending within the last 90 s before the cap still ships as one batch', async () => {
+    await device('fcm-A');
+    await importFile(1, t0);
+    await importFile(2, at(500 * S)); // 8:20 → its own +90 s would be 9:50
+    await importFile(3, at(540 * S)); // 9:00
+    await importFile(4, at(570 * S)); // 9:30
+    await importFile(5, at(590 * S)); // 9:50: +90 s would be 11:20, past the cap
+    for (const r of m.rows) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
+    expect((await dispatch(at(COALESCE_CAP_MS - 1)))?.batches).toBe(0);
+    await dispatch(at(COALESCE_CAP_MS));
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0]?.data).toMatchObject({ count: '5', fileId: 'doc-5' });
+    expect((await dispatch(at(COALESCE_CAP_MS + 120 * S)))?.batches).toBe(0);
   });
 
   it('the slide never lowers not_before', async () => {

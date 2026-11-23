@@ -71,6 +71,10 @@ export function memoryPushStore() {
     },
   };
 
+  const unbatched = (registrationId: string, groupKey: string) =>
+    rows.filter(
+      (r) => r.registrationId === registrationId && r.groupKey === groupKey && !r.batchId && isPending(r),
+    );
   const byBatch = (batchId: string) => rows.filter((r) => r.batchId === batchId && isPending(r));
 
   const outbox: OutboxStore = {
@@ -86,23 +90,30 @@ export function memoryPushStore() {
       if (!regs.some((r) => r.id === row.registrationId)) throw new Error('foreign key violation');
       if (rows.some((r) => r.registrationId === row.registrationId && r.dedupeKey === row.dedupeKey))
         return false;
+      let notBefore = row.notBefore ?? now;
+      if (row.groupKey && !row.batchId) {
+        // Mirrors the SQL: cap at the group's oldest unbatched pending row (or now) + 10 min.
+        const oldest = Math.min(
+          now.getTime(),
+          ...unbatched(row.registrationId, row.groupKey).map((r) => r.createdAt.getTime()),
+        );
+        notBefore = new Date(Math.min(notBefore.getTime(), oldest + COALESCE_CAP_MS));
+      }
       rows.push({
         id: randomUUID(),
         batchId: null,
-        notBefore: now,
         attempts: 0,
         sentAt: null,
         deadAt: null,
         lastError: null,
         ...row,
+        notBefore,
         createdAt: now,
       });
       return true;
     },
     async slideGroup(registrationId, groupKey, now) {
-      const group = rows.filter(
-        (r) => r.registrationId === registrationId && r.groupKey === groupKey && !r.batchId && isPending(r),
-      );
+      const group = unbatched(registrationId, groupKey);
       if (group.length === 0) return;
       const oldest = Math.min(...group.map((r) => r.createdAt.getTime()));
       const target = Math.min(now.getTime() + COALESCE_DELAY_MS, oldest + COALESCE_CAP_MS);

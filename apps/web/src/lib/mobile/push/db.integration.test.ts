@@ -1,6 +1,6 @@
 // @vitest-environment node
 // The SQL stores against a real, migrated Postgres. Opt-in so `pnpm test` never needs a database:
-//   QUIRE_DB_TESTS=1 DATABASE_URL=postgres://… pnpm --filter web exec vitest run src/lib/mobile/push/db.integration
+//   QUIRE_DB_TESTS=1 DATABASE_URL=postgres://… pnpm --filter web exec vitest run db.integration
 // Every row it creates belongs to a run-unique owner and is deleted afterwards; it never truncates.
 import { randomUUID } from 'node:crypto';
 import { eq, inArray, sql } from 'drizzle-orm';
@@ -136,6 +136,23 @@ describe.skipIf(!run)('push SQL stores (integration)', () => {
     const after = await rowsOf(files.id);
     expect(after[0]?.notBefore).toEqual(at(3_600_000));
     expect(after[2]?.notBefore).toEqual(at(160_000));
+  });
+
+  it('enqueue: a grouped insert is capped at the group’s oldest unbatched row + 10 min, so a burst converges', async () => {
+    const reg = await register((await device()).id);
+    const deps = (ms: number) => ({ store: dbOutbox, config: enabled, now: at(ms) });
+    await enqueuePush([OWNER], file(1), deps(0));
+    await enqueuePush([OWNER], file(2), deps(540_000)); // 9:00
+    await enqueuePush([OWNER], file(3), deps(590_000)); // 9:50: its own +90 s would pass the cap
+    expect((await rowsOf(reg.id)).map((r) => r.notBefore)).toEqual([at(600_000), at(600_000), at(600_000)]);
+
+    // With nothing unbatched left to join, a new row starts at its own now + 90 s.
+    await db
+      .update(mobilePushOutbox)
+      .set({ sentAt: at(600_000) })
+      .where(eq(mobilePushOutbox.registrationId, reg.id));
+    await enqueuePush([OWNER], file(4), deps(700_000));
+    expect((await rowsOf(reg.id))[3]?.notBefore).toEqual(at(700_000 + COALESCE_DELAY_MS));
   });
 
   it('dispatch: freezes a batch, resends it unchanged on retry, holds late rows, marks by batch id', async () => {
