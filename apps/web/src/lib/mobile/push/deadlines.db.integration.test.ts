@@ -1,7 +1,7 @@
 // @vitest-environment node
 // scanDeadlines' SQL candidate query and the full scan against a real, migrated Postgres. Opt-in, like
 // db.integration.test.ts:
-//   QUIRE_DB_TESTS=1 DATABASE_URL=postgres://… pnpm --filter web exec vitest run src/lib/mobile/push/deadlines.db
+//   QUIRE_DB_TESTS=1 DATABASE_URL=postgres://… pnpm --filter web exec vitest run db.integration
 // Every row it creates belongs to run-unique projects/owners and is deleted afterwards; it never truncates.
 import { randomUUID } from 'node:crypto';
 import { eq, inArray } from 'drizzle-orm';

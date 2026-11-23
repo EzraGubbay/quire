@@ -66,7 +66,7 @@ export const dbDeadlineDeps: DeadlineDeps = {
 };
 
 /** The same rule the SQL applies, re-checked per row: open, due in (now, now + 24 h], active course. */
-export function remindable(a: DeadlineCandidate, now: Date): boolean {
+export function remindable(a: DeadlineCandidate, now: Date): a is DeadlineCandidate & { dueAt: Date } {
   if (!a.dueAt || !(OPEN_STATUSES as readonly string[]).includes(a.status)) return false;
   const until = a.dueAt.getTime() - now.getTime();
   return until > 0 && until <= DEADLINE_WINDOW_MS && courseCanNotify(a.course);
@@ -90,7 +90,7 @@ export async function scanDeadlines(
       project: async () => a.course,
       registeredOwners,
     });
-    if (audience.length === 0 || !a.dueAt) continue;
+    if (audience.length === 0) continue;
     enqueued += await deps.enqueue(
       audience,
       homeworkDue({
