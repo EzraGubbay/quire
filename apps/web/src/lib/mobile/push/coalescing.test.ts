@@ -39,7 +39,7 @@ async function importFile(n: number, now: Date) {
   );
 }
 
-const dispatch = (now: Date) => dispatchDue(now, { store: m.outbox, transport: fake });
+const dispatch = (now: Date) => dispatchDue(now, { store: m.outbox, transport: fake, clock: () => now });
 
 beforeEach(() => {
   m = memoryPushStore();
@@ -83,13 +83,17 @@ describe('files.added coalescing', () => {
     expect(fake.sent[0]?.data).toMatchObject({ count: '1', fileId: 'doc-1' });
   });
 
-  it('a steady trickle is capped at 10 min after the first import', async () => {
+  it('a steady trickle is capped at 10 min after the first import; a row past the cap forms the next batch', async () => {
     await device('fcm-A');
     for (let i = 0; i < 10; i++) await importFile(i, at(i * 60 * S)); // one a minute, 0–9 min
-    for (const r of m.rows) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
+    // Every older row is held at the cap; the newest starts at its own now + 90 s, which is past it.
+    for (const r of m.rows.slice(0, 9)) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
+    expect(m.rows[9]?.notBefore).toEqual(at(9 * 60 * S + COALESCE_DELAY_MS));
     await dispatch(at(COALESCE_CAP_MS));
     expect(fake.sent).toHaveLength(1);
-    expect(fake.sent[0]?.data).toMatchObject({ count: '10', fileId: 'doc-9' });
+    expect(fake.sent[0]?.data).toMatchObject({ count: '9', fileId: 'doc-8' });
+    await dispatch(at(9 * 60 * S + COALESCE_DELAY_MS));
+    expect(fake.sent[1]?.data).toMatchObject({ count: '1', fileId: 'doc-9' });
   });
 
   it('the slide never lowers not_before', async () => {
