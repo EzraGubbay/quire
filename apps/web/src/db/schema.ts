@@ -22,7 +22,7 @@ import {
   TEST_RESULTS,
   TEST_STATUSES,
 } from '@quire/shared';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   boolean,
@@ -833,3 +833,66 @@ export const mobileUploadJobs = pgTable(
   ],
 );
 export type MobileUploadJob = typeof mobileUploadJobs.$inferSelect;
+
+/**
+ * Push registrations (QMOB-E8-S2a, ADR 0003 §3.2): one per paired device. `fcm_token` is a device secret: it is
+ * never returned by the API or logged. Revoking the device token deletes the row (`dbStore.revoke`), and the
+ * device's pending outbox rows cascade with it.
+ */
+export const mobilePushRegistrations = pgTable('mobile_push_registrations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tokenId: uuid('token_id')
+    .notNull()
+    .unique()
+    .references(() => mobileTokens.id, { onDelete: 'cascade' }),
+  fcmToken: text('fcm_token').notNull().unique(),
+  /** 'android' */
+  platform: text('platform').notNull(),
+  appVersion: text('app_version'),
+  categories: text('categories').array().notNull().default(sql`'{}'::text[]`),
+  ...timestamps,
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  /** Last non-retryable error code (an enum, never a raw message). */
+  lastError: text('last_error'),
+});
+export type MobilePushRegistration = typeof mobilePushRegistrations.$inferSelect;
+
+/**
+ * Push outbox (ADR 0003 §1, §3.2): one row per (event, registration). The dispatcher freezes due rows into a batch
+ * by stamping `batch_id`, which is also the message's `eventId`; rows are marked sent/dead by batch, never by group.
+ */
+export const mobilePushOutbox = pgTable(
+  'mobile_push_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    registrationId: uuid('registration_id')
+      .notNull()
+      .references(() => mobilePushRegistrations.id, { onDelete: 'cascade' }),
+    /** 'files.added' | 'homework.due' | 'note.synthesized' | 'push.test' */
+    type: text('type').notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    /** 'files:{courseId}' for coalesced events; null otherwise. */
+    groupKey: text('group_key'),
+    batchId: uuid('batch_id'),
+    /** The FCM data map (string values); eventId/count/fileId are set per batch at send time. */
+    data: jsonb('data').$type<Record<string, string>>().notNull(),
+    /** 'HIGH' | 'NORMAL' */
+    priority: text('priority').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    notBefore: timestamp('not_before', { withTimezone: true }).notNull().defaultNow(),
+    attempts: integer('attempts').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    deadAt: timestamp('dead_at', { withTimezone: true }),
+    /** Enum code ('expired', 'UNAVAILABLE', ...), never a raw message. */
+    lastError: text('last_error'),
+  },
+  (t) => [
+    uniqueIndex('mobile_push_outbox_registration_dedupe_uq').on(t.registrationId, t.dedupeKey),
+    index('mobile_push_outbox_due_idx')
+      .on(t.notBefore)
+      .where(sql`${t.sentAt} IS NULL AND ${t.deadAt} IS NULL`),
+    index('mobile_push_outbox_batch_idx').on(t.batchId),
+  ],
+);
+export type MobilePushOutboxRow = typeof mobilePushOutbox.$inferSelect;
