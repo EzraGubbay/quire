@@ -52,6 +52,10 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:migrate
+      - name: Push SQL store integration tests
+        run: pnpm --filter web exec vitest run src/lib/mobile/push/db.integration
+        env:
+          QUIRE_DB_TESTS: '1'
       - run: pnpm build
       - run: pnpm --filter web exec playwright install --with-deps chromium
       - run: pnpm --filter web test:e2e

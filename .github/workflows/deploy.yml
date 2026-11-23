@@ -97,19 +97,26 @@ jobs:
       - name: Sync FCM credential into .env
         working-directory: /srv/quire
         # Upserts (or removes, when the secret is empty) the single FCM_SERVICE_ACCOUNT_JSON_BASE64 line in .env.
-        # The secret only ever travels through the environment and stdin: `printf` is a bash builtin, so it never
-        # appears in a process's argv, and there is no `set -x`. The temp file is created under umask 077 and
-        # then `cat` over .env, so .env keeps its mode and owner. Rotating the key = update the Actions secret,
-        # then run this workflow by hand (workflow_dispatch); Compose recreates `app` because its env changed.
+        # The secret only ever travels through the environment and stdin: `printf` and `[[ ]]` are bash builtins,
+        # so it never appears in a process's argv, and there is no `set -x`. A malformed value fails the step
+        # without being echoed. The new file is built under umask 077 in the same directory, given .env's mode,
+        # then renamed over .env atomically (a failed step never leaves .env truncated). Rotating the key = update
+        # the Actions secret, then run this workflow by hand (workflow_dispatch); Compose recreates `app` because
+        # its env changed.
+        shell: bash
         env:
           FCM_B64: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON_BASE64 }}
         run: |
           set -euo pipefail
           test -f .env || { echo "/srv/quire/.env missing (see infra/.env.example)"; exit 1; }
+          value=$(printf '%s' "${FCM_B64:-}" | tr -d '\r\n ')
+          if [[ -n "$value" && ! "$value" =~ ^[A-Za-z0-9+/_=-]+$ ]]; then
+            echo "::error::FCM_SERVICE_ACCOUNT_JSON_BASE64 is not one-line base64 after stripping whitespace (value not shown)"
+            exit 1
+          fi
           umask 077
           tmp=$(mktemp .env.fcm.XXXXXX)
           trap 'rm -f "$tmp"' EXIT
-          value=$(printf '%s' "${FCM_B64:-}" | tr -d '\r\n ')
           # grep exits 1 when it selects no lines (an .env holding only this key); only >1 is an error.
           grep -v '^FCM_SERVICE_ACCOUNT_JSON_BASE64=' < .env > "$tmp" || [ $? -eq 1 ]
           if [ -n "$value" ]; then
@@ -118,7 +125,8 @@ jobs:
           else
             echo "push disabled: no FCM credential"
           fi
-          cat "$tmp" > .env
+          chmod --reference=.env "$tmp"
+          mv -f "$tmp" .env
       - name: Pull, migrate, restart
         working-directory: /srv/quire
         env:
