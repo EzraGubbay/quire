@@ -202,7 +202,7 @@ export const PushPlatform = z.enum(['android']);
 
 /** `categories` accepts any strings: unknown ones are ignored (forward compatible with newer apps). */
 export const PushRegistrationRequest = z.object({
-  fcmToken: z.string().min(1).max(4096),
+  fcmToken: z.string().min(1).max(1024),
   platform: PushPlatform,
   appVersion: z.string().max(32).optional(),
   categories: z.array(z.string().max(64)).max(32),

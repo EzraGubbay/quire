@@ -71,11 +71,14 @@ export interface OutboxStore {
   registrationError(registrationId: string, code: string): Promise<void>;
 }
 
-/** A thrown error's class or SQLSTATE only: messages can quote values. */
+/** A thrown error's SQLSTATE (also from `cause`: drizzle wraps PG errors) or class only: messages can quote values. */
 export const errTag = (e: unknown) => {
-  const x = e as { code?: unknown; name?: unknown } | null;
+  const x = e as { code?: unknown; name?: unknown; cause?: { code?: unknown } } | null;
   return String(
-    (typeof x?.code === 'string' && x.code) || (typeof x?.name === 'string' && x.name) || 'Error',
+    (typeof x?.code === 'string' && x.code) ||
+      (typeof x?.cause?.code === 'string' && x.cause.code) ||
+      (typeof x?.name === 'string' && x.name) ||
+      'Error',
   );
 };
 
@@ -105,7 +108,8 @@ export async function enqueuePush(
           data: event.data,
           priority: event.priority,
           expiresAt,
-          notBefore: now,
+          // ADR §1: a grouped row starts at now + 90 s; the slide below only ever moves it later.
+          notBefore: event.groupKey ? new Date(now.getTime() + COALESCE_DELAY_MS) : now,
         },
         now,
       );

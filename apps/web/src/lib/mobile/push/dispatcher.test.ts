@@ -48,7 +48,8 @@ afterEach(() => {
 
 const enqueue = (e: ReturnType<typeof file>, now: Date) =>
   enqueuePush(['local'], e, { store: m.outbox, config: enabled, now });
-const dispatch = (now: Date, store: OutboxStore = m.outbox) => dispatchDue(now, { store, transport: fake });
+const dispatch = (now: Date, store: OutboxStore = m.outbox) =>
+  dispatchDue(now, { store, transport: fake, clock: () => now });
 
 describe('dispatchDue: single events', () => {
   it('sends a due row as a one-row batch with eventId = batch_id and marks it sent', async () => {
@@ -194,7 +195,7 @@ describe('dispatchDue: outcomes (ADR 0003 §3.4)', () => {
     fake.script('fcm-A', cfg, cfg);
     await dispatch(at(MIN));
     expect(m.rows.every((r) => r.deadAt && r.lastError === 'SENDER_ID_MISMATCH')).toBe(true);
-    expect(m.regs[0]).toMatchObject({ id: reg.id, lastError: 'SENDER_ID_MISMATCH' });
+    expect(m.regs[0]).toMatchObject({ id: reg.id, lastError: null }); // config-fatal is not the device's fault
     const configLogs = logs.filter((l) => String(l[0]).includes('FCM config error: SENDER_ID_MISMATCH'));
     expect(configLogs.length).toBeLessThanOrEqual(1);
   });
@@ -240,8 +241,48 @@ describe('dispatchDue: outcomes (ADR 0003 §3.4)', () => {
   it('a throwing transport counts as retryable', async () => {
     await enqueue(note(1), t0);
     const boom = { send: async () => Promise.reject(new Error('fcm-A exploded')) };
-    await dispatchDue(t0, { store: m.outbox, transport: boom });
+    await dispatchDue(t0, { store: m.outbox, transport: boom, clock: () => t0 });
     expect(m.rows[0]).toMatchObject({ attempts: 1, deadAt: null });
+  });
+
+  it.each(['NETWORK', 'TIMEOUT', 'OAUTH_UNAVAILABLE', 'OAUTH_REJECTED'])(
+    'a %s failure ends the pass; the remaining batches go out next pass',
+    async (code) => {
+      await enqueue(note(1), t0);
+      await enqueue(note(2), at(1));
+      fake.script('fcm-A', {
+        ok: false,
+        kind: code === 'OAUTH_REJECTED' ? 'config' : 'retryable',
+        errorCode: code,
+      });
+      const s = await dispatch(at(MIN));
+      expect(s).toMatchObject({ aborted: true, batches: 1 });
+      expect(fake.sent).toHaveLength(1);
+      const untouched = m.rows[1];
+      expect(untouched).toMatchObject({ sentAt: null, deadAt: null, attempts: 0 });
+      expect(untouched?.batchId).toBeTruthy(); // frozen this pass, sent as-is next pass
+      const next = await dispatch(at(2 * MIN));
+      expect(next?.sent).toBeGreaterThanOrEqual(1);
+      expect(fake.sent.slice(1).map((x) => x.data.eventId)).toContain(untouched?.batchId);
+      expect(untouched?.sentAt).toEqual(at(2 * MIN));
+    },
+  );
+
+  it('an ordinary per-device failure does not end the pass', async () => {
+    await enqueue(note(1), t0);
+    await enqueue(note(2), at(1));
+    fake.script('fcm-A', { ok: false, kind: 'retryable', errorCode: 'UNAVAILABLE' });
+    const s = await dispatch(at(MIN));
+    expect(s).toMatchObject({ aborted: false, batches: 2, retried: 1, sent: 1 });
+  });
+
+  it('takes a fresh clock reading per batch for TTL and bookkeeping', async () => {
+    await enqueue(note(1), t0);
+    await enqueue(note(2), t0);
+    const times = [at(MIN), at(MIN + 5_000)];
+    await dispatchDue(at(MIN), { store: m.outbox, transport: fake, clock: () => times.shift() ?? at(MIN) });
+    expect(fake.sent.map((x) => x.ttlSeconds)).toEqual([86_400 - 60, 86_400 - 65]);
+    expect(m.rows.map((r) => r.sentAt)).toEqual([at(MIN), at(MIN + 5_000)]);
   });
 
   it('never sends to a revoked device', async () => {
@@ -256,9 +297,9 @@ describe('dispatchDue: outcomes (ADR 0003 §3.4)', () => {
     await enqueue(note(1), t0);
     let release!: () => void;
     const slow = { send: () => new Promise<SendResult>((r) => (release = () => r({ ok: true }))) };
-    const a = dispatchDue(t0, { store: m.outbox, transport: slow });
+    const a = dispatchDue(t0, { store: m.outbox, transport: slow, clock: () => t0 });
     await new Promise((r) => setTimeout(r, 0));
-    expect(await dispatchDue(t0, { store: m.outbox, transport: slow })).toBeNull();
+    expect(await dispatchDue(t0, { store: m.outbox, transport: slow, clock: () => t0 })).toBeNull();
     release();
     expect((await a)?.sent).toBe(1);
   });

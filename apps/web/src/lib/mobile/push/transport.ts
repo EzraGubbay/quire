@@ -35,7 +35,14 @@ const FCM_ERROR_TYPE = 'type.googleapis.com/google.firebase.fcm.v1.FcmError';
 const BAD_REQUEST_TYPE = 'type.googleapis.com/google.rpc.BadRequest';
 /** The credential or project does not match the app; the device is fine, so the registration is kept. */
 const CONFIG_CODES = new Set(['SENDER_ID_MISMATCH', 'PERMISSION_DENIED', 'UNAUTHENTICATED']);
-const RETRYABLE_CODES = new Set(['QUOTA_EXCEEDED', 'UNAVAILABLE', 'INTERNAL', 'RESOURCE_EXHAUSTED']);
+const RETRYABLE_CODES = new Set([
+  'QUOTA_EXCEEDED',
+  'UNAVAILABLE',
+  'INTERNAL',
+  'RESOURCE_EXHAUSTED',
+  'DEADLINE_EXCEEDED',
+  'ABORTED',
+]);
 const REQUEST_TIMEOUT_MS = 15_000;
 /** Refresh the cached access token this long before it expires. */
 const TOKEN_SKEW_MS = 5 * 60 * 1000;

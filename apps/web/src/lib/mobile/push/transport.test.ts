@@ -305,6 +305,14 @@ describe('classifyFcmError (error detail, never HTTP status alone)', () => {
       { kind: 'retryable', errorCode: 'INTERNAL' },
     ],
     [
+      'DEADLINE_EXCEEDED → retryable',
+      504,
+      fcmErr('DEADLINE_EXCEEDED'),
+      null,
+      { kind: 'retryable', errorCode: 'DEADLINE_EXCEEDED' },
+    ],
+    ['ABORTED → retryable', 409, fcmErr('ABORTED'), null, { kind: 'retryable', errorCode: 'ABORTED' }],
+    [
       'FcmError code wins over the rpc status',
       400,
       fcmErr('INVALID_ARGUMENT', 'UNREGISTERED'),

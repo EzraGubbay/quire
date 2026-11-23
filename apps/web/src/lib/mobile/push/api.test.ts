@@ -156,6 +156,12 @@ describe('PUT /push/registration', () => {
     expect(PushRegistrationState.parse(await (await get(a.bearer)).json()).registration).toBeNull();
   });
 
+  it('accepts an FCM token of exactly 1024 characters', async () => {
+    const d = m.addDevice();
+    const res = await put(d.bearer, goodBody({ fcmToken: 't'.repeat(1024) }));
+    expect(res.status).toBe(200);
+  });
+
   it('reports pushEnabled false when push is disabled, but still stores the registration', async () => {
     config = { enabled: false, reason: 'missing' };
     const d = m.addDevice();
@@ -168,7 +174,7 @@ describe('PUT /push/registration', () => {
     ['a non-JSON body', '{nope'],
     ['a missing fcmToken', { platform: 'android', categories: [] }],
     ['an empty fcmToken', goodBody({ fcmToken: '' })],
-    ['an oversized fcmToken', goodBody({ fcmToken: `${FCM}${'x'.repeat(4096)}` })],
+    ['an oversized fcmToken (> 1024)', goodBody({ fcmToken: `${FCM}${'x'.repeat(1025 - FCM.length)}` })],
     ['an unknown platform', goodBody({ platform: 'ios' })],
     ['a long appVersion', goodBody({ appVersion: 'v'.repeat(33) })],
     ['missing categories', { fcmToken: FCM, platform: 'android' }],
@@ -285,7 +291,8 @@ describe('POST /push/test', () => {
     expect(fake.sent[0]).toMatchObject({ token: FCM, data: { type: 'push.test', eventId: body.eventId } });
     const row = m.rows.find((r) => r.dedupeKey === `push.test:${body.eventId}`);
     expect(row?.sentAt).toEqual(t0);
-    await dispatchDue(new Date(t0.getTime() + 600_000), { store: m.outbox, transport: fake });
+    const later = new Date(t0.getTime() + 600_000);
+    await dispatchDue(later, { store: m.outbox, transport: fake, clock: () => later });
     expect(fake.sent).toHaveLength(1); // the recorded row is terminal: never resent
   });
 

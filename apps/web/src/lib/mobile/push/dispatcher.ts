@@ -34,7 +34,18 @@ function logConfigOnce(code: string) {
 export interface DispatchDeps {
   store: OutboxStore;
   transport: PushTransport;
+  /** Time for each batch's send and bookkeeping (fresh per batch); defaults to the wall clock. */
+  clock?: () => Date;
 }
+
+/** Failures of the transport itself, not of one device: the rest of the pass would fail the same way. */
+const TRANSPORT_DOWN = new Set([
+  'NETWORK',
+  'TIMEOUT',
+  'OAUTH_UNAVAILABLE',
+  'OAUTH_REJECTED',
+  'BAD_PRIVATE_KEY',
+]);
 
 export interface DispatchSummary {
   batches: number;
@@ -44,6 +55,8 @@ export interface DispatchSummary {
   pruned: number;
   expired: number;
   held: number;
+  /** The pass stopped early after a network/OAuth failure; the remaining batches wait for the next pass. */
+  aborted: boolean;
 }
 
 const collapseKeyFor = (type: string) => (type === 'push.test' ? 'push.test' : undefined);
@@ -68,8 +81,19 @@ export async function dispatchDue(now: Date, deps: DispatchDeps): Promise<Dispat
   }
 }
 
-async function dispatchOnce(now: Date, { store, transport }: DispatchDeps): Promise<DispatchSummary> {
-  const s: DispatchSummary = { batches: 0, sent: 0, retried: 0, dead: 0, pruned: 0, expired: 0, held: 0 };
+async function dispatchOnce(now: Date, deps: DispatchDeps): Promise<DispatchSummary> {
+  const { store, transport } = deps;
+  const clock = deps.clock ?? (() => new Date());
+  const s: DispatchSummary = {
+    batches: 0,
+    sent: 0,
+    retried: 0,
+    dead: 0,
+    pruned: 0,
+    expired: 0,
+    held: 0,
+    aborted: false,
+  };
   const due = await store.due(now, DISPATCH_LIMIT);
 
   const expired = due.filter((r) => r.expiresAt <= now);
@@ -104,7 +128,13 @@ async function dispatchOnce(now: Date, { store, transport }: DispatchDeps): Prom
     if (stamped.length) batchIds.push(batchId);
   }
 
-  for (const batchId of batchIds) await sendBatch(batchId, now, store, transport, s);
+  for (const batchId of batchIds) {
+    const result = await sendBatch(batchId, clock(), store, transport, s);
+    if (result && !result.ok && TRANSPORT_DOWN.has(result.errorCode)) {
+      s.aborted = true;
+      break;
+    }
+  }
   return s;
 }
 
@@ -114,7 +144,7 @@ async function sendBatch(
   store: OutboxStore,
   transport: PushTransport,
   s: DispatchSummary,
-) {
+): Promise<SendResult | null> {
   const rows = await store.batchRows(batchId);
   const expired = rows.filter((r) => r.expiresAt <= now);
   await store.markRowsDead(
@@ -124,7 +154,7 @@ async function sendBatch(
   );
   s.expired += expired.length;
   const live = rows.filter((r) => r.expiresAt > now);
-  if (live.length === 0) return;
+  if (live.length === 0) return null;
   s.batches++;
 
   const newest = live.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
@@ -140,6 +170,7 @@ async function sendBatch(
     registrationId,
   });
   await applyOutcome(result, { batchId, registrationId, attempts, now, store, s });
+  return result;
 }
 
 async function applyOutcome(
@@ -167,8 +198,8 @@ async function applyOutcome(
       s.pruned++;
       return;
     case 'config':
+      // The server's credential/project is wrong, not the device: the registration stays clean.
       await store.markBatchDead(batchId, now, result.errorCode);
-      await store.registrationError(registrationId, result.errorCode);
       logConfigOnce(result.errorCode);
       s.dead++;
       return;

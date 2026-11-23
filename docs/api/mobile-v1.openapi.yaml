@@ -911,7 +911,7 @@ components:
       type: object
       required: [fcmToken, platform, categories]
       properties:
-        fcmToken: { type: string, minLength: 1, maxLength: 4096, description: Never echoed or logged. }
+        fcmToken: { type: string, minLength: 1, maxLength: 1024, description: Never echoed or logged. }
         platform: { type: string, enum: [android] }
         appVersion: { type: string, maxLength: 32 }
         categories:

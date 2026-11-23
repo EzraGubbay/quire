@@ -1,6 +1,7 @@
 // Push configuration (ADR 0003 §3.3, §5). Reads FCM_SERVICE_ACCOUNT_JSON_BASE64 once per process. The disabled
 // reason is a fixed enum and is the only thing ever logged: never `err.message` (a JSON.parse error quotes its
 // input, which is key material, and deploy.yml's rollback dumps app logs into the Actions log).
+import { createPrivateKey } from 'node:crypto';
 
 export type DisabledReason =
   | 'missing'
@@ -9,7 +10,8 @@ export type DisabledReason =
   | 'wrong_type'
   | 'missing_field:project_id'
   | 'missing_field:client_email'
-  | 'missing_field:private_key';
+  | 'missing_field:private_key'
+  | 'bad_private_key';
 
 export type PushConfig =
   | { enabled: true; transport: 'fcm'; projectId: string; clientEmail: string; privateKey: string }
@@ -44,13 +46,20 @@ export function parsePushConfig(env: Record<string, string | undefined>): PushCo
     const v = sa[f];
     if (typeof v !== 'string' || !v.trim()) return { enabled: false, reason: `missing_field:${f}` };
   }
+  // A key pasted through an extra layer of escaping keeps literal "\n" sequences; PEM needs real newlines.
+  const privateKey = (sa.private_key as string).replace(/\\n/g, '\n');
+  try {
+    createPrivateKey(privateKey);
+  } catch {
+    // Deliberately no binding: the error could describe the key.
+    return { enabled: false, reason: 'bad_private_key' };
+  }
   return {
     enabled: true,
     transport: 'fcm',
     projectId: sa.project_id as string,
     clientEmail: sa.client_email as string,
-    // A key pasted through an extra layer of escaping keeps literal "\n" sequences; PEM needs real newlines.
-    privateKey: (sa.private_key as string).replace(/\\n/g, '\n'),
+    privateKey,
   };
 }
 

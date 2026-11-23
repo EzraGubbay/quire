@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PushConfig } from './config';
 import { filesAdded, noteSynthesized, pushTest } from './events';
 import { memoryPushStore } from './memory-store';
-import { COALESCE_CAP_MS, COALESCE_DELAY_MS, enqueuePush, type OutboxStore } from './outbox';
+import { COALESCE_CAP_MS, COALESCE_DELAY_MS, enqueuePush, errTag, type OutboxStore } from './outbox';
 
 const enabled = (): PushConfig => ({ enabled: true, transport: 'fake' });
 const disabled = (): PushConfig => ({ enabled: false, reason: 'missing' });
@@ -112,7 +112,16 @@ describe('coalescing slide (ADR 0003 §1)', () => {
     await register();
     for (let i = 0; i < 10; i++)
       await enqueuePush(['local'], file(i), { store: m.outbox, config: enabled, now: at(i * 60_000) });
-    for (const r of m.rows) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
+    // Rows 0–8 slide no further than the cap. Row 9 is inserted at its own now + 90 s (ADR §1), past the cap.
+    for (const r of m.rows.slice(0, 9)) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
+    expect(m.rows[9]?.notBefore).toEqual(at(9 * 60_000 + COALESCE_DELAY_MS));
+  });
+
+  it('inserts a grouped row at now + 90 s even when the group is already due (never earlier)', async () => {
+    await register();
+    await enqueuePush(['local'], file(1), { store: m.outbox, config: enabled, now: t0 });
+    await enqueuePush(['local'], file(2), { store: m.outbox, config: enabled, now: at(11 * 60_000) });
+    expect(m.rows[1]?.notBefore).toEqual(at(11 * 60_000 + COALESCE_DELAY_MS));
   });
 
   it('never moves not_before earlier', async () => {
@@ -133,6 +142,20 @@ describe('coalescing slide (ADR 0003 §1)', () => {
     await enqueuePush(['local'], file(2), { store: m.outbox, config: enabled, now: at(60_000) });
     expect(m.rows[0]?.notBefore).toEqual(at(COALESCE_DELAY_MS));
     expect(m.rows[1]?.notBefore).toEqual(at(150_000));
+  });
+});
+
+describe('errTag', () => {
+  it('prefers the SQLSTATE, also from a drizzle-wrapped cause, else the class; never the message', () => {
+    const pg = Object.assign(new Error('Key (fcm_token)=(SECRET) already exists'), { code: '23505' });
+    expect(errTag(pg)).toBe('23505');
+    const wrapped = Object.assign(new Error('Failed query: insert … params: SECRET'), {
+      name: 'DrizzleQueryError',
+      cause: pg,
+    });
+    expect(errTag(wrapped)).toBe('23505');
+    expect(errTag(new TypeError('SECRET'))).toBe('TypeError');
+    expect(errTag(null)).toBe('Error');
   });
 });
 

@@ -1,14 +1,20 @@
 // @vitest-environment node
+import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parsePushConfig, pushConfig, resetPushConfig } from './config';
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
 const SECRET = 'TOPSECRET-KEY-MATERIAL-123';
+const PEM = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  .privateKey.export({ type: 'pkcs8', format: 'pem' })
+  .toString();
+/** PEM-shaped but not a key; carries a marker so a leak would show in logs. */
+const BAD_KEY = `-----BEGIN PRIVATE KEY-----\n${SECRET}\n-----END PRIVATE KEY-----\n`;
 const sa = (over: Record<string, unknown> = {}) => ({
   type: 'service_account',
   project_id: 'quire-push-test',
   client_email: 'fcm@quire-push-test.iam.gserviceaccount.com',
-  private_key: `-----BEGIN PRIVATE KEY-----\n${SECRET}\n-----END PRIVATE KEY-----\n`,
+  private_key: PEM,
   ...over,
 });
 const env = (v: string | undefined) => ({ FCM_SERVICE_ACCOUNT_JSON_BASE64: v });
@@ -72,8 +78,16 @@ describe('parsePushConfig', () => {
   });
 
   it('turns literal \\n sequences in the key into newlines', () => {
-    const c = parsePushConfig(env(b64(JSON.stringify(sa({ private_key: 'a\\nb' })))));
-    expect(c).toMatchObject({ enabled: true, privateKey: 'a\nb' });
+    const escaped = PEM.replace(/\n/g, '\\n');
+    const c = parsePushConfig(env(b64(JSON.stringify(sa({ private_key: escaped })))));
+    expect(c).toMatchObject({ enabled: true, privateKey: PEM });
+  });
+
+  it('bad_private_key when the key does not parse', () => {
+    expect(parsePushConfig(env(b64(JSON.stringify(sa({ private_key: BAD_KEY })))))).toEqual({
+      enabled: false,
+      reason: 'bad_private_key',
+    });
   });
 
   it('PUSH_TRANSPORT=fake enables the fake transport without a credential', () => {
@@ -100,6 +114,7 @@ describe('pushConfig', () => {
       b64(`{"private_key":"${SECRET}"`),
       b64(JSON.stringify(sa({ type: SECRET }))),
       b64(JSON.stringify(sa({ project_id: '' }))),
+      b64(JSON.stringify(sa({ private_key: BAD_KEY }))),
       b64(JSON.stringify(sa())),
     ];
     for (const v of inputs) {
@@ -115,5 +130,7 @@ describe('pushConfig', () => {
     expect(logged).toMatch(/\[push\] disabled: bad_json/);
     expect(logged).toMatch(/\[push\] disabled: wrong_type/);
     expect(logged).toMatch(/\[push\] disabled: missing_field:project_id/);
+    expect(logged).toMatch(/\[push\] disabled: bad_private_key/);
+    expect(logged).not.toContain('PRIVATE KEY');
   });
 });

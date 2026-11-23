@@ -149,14 +149,18 @@ describe.skipIf(!run)('push SQL stores (integration)', () => {
       errorCode: 'UNAVAILABLE',
       retryAfterMs: 300_000,
     });
-    await dispatchDue(at(120_000), { store: dbOutbox, transport: fake });
+    await dispatchDue(at(120_000), { store: dbOutbox, transport: fake, clock: () => at(120_000) });
     const frozen = fake.sent[0]?.data;
     expect(frozen).toMatchObject({ count: '2', fileId: 'doc-2' });
 
     await enqueuePush([OWNER], file(3), { store: dbOutbox, config: enabled, now: at(121_000) });
-    const held = await dispatchDue(at(300_000), { store: dbOutbox, transport: fake });
+    const held = await dispatchDue(at(300_000), {
+      store: dbOutbox,
+      transport: fake,
+      clock: () => at(300_000),
+    });
     expect(held?.held).toBe(1);
-    await dispatchDue(at(420_001), { store: dbOutbox, transport: fake });
+    await dispatchDue(at(420_001), { store: dbOutbox, transport: fake, clock: () => at(420_001) });
     expect(fake.sent[1]?.data).toEqual(frozen);
     const rows = await rowsOf(reg.id);
     expect(rows.slice(0, 2).every((r) => r.sentAt && r.attempts === 1)).toBe(true);
@@ -178,7 +182,7 @@ describe.skipIf(!run)('push SQL stores (integration)', () => {
     );
     await db.update(mobileTokens).set({ revokedAt: t0 }).where(eq(mobileTokens.id, d.id)); // soft revoke only
     const fake = fakeTransport();
-    await dispatchDue(at(60_000), { store: dbOutbox, transport: fake });
+    await dispatchDue(at(60_000), { store: dbOutbox, transport: fake, clock: () => at(60_000) });
     expect(fake.sent).toEqual([]);
     expect((await rowsOf(reg.id))[0]?.sentAt).toBeNull();
   });
@@ -190,7 +194,7 @@ describe.skipIf(!run)('push SQL stores (integration)', () => {
     expect(r.outcome).toBe('sent');
     const [row] = await rowsOf(reg.id);
     expect(row).toMatchObject({ batchId: r.eventId, dedupeKey: `push.test:${r.eventId}`, sentAt: t0 });
-    await dispatchDue(at(60_000), { store: dbOutbox, transport: fake });
+    await dispatchDue(at(60_000), { store: dbOutbox, transport: fake, clock: () => at(60_000) });
     expect(fake.sent).toHaveLength(1);
     expect(
       (await db.select().from(mobilePushRegistrations).where(eq(mobilePushRegistrations.id, reg.id)))[0]
