@@ -1,19 +1,22 @@
 // The in-process push loop (ADR 0003 §3.3). Started from instrumentation.ts on every nodejs boot. Idempotent across
 // dev hot reloads (globalThis flag); every timer is unref()'d so it never keeps a process (tests, scripts) alive.
-// S2b adds `scanDeadlines` here on a 10-minute tick.
+// Every 10 min it scans for homework due within 24 h (deadlines.ts).
 import { pushConfig } from './config';
+import { scanDeadlines } from './deadlines';
 import { dispatchDue } from './dispatcher';
 import { dbOutbox, errTag } from './outbox';
 import { currentTransport } from './runtime';
 
 export const DISPATCH_EVERY_MS = 30_000;
 export const PURGE_EVERY_MS = 24 * 60 * 60 * 1000;
+export const SCAN_DEADLINES_EVERY_MS = 10 * 60 * 1000;
 export const PURGE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 const FIRST_RUN_MS = 5_000;
 
 export interface LoopTasks {
   dispatch(): Promise<unknown>;
   purge(): Promise<unknown>;
+  scanDeadlines(): Promise<unknown>;
 }
 
 export const defaultTasks: LoopTasks = {
@@ -24,6 +27,9 @@ export const defaultTasks: LoopTasks = {
   },
   async purge() {
     return dbOutbox.purge(new Date(Date.now() - PURGE_AFTER_MS));
+  },
+  async scanDeadlines() {
+    return scanDeadlines(new Date()); // no-op (no query) when push is disabled
   },
 };
 
@@ -44,12 +50,15 @@ export function startPushLoop(tasks: LoopTasks = defaultTasks): boolean {
   pushConfig(); // logs `[push] disabled: <reason>` or the transport once, at boot
   const dispatch = guarded('dispatch', tasks.dispatch);
   const purge = guarded('purge', tasks.purge);
+  const deadlines = guarded('scanDeadlines', tasks.scanDeadlines);
   const timers: Timer[] = [
     setInterval(dispatch, DISPATCH_EVERY_MS),
     setInterval(purge, PURGE_EVERY_MS),
+    setInterval(deadlines, SCAN_DEADLINES_EVERY_MS),
     setTimeout(() => {
       void dispatch();
       void purge();
+      void deadlines();
     }, FIRST_RUN_MS),
   ];
   for (const t of timers) t.unref?.();

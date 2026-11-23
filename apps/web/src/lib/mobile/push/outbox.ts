@@ -45,7 +45,11 @@ export type NewOutboxRow = Pick<
 export interface OutboxStore {
   /** Registration ids of these owners whose device token is active and whose categories include `category`. */
   targets(owners: readonly string[], category: PushCategory): Promise<string[]>;
-  /** Insert with ON CONFLICT (registration_id, dedupe_key) DO NOTHING; true when a row was inserted. */
+  /**
+   * Insert with ON CONFLICT (registration_id, dedupe_key) DO NOTHING; true when a row was inserted. An unbatched
+   * grouped row's `not_before` is capped at the oldest unbatched pending row of its group (itself when there is
+   * none) + 10 min, so it converges with the rows already waiting instead of starting a batch of its own.
+   */
   insert(row: NewOutboxRow, now: Date): Promise<boolean>;
   /**
    * The group's unbatched pending rows → `not_before = greatest(not_before, least(now + 90 s, oldest created_at +
@@ -108,7 +112,8 @@ export async function enqueuePush(
           data: event.data,
           priority: event.priority,
           expiresAt,
-          // ADR §1: a grouped row starts at now + 90 s; the slide below only ever moves it later.
+          // ADR §1: a grouped row starts at now + 90 s, capped by the store at the group's oldest + 10 min; the slide
+          // below only ever moves rows later.
           notBefore: event.groupKey ? new Date(now.getTime() + COALESCE_DELAY_MS) : now,
         },
         now,
@@ -153,6 +158,11 @@ const dueColumns = {
 };
 
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
+const CAP = sql.raw(`interval '${COALESCE_CAP_MS / 1000} seconds'`);
+/** min(created_at) of the group's unbatched pending rows; NULL when there are none. */
+const oldestUnbatched = (registrationId: string, groupKey: string) =>
+  sql`(SELECT min(o2.created_at) FROM mobile_push_outbox o2 WHERE o2.registration_id = ${registrationId}
+      AND o2.group_key = ${groupKey} AND o2.batch_id IS NULL AND o2.sent_at IS NULL AND o2.dead_at IS NULL)`;
 
 // Single-process assumption (ADR Consequences): a second replica would need `FOR UPDATE SKIP LOCKED` in `due`.
 export const dbOutbox: OutboxStore = {
@@ -173,15 +183,20 @@ export const dbOutbox: OutboxStore = {
   async insert(row, now) {
     const got = await db
       .insert(outbox)
-      .values({ ...row, notBefore: row.notBefore ?? now, createdAt: now })
+      .values({
+        ...row,
+        notBefore:
+          row.groupKey && !row.batchId
+            ? sql`least(${ts(row.notBefore ?? now)}, coalesce(${oldestUnbatched(row.registrationId, row.groupKey)}, ${ts(now)}) + ${CAP})`
+            : (row.notBefore ?? now),
+        createdAt: now,
+      })
       .onConflictDoNothing({ target: [outbox.registrationId, outbox.dedupeKey] })
       .returning({ id: outbox.id });
     return got.length > 0;
   },
   async slideGroup(registrationId, groupKey, now) {
-    const oldest = sql`(SELECT min(o2.created_at) FROM mobile_push_outbox o2 WHERE o2.registration_id = ${registrationId}
-      AND o2.group_key = ${groupKey} AND o2.batch_id IS NULL AND o2.sent_at IS NULL AND o2.dead_at IS NULL)`;
-    const target = sql`least(${ts(new Date(now.getTime() + COALESCE_DELAY_MS))}, ${oldest} + ${sql.raw(`interval '${COALESCE_CAP_MS / 1000} seconds'`)})`;
+    const target = sql`least(${ts(new Date(now.getTime() + COALESCE_DELAY_MS))}, ${oldestUnbatched(registrationId, groupKey)} + ${CAP})`;
     await db
       .update(outbox)
       .set({ notBefore: sql`greatest(${outbox.notBefore}, ${target})` })

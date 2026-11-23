@@ -112,14 +112,21 @@ describe('coalescing slide (ADR 0003 §1)', () => {
     await register();
     for (let i = 0; i < 10; i++)
       await enqueuePush(['local'], file(i), { store: m.outbox, config: enabled, now: at(i * 60_000) });
-    // Rows 0–8 slide no further than the cap. Row 9 is inserted at its own now + 90 s (ADR §1), past the cap.
-    for (const r of m.rows.slice(0, 9)) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
-    expect(m.rows[9]?.notBefore).toEqual(at(9 * 60_000 + COALESCE_DELAY_MS));
+    // Every unbatched row, the newest included, converges on the cap: one batch.
+    for (const r of m.rows) expect(r.notBefore).toEqual(at(COALESCE_CAP_MS));
   });
 
-  it('inserts a grouped row at now + 90 s even when the group is already due (never earlier)', async () => {
+  it('a row joining a group already past its cap is due with it, not 90 s later', async () => {
     await register();
     await enqueuePush(['local'], file(1), { store: m.outbox, config: enabled, now: t0 });
+    await enqueuePush(['local'], file(2), { store: m.outbox, config: enabled, now: at(11 * 60_000) });
+    expect(m.rows.map((r) => r.notBefore)).toEqual([at(COALESCE_CAP_MS), at(COALESCE_CAP_MS)]);
+  });
+
+  it('a row with no unbatched group to join starts at now + 90 s', async () => {
+    await register();
+    await enqueuePush(['local'], file(1), { store: m.outbox, config: enabled, now: t0 });
+    await m.outbox.markRowsDead([m.rows[0]?.id as string], at(1000), 'expired');
     await enqueuePush(['local'], file(2), { store: m.outbox, config: enabled, now: at(11 * 60_000) });
     expect(m.rows[1]?.notBefore).toEqual(at(11 * 60_000 + COALESCE_DELAY_MS));
   });

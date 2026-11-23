@@ -4,6 +4,7 @@ import { db } from '@/db/client';
 import { documentPages, links, type Note, notes } from '@/db/schema';
 import { builtinFolder } from '@/lib/documents';
 import { mergedMacros } from '@/lib/macros';
+import { notifyNoteSynthesized } from '@/lib/mobile/push/triggers';
 import { createNote, getNote, syncLinks, updateNote } from '@/lib/notes';
 import { getProjectById, projectMeta } from '@/lib/projects';
 import { getSession } from '@/lib/sessions';
@@ -169,8 +170,11 @@ export async function setSynthesizedFrom(
 export async function runSynthesis(projectId: string, targetId: string): Promise<void> {
   const s = await getAiSettings();
   const model = s.models.synthesis;
-  const fail = (message: string) =>
-    updateNote(projectId, targetId, { status: 'failed', error: message.slice(0, 2000) });
+  const fail = async (message: string) => {
+    const failed = await updateNote(projectId, targetId, { status: 'failed', error: message.slice(0, 2000) });
+    if (failed) void notifyNoteSynthesized(projectId, failed, 'failed'); // fire-and-forget
+    return failed;
+  };
   try {
     const [target, project] = await Promise.all([getNote(projectId, targetId), getProjectById(projectId)]);
     if (!target || !project) return;
@@ -222,8 +226,10 @@ export async function runSynthesis(projectId: string, targetId: string): Promise
     );
     await recordUsage({ projectId, task: 'synthesize', model: res.model, usage: res.usage, settings: s });
     const body = stripWrapping(res.text);
-    await updateNote(projectId, targetId, { body, status: 'ready', error: null });
+    const ready = await updateNote(projectId, targetId, { body, status: 'ready', error: null });
     await syncLinks(projectId, 'note', targetId, body);
+    // Only now is the note complete for a phone that fetches it. Fire-and-forget.
+    if (ready) void notifyNoteSynthesized(projectId, ready, 'ready');
     await indexOwner(projectId, 'note', targetId).catch(() => {});
     // Keep the synthesized edge: syncLinks only rewrites wiki edges.
   } catch (err) {

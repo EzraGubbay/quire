@@ -11,6 +11,7 @@ import { indexOwner } from '@/lib/ai/index';
 import { builtinFolder, createDeckDocument, createFolder, listFolders } from '@/lib/documents';
 import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
+import { notifyFilesAdded } from '@/lib/mobile/push/triggers';
 import { attachDocumentToSession, createSession, listSessions, sessionTitle } from '@/lib/sessions';
 import { classifyLemidaFile, cleanTitle, homeworkNumber, parseDueDate } from './classify';
 import { markSynced } from './courses';
@@ -214,7 +215,9 @@ export async function importLemidaFile(
   }
 
   const row = await recordFile(project.id, meta, hash, data.byteLength, cls, status, placement);
-  return asResult(row, false);
+  const result = asResult(row, false);
+  void notifyFilesAdded(project.id, result); // fire-and-forget: never fails or slows the import
+  return result;
 }
 
 async function setHash(documentId: string, hash: string): Promise<void> {
