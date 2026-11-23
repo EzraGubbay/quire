@@ -3,7 +3,7 @@
 // trigger can never fail or slow its caller. The call sites themselves are covered in lemida/import.push.test.ts and
 // ai/synthesis.push.test.ts.
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { PushConfig } from './config';
 import { PushPayload, pushFixtureName, wireData } from './events';
 import { memoryPushStore } from './memory-store';
@@ -33,7 +33,7 @@ const imported = (over: Partial<ImportOutcome> = {}): ImportOutcome => ({
 
 let m: ReturnType<typeof memoryPushStore>;
 let deps: TriggerDeps;
-let warn: ReturnType<typeof vi.spyOn>;
+let warn: MockInstance<typeof console.warn>;
 
 beforeEach(async () => {
   m = memoryPushStore();
