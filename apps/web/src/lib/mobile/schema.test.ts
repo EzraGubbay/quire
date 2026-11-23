@@ -39,6 +39,10 @@ const EXPECTED_OPERATIONS = [
   'POST /courses/{course}/threads/{threadId}/messages',
   'POST /courses/{course}/uploads',
   'GET /uploads/{uploadId}',
+  'PUT /push/registration',
+  'GET /push/registration',
+  'DELETE /push/registration',
+  'POST /push/test',
 ];
 
 interface Resp {
@@ -126,6 +130,7 @@ describe('OpenAPI document', () => {
       'rate_limited',
       'ai_unavailable',
       'internal',
+      'push_unavailable',
     ]);
   });
 });

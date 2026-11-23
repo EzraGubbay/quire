@@ -4,7 +4,7 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { mobilePairingCodes, mobileTokens } from '@/db/schema';
+import { mobilePairingCodes, mobilePushRegistrations, mobileTokens } from '@/db/schema';
 
 export const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 // Unambiguous (no 0/O/1/I/L) so it is easy to type from a screen; a subset of [0-9A-Za-z].
@@ -78,10 +78,15 @@ export const dbStore: AuthStore = {
     await db.update(mobileTokens).set({ lastUsedAt: now }).where(eq(mobileTokens.id, id));
   },
   async revoke(id, now) {
-    await db
-      .update(mobileTokens)
-      .set({ revokedAt: now })
-      .where(and(eq(mobileTokens.id, id), isNull(mobileTokens.revokedAt)));
+    // Revocation is a soft update, so the FK cascade never fires: delete the device's push registration in the
+    // same transaction (its pending outbox rows cascade). Covers DELETE /auth/token and web Settings → Revoke.
+    await db.transaction(async (tx) => {
+      await tx
+        .update(mobileTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(mobileTokens.id, id), isNull(mobileTokens.revokedAt)));
+      await tx.delete(mobilePushRegistrations).where(eq(mobilePushRegistrations.tokenId, id));
+    });
   },
 };
 

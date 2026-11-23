@@ -1,6 +1,8 @@
-// Builds the offline contract fixtures for the mobile apps from the examples in the OpenAPI document.
-// Pure (string in, map out) so the staleness test and scripts/mobile-fixtures.mts share one implementation.
+// Builds the offline contract fixtures for the mobile apps from the examples in the OpenAPI document, plus one
+// fixture per push payload from the pure push event builders. Pure (string in, map out) so the staleness test and
+// scripts/mobile-fixtures.mts share one implementation.
 import { parse } from 'yaml';
+import { pushFixtures } from './push/events';
 
 /** Repo-relative output directory of the committed fixtures. */
 export const FIXTURES_DIR = 'docs/api/fixtures/mobile-v1';
@@ -59,5 +61,8 @@ export function buildFixtures(specText: string): Map<string, string> {
       out.set(`error.${code}.json`, json(v));
     }
   }
+
+  // One `push.<type>.json` per push payload: the FCM data map exactly as sent, from the events.ts builders.
+  for (const [name, data] of pushFixtures()) out.set(name, json(data));
   return out;
 }
