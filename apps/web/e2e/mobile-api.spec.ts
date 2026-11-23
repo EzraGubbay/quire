@@ -1,4 +1,5 @@
 import { type APIRequestContext, type APIResponse, expect, test } from '@playwright/test';
+import postgres from 'postgres';
 import { type SeededCourse, seedCourse } from './fixtures/seed';
 
 /**
@@ -36,6 +37,7 @@ const ERROR_CODES = [
   'rate_limited',
   'ai_unavailable',
   'internal',
+  'push_unavailable',
 ] as const;
 
 test.describe
@@ -51,6 +53,8 @@ test.describe
     let threadId = '';
     /** Strong validator captured from the full file download, reused for the 304 check. */
     let etag = '';
+    /** The device id from `PUT /push/registration`, checked after revoke. */
+    let pushDeviceId = '';
 
     test.beforeAll(async ({ browser }) => {
       seeded = await seedCourse(browser);
@@ -359,6 +363,49 @@ test.describe
       expect(['queued', 'processing', 'done', 'failed']).toContain(polled.status);
     });
 
+    // ── Push: register → get → test push (QMOB-E8-S2a / #41). CI runs with PUSH_TRANSPORT=fake ─────────
+
+    test('QMOB-E8-S2a · register for push, read it back, and send a test push', async ({ request }) => {
+      const fcmToken = `e2e-fcm-${Date.now()}`;
+      const put = await request.put(`${BASE}/push/registration`, {
+        headers: bearer(),
+        data: {
+          fcmToken,
+          platform: 'android',
+          appVersion: '1.1.0',
+          categories: ['files', 'notes', 'future'],
+        },
+      });
+      expect(put.status()).toBe(200);
+      const registered = (await put.json()) as {
+        registration: { deviceId: string; categories: string[] };
+        pushEnabled: boolean;
+      };
+      expect(registered.registration.categories).toEqual(['files', 'notes']);
+      expect(registered.pushEnabled).toBe(true);
+      expect(JSON.stringify(registered)).not.toContain(fcmToken);
+      pushDeviceId = registered.registration.deviceId;
+
+      const got = await authedGet(request, `${BASE}/push/registration`);
+      expect(got.status()).toBe(200);
+      expect(((await got.json()) as { registration: { deviceId: string } }).registration.deviceId).toBe(
+        pushDeviceId,
+      );
+
+      const sent = await request.post(`${BASE}/push/test`, { headers: bearer() });
+      expect(sent.status()).toBe(200);
+      const result = (await sent.json()) as { eventId: string; outcome: string };
+      expect(result.outcome).toBe('sent');
+      expect(result.eventId).toBeTruthy();
+
+      // One test push per 30 s per device.
+      await expectEnvelope(
+        await request.post(`${BASE}/push/test`, { headers: bearer() }),
+        429,
+        'rate_limited',
+      );
+    });
+
     // ── Revoke, then 401 (QMOB-E1-S2 / #33) — last, so earlier steps still have a live token ──────────
 
     test('QMOB-E1-S2 · revoke the device token, after which the token is rejected with 401', async ({
@@ -367,5 +414,18 @@ test.describe
       const revoked = await request.delete(`${BASE}/auth/token`, { headers: bearer() });
       expect([200, 204]).toContain(revoked.status());
       await expectEnvelope(await authedGet(request, `${BASE}/me`), 401, 'unauthorized');
+    });
+
+    test('QMOB-E8-S2a · revoking the device deleted its push registration and pending pushes', async () => {
+      expect(pushDeviceId).toBeTruthy();
+      // The revoked token can no longer ask, so look in the database the server uses (DATABASE_URL, as in CI).
+      test.skip(!process.env.DATABASE_URL, 'needs DATABASE_URL to inspect the registration');
+      const sql = postgres(process.env.DATABASE_URL as string, { max: 1, onnotice: () => {} });
+      try {
+        const regs = await sql`SELECT id FROM mobile_push_registrations WHERE token_id = ${pushDeviceId}`;
+        expect(regs.length).toBe(0);
+      } finally {
+        await sql.end();
+      }
     });
   });
