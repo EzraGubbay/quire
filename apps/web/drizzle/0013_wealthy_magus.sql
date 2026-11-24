@@ -1,0 +1,1 @@
+ALTER TABLE "lemida_commands" ADD COLUMN "heartbeat_at" timestamp with time zone;

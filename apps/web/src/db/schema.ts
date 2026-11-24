@@ -690,6 +690,8 @@ export const lemidaCommands = pgTable(
     status: lemidaCommandStatus('status').notNull().default('pending'),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     result: jsonb('result').$type<Record<string, unknown>>().notNull().default({}),
+    /** Lease heartbeat from an engine that claimed with ?lease=1; NULL for legacy claimers (installed app, CLI agent). */
+    heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [index('lemida_commands_status_idx').on(t.status, t.createdAt)],
