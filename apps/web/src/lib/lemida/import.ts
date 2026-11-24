@@ -9,7 +9,13 @@ import { after } from 'next/server';
 import { db } from '@/db/client';
 import { assignments, documents, type Folder, type LemidaFile, lemidaFiles, type Project } from '@/db/schema';
 import { indexOwner } from '@/lib/ai/index';
-import { builtinFolder, createDeckDocument, createFolder, deleteDocument, listFolders } from '@/lib/documents';
+import {
+  builtinFolder,
+  createDeckDocument,
+  createFolder,
+  deleteDocument,
+  listFolders,
+} from '@/lib/documents';
 import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { notifyFilesAdded } from '@/lib/mobile/push/triggers';
