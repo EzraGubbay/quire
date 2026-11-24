@@ -58,7 +58,20 @@ export async function reapStaleCommands(
           result: { reason: 'expired', message: EXPIRED_MESSAGE },
           updatedAt: now,
         })
-        .where(and(eq(lemidaCommands.status, 'pending'), lt(lemidaCommands.updatedAt, pendingCutoff)))
+        .where(
+          and(
+            eq(lemidaCommands.status, 'pending'),
+            lt(lemidaCommands.updatedAt, pendingCutoff),
+            // Recent engine activity (a command it finished, not one the server failed on its behalf) means the
+            // app is alive and just busy: a command queued behind a long sync must not expire the moment it ends.
+            sql`NOT EXISTS (
+              SELECT 1 FROM lemida_commands c2
+              WHERE c2.status IN ('done', 'error')
+                AND c2.updated_at >= ${pendingCutoff}
+                AND coalesce(c2.result->>'reason', '') NOT IN ('expired', 'lease_expired')
+            )`,
+          ),
+        )
         .returning({ id: lemidaCommands.id });
     }
     return { leaseExpired: lost.map((r) => r.id), expired: expired.map((r) => r.id) };
@@ -82,14 +95,19 @@ export async function enqueueCommand(
     .limit(1);
   if (existing) {
     // Always bump updatedAt: a reused row must not expire 10 min after its *first* click.
+    // Still-pending guard: if the engine claimed it meanwhile, fall through and insert a fresh row so a
+    // {full:true} payload is not silently dropped.
     const [updated] = await db
       .update(lemidaCommands)
       .set(Object.keys(payload).length === 0 ? { updatedAt: now } : { payload, updatedAt: now })
-      .where(eq(lemidaCommands.id, existing.id))
+      .where(and(eq(lemidaCommands.id, existing.id), eq(lemidaCommands.status, 'pending')))
       .returning();
-    return updated ?? existing;
+    if (updated) return updated;
   }
-  const [row] = await db.insert(lemidaCommands).values({ kind, payload }).returning();
+  const [row] = await db
+    .insert(lemidaCommands)
+    .values({ kind, payload, createdAt: now, updatedAt: now })
+    .returning();
   if (!row) throw new Error('insert returned no row');
   return row;
 }

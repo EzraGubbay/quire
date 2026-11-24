@@ -105,6 +105,25 @@ describe.skipIf(!run)('lemida command lease (integration)', () => {
     expect((await get(stale2.id)).status).toBe('pending');
   });
 
+  it('a command queued behind a long sync survives the moment the sync finishes, and is claimed next', async () => {
+    const queued = await seed({ kind: 'probe', status: 'pending', updatedAt: ago(11 * MIN) });
+    // The sync that blocked it finished 5 s ago (a real engine completion, not a server-side expiry).
+    await seed({ kind: 'sync', status: 'done', updatedAt: ago(5_000) });
+    const r = await reapStaleCommands(now);
+    expect(r.expired).not.toContain(queued.id);
+    expect((await get(queued.id)).status).toBe('pending');
+    const claimed = await claimNextCommand({ leased: true }, now);
+    expect(claimed?.id).toBe(queued.id);
+  });
+
+  it('server-side expiries/lease expiries do not count as engine activity', async () => {
+    const queued = await seed({ status: 'pending', updatedAt: ago(11 * MIN) });
+    await seed({ status: 'error', updatedAt: ago(5_000), result: { reason: 'lease_expired' } });
+    await seed({ status: 'error', updatedAt: ago(5_000), result: { reason: 'expired' } });
+    await reapStaleCommands(now);
+    expect((await get(queued.id)).result.reason).toBe('expired');
+  });
+
   it('claimNextCommand sets heartbeat_at only when leased', async () => {
     const a = await seed({ status: 'pending', updatedAt: ago(1 * MIN) });
     const claimedA = await claimNextCommand({ leased: true }, now);

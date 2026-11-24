@@ -1,6 +1,6 @@
 // The agent reports a command's outcome here (and heartbeats by doing so).
 import { z } from 'zod';
-import { json, readJson } from '@/lib/api';
+import { apiError, json, readJson } from '@/lib/api';
 import { completeCommand } from '@/lib/lemida/commands';
 import { saveLemidaState } from '@/lib/lemida/state';
 
@@ -13,6 +13,7 @@ const schema = z.object({
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  if (!z.string().uuid().safeParse(id).success) return apiError('Invalid command id', 400);
   await saveLemidaState({ agentSeenAt: new Date().toISOString() });
   const body = await readJson(req, schema);
   if (!body.ok) return body.res;
