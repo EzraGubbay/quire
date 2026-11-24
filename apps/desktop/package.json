@@ -14,7 +14,7 @@
     "smoke:parser": "pnpm run build && node scripts/smoke-parser.cjs",
     "smoke:sync": "pnpm run build && node scripts/smoke-sync.cjs",
     "smoke:totp": "pnpm run build && node scripts/smoke-totp.cjs",
-    "test": "pnpm run build && node scripts/smoke-totp.cjs && node scripts/smoke-parser.cjs && node scripts/smoke-sync.cjs"
+    "test": "pnpm run build && node scripts/smoke-totp.cjs && node scripts/smoke-parser.cjs && node scripts/smoke-sync.cjs && node --test 'scripts/*.test.cjs'"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13"
