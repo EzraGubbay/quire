@@ -48,6 +48,15 @@ export interface ImportResult {
   [k: string]: unknown;
 }
 
+class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export class QuireClient {
   private readonly base: string;
 
@@ -63,14 +72,29 @@ export class QuireClient {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`${method} ${pathname} → ${res.status} ${text}`);
+      throw new HttpError(`${method} ${pathname} → ${res.status} ${text}`, res.status);
     }
     return (await res.json()) as T;
   }
 
-  /** The next queued command, or { command: null }. For sync it also carries the mapped courses. */
+  /**
+   * The next queued command, or { command: null }. For sync it also carries the mapped courses. `lease=1` tells
+   * the server we heartbeat, so a claimed command gets the short lease (an old server just ignores the flag).
+   */
   nextCommand(): Promise<NextCommandResponse> {
-    return this.json<NextCommandResponse>('GET', '/api/lemida/commands');
+    return this.json<NextCommandResponse>('GET', '/api/lemida/commands?lease=1');
+  }
+
+  /** Lease proof-of-life while a command runs. `active: false` means the server no longer sees it as running. */
+  heartbeatCommand(id: string): Promise<{ active: boolean }> {
+    return this.json('POST', `/api/lemida/commands/${id}/heartbeat`);
+  }
+
+  /** Ask the server to queue an automatic sync (it refuses if one is already queued/running or nothing is mapped). */
+  enqueueSync(
+    trigger: 'auto-sign-in' | 'auto-timer',
+  ): Promise<{ created: boolean; reason?: string; id: string | null }> {
+    return this.json('POST', '/api/lemida/commands', { kind: 'sync', trigger });
   }
 
   /** Enabled course mappings, for a one-off `sync` run. */
@@ -78,12 +102,24 @@ export class QuireClient {
     return this.json('GET', '/api/lemida/courses');
   }
 
-  completeCommand(
+  /** Report an outcome. Retries 3x (1 s, 3 s) on a network error or 5xx; if all fail the server's lease cleans up. */
+  async completeCommand(
     id: string,
     status: 'done' | 'error',
     result: Record<string, unknown> = {},
   ): Promise<unknown> {
-    return this.json('POST', `/api/lemida/commands/${id}`, { status, result });
+    const backoff = [1000, 3000];
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await this.json('POST', `/api/lemida/commands/${id}`, { status, result });
+      } catch (err) {
+        const code = err instanceof HttpError ? err.status : 0;
+        const retryable = code === 0 || code >= 500;
+        const wait = backoff[attempt];
+        if (!retryable || wait === undefined) throw err;
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
   }
 
   postState(patch: StatePatch): Promise<unknown> {

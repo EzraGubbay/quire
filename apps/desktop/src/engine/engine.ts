@@ -15,12 +15,22 @@ import {
   type SyncCourse,
   syncCourse,
 } from './lemida-session';
+import { runWithHeartbeat } from './lifecycle';
 import type { Resource } from './moodle';
 import { type LemidaCommand, type LemidaCourse, type NextCommandResponse, QuireClient } from './quire';
 import { SeenStore } from './seen';
 
 const POLL_MS = Number(process.env.LEMIDA_POLL_MS ?? 5000);
 const PROBE_MS = Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000);
+const HEARTBEAT_MS = 30_000;
+const SYNC_DEADLINE_MS = Number(process.env.LEMIDA_SYNC_DEADLINE_MS ?? 3_600_000);
+
+/** Per-kind watchdog: how long a command may run before the engine gives up on it. */
+function commandDeadlineMs(kind: LemidaCommand['kind']): number {
+  if (kind === 'open_login') return LOGIN_TIMEOUT_MS + 2 * 60_000;
+  if (kind === 'probe') return 2 * 60_000;
+  return SYNC_DEADLINE_MS;
+}
 
 interface Tally {
   imported: number;
@@ -57,6 +67,10 @@ export class LemidaEngine {
   private timer: NodeJS.Timeout | undefined;
   private running = false;
   private lastProbe = 0;
+  /** The command in flight (for quit cleanup) and the engine's last known session status / sync times. */
+  private current: { id: string; kind: LemidaCommand['kind'] } | null = null;
+  private sessionStatus: SessionStatus = 'unknown';
+  private lastSyncEndedAt = 0;
 
   constructor(opts: EngineOptions) {
     this.client = new QuireClient(opts.quireUrl);
@@ -102,7 +116,7 @@ export class LemidaEngine {
     try {
       const payload = await this.client.nextCommand();
       if (payload.command) {
-        await this.handle(payload.command, payload);
+        await this.runCommand(payload.command, payload);
       } else if (!isSignInInProgress() && Date.now() - this.lastProbe > PROBE_MS) {
         this.lastProbe = Date.now();
         const status = await probe().catch((): SessionStatus => 'expired');
@@ -114,6 +128,64 @@ export class LemidaEngine {
       console.error(`[lemida] loop error: ${(err as Error).message}`);
     }
     this.scheduleNext();
+  }
+
+  /**
+   * Run one command under a lease heartbeat and a per-kind watchdog. Heartbeats prove the app is alive (the server
+   * reaps the row if they stop: quit, crash, sleep); the watchdog proves the command makes progress (a hang inside a
+   * live app). Known limitation: an abandoned operation may still finish in the background; the server then ignores
+   * its completion because the row is no longer running (`applied: false`).
+   */
+  private async runCommand(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
+    this.current = { id: cmd.id, kind: cmd.kind };
+    const deadlineMs = commandDeadlineMs(cmd.kind);
+    try {
+      const r = await runWithHeartbeat({
+        run: () => this.handle(cmd, payload),
+        beat: () => {
+          // An old server without the route 404s: harmless, the legacy lease applies.
+          void this.client.heartbeatCommand(cmd.id).catch(() => {});
+        },
+        intervalMs: HEARTBEAT_MS,
+        deadlineMs,
+      });
+      if (r.kind === 'timeout') {
+        const mins = Math.round(deadlineMs / 60_000);
+        console.error(`[lemida] command ${cmd.kind} timed out after ${mins} min`);
+        await this.client
+          .completeCommand(cmd.id, 'error', {
+            reason: 'engine_timeout',
+            message: `Timed out on the Mac after ${mins} min`,
+          })
+          .catch(() => {});
+      }
+    } finally {
+      if (cmd.kind === 'sync') this.lastSyncEndedAt = Date.now();
+      this.current = null;
+    }
+  }
+
+  /**
+   * Stop polling and, if a command is in flight, fail it as `app_quit` (within `timeoutMs`) so the panel does not
+   * show it as running until the lease lapses. Called from main's before-quit.
+   */
+  async shutdown(timeoutMs = 1500): Promise<void> {
+    this.stop();
+    const cur = this.current;
+    if (!cur) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      this.client
+        .completeCommand(cur.id, 'error', {
+          reason: 'app_quit',
+          message: 'The Quire desktop app quit while this was running.',
+        })
+        .catch(() => {}),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
   }
 
   private async handle(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
@@ -231,6 +303,7 @@ export class LemidaEngine {
   }
 
   private pushStatus(sessionStatus: SessionStatus, lastSyncSummary?: string): void {
+    this.sessionStatus = sessionStatus;
     try {
       this.emit({ sessionStatus, lastSyncSummary, at: new Date().toISOString() });
     } catch {

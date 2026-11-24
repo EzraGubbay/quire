@@ -182,8 +182,17 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
-  engine?.stop();
+// Quit cleanup: hold the first before-quit until the engine has failed any in-flight command as `app_quit`
+// (bounded to ~1.5 s), then quit for real. The flag lets the second before-quit through.
+let quitCleanupDone = false;
+app.on('before-quit', (event) => {
+  if (quitCleanupDone || !engine) {
+    engine?.stop();
+    return;
+  }
+  quitCleanupDone = true;
+  event.preventDefault();
+  void engine.shutdown().finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
