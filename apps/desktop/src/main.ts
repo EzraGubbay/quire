@@ -199,7 +199,7 @@ app.whenReady().then(() => {
 // (bounded to ~1.5 s), then quit for real. The flag lets the second before-quit through.
 let quitCleanupDone = false;
 app.on('before-quit', (event) => {
-  if (quitCleanupDone || !engine) {
+  if (quitCleanupDone || !engine || !engine.hasCommandInFlight()) {
     engine?.stop();
     return;
   }

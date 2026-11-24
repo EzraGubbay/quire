@@ -37,6 +37,8 @@ import {
   isPersistable,
   lemidaHost,
   type StoredCookie,
+  sessionFromCheck,
+  shouldWipeBeforeSignIn,
   toSetDetails,
 } from './session-policy';
 
@@ -187,7 +189,14 @@ export async function initSessionCookies(): Promise<{
       () => true,
       () => false,
     );
-    if (!hasEnc && keep.length > 0) await writeEncrypted(encodeCookieFile(keep));
+    if (!hasEnc && keep.length > 0) {
+      const wrote = await writeEncrypted(encodeCookieFile(keep));
+      if (!wrote) {
+        console.warn(
+          '[lemida] cookies: plaintext cookie file deleted and the saved session dropped, because Keychain encryption is unavailable (sign in again)',
+        );
+      }
+    }
     migrated = true;
   } catch {
     // no legacy file
@@ -206,8 +215,7 @@ export async function initSessionCookies(): Promise<{
         (o.domain ?? '').replace(/^\./, '') === LEMIDA_HOST,
     );
     try {
-      // remove() by url+name clears every copy visible to that URL; repeat to be sure both are gone.
-      await ses.cookies.remove(cookieUrl(d as Electron.Cookie), d.name);
+      // remove() by url+name clears every copy visible to that URL (both twins); the host-only one is re-set below.
       await ses.cookies.remove(cookieUrl(d as Electron.Cookie), d.name);
       if (twin) await ses.cookies.set(toSetDetails(twin) as Electron.CookiesSetDetails);
     } catch {
@@ -259,7 +267,8 @@ async function getHtml(win: BrowserWindow): Promise<string> {
   return (await win.webContents.executeJavaScript('document.documentElement.outerHTML', true)) as string;
 }
 
-async function isLoggedIn(wc: WebContents): Promise<boolean> {
+/** true/false = a verdict; null = could not tell (the check timed out), which callers must not read as "signed out". */
+async function isLoggedIn(wc: WebContents): Promise<boolean | null> {
   try {
     const url = wc.getURL();
     if (isAuthWall(url)) return false;
@@ -267,7 +276,7 @@ async function isLoggedIn(wc: WebContents): Promise<boolean> {
     // is the `userloggedin` / `notloggedin` class Moodle puts on <body>; the logout-link / avatar checks are
     // fallbacks for a theme that omits it. (Keying on the logout link alone used to miss real sign-ins.)
     // executeJavaScript waits for the main frame to stop loading, so on a page that never finishes loading it
-    // never settles (and `catch` can't help): cap it, and treat a timeout as "not logged in".
+    // never settles (and `catch` can't help): cap it, and report a timeout as "could not tell" (null).
     const signals = await withTimeout(
       wc.executeJavaScript(
         `(() => ({
@@ -281,7 +290,7 @@ async function isLoggedIn(wc: WebContents): Promise<boolean> {
       CHECK_TIMEOUT_MS,
       null,
     );
-    if (!signals) return false;
+    if (!signals) return null;
     return decideLoggedIn(url, signals);
   } catch {
     // Page navigated mid-check (e.g. a 365 redirect) — treat as not-yet.
@@ -290,6 +299,7 @@ async function isLoggedIn(wc: WebContents): Promise<boolean> {
 }
 
 function hiddenWindow(): BrowserWindow {
+  lemidaSession(); // make sure the plain desktop UA is applied to the partition before anything loads
   return new BrowserWindow({
     show: false,
     width: 1280,
@@ -326,29 +336,34 @@ export async function openLogin(
   let win: BrowserWindow | undefined;
   try {
     // Probe first: a second sign-in must not wipe a session that is still good.
-    if ((await probeSession().catch((): SessionStatus => 'unknown')) === 'valid') {
-      return { status: 'valid', outcome: 'already-signed-in' };
-    }
+    const pre = await probeSession().catch((): SessionStatus => 'unknown');
+    if (pre === 'valid') return { status: 'valid', outcome: 'already-signed-in' };
     const ses = lemidaSession(); // make sure the plain desktop UA is applied to the partition before loading
     // Start every sign-in from a clean Lemida session, the way the working Playwright/Brave flows get one from
     // a fresh profile. A stale/timed-out MoodleSession (plus PerimeterX block-fcl/__uzm flags) left in the
     // partition makes Moodle treat the OAuth as a session-timeout (errorcode=4) and bounce to the guest front
     // page. clearStorageData's `origin` filter does NOT clear cookies, so remove the BIU cookies explicitly;
     // clear only Lemida's site storage/cache by origin so login.microsoftonline.com (365 SSO) is left intact.
-    try {
-      const all = await ses.cookies.get({});
-      await Promise.all(
-        all
-          .filter((c) => /biu\.ac\.il/i.test(c.domain ?? ''))
-          .map((c) => ses.cookies.remove(cookieUrl(c), c.name).catch(() => {})),
+    // Only when the probe positively said "signed out": if it merely could not tell (timeout), leave the session
+    // alone and just open the window. Bounded so a hung clear can't leave `loginInFlight` stuck.
+    if (shouldWipeBeforeSignIn(pre)) {
+      await withTimeout(
+        (async () => {
+          const all = await ses.cookies.get({});
+          await Promise.all(
+            all
+              .filter((c) => /biu\.ac\.il/i.test(c.domain ?? ''))
+              .map((c) => ses.cookies.remove(cookieUrl(c), c.name).catch(() => {})),
+          );
+          await ses.clearStorageData({
+            origin: 'https://lemida.biu.ac.il',
+            storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage'],
+          });
+          await ses.clearCache();
+        })(),
+        15_000,
+        undefined, // a failed or slow clean shouldn't block the sign-in attempt
       );
-      await ses.clearStorageData({
-        origin: 'https://lemida.biu.ac.il',
-        storages: ['localstorage', 'indexdb', 'serviceworkers', 'cachestorage'],
-      });
-      await ses.clearCache();
-    } catch {
-      // A failed clean shouldn't block the sign-in attempt; worst case it behaves as before.
     }
     const w = new BrowserWindow({
       width: 1100,
@@ -365,7 +380,7 @@ export async function openLogin(
     // Redirect chains (365 OAuth) can reject loadURL with ERR_ABORTED; ignore and poll the live URL instead.
     w.loadURL(LEMIDA.loginUrl).catch(() => {});
     const outcome = await waitForSignIn({
-      check: async () => !w.isDestroyed() && (await isLoggedIn(w.webContents)),
+      check: async () => !w.isDestroyed() && (await isLoggedIn(w.webContents)) === true,
       intervalMs: 1500,
       checkTimeoutMs: CHECK_TIMEOUT_MS,
       deadlineMs: LOGIN_TIMEOUT_MS,
@@ -393,9 +408,9 @@ async function probeSession(): Promise<SessionStatus> {
     if (win.isDestroyed()) return 'unknown';
     const ok = await isLoggedIn(win.webContents);
     if (ok) await saveCookies(); // refresh the on-disk copy so the next launch restores a live session
-    return ok ? 'valid' : 'expired';
+    return sessionFromCheck(ok);
   } finally {
-    if (!win.isDestroyed()) win.close();
+    if (!win.isDestroyed()) win.destroy();
   }
 }
 

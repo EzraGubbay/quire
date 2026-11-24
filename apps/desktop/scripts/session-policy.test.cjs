@@ -12,6 +12,8 @@ const {
   encodeCookieFile,
   decodeCookieFile,
   desktopUserAgent,
+  sessionFromCheck,
+  shouldWipeBeforeSignIn,
 } = require(path.join(__dirname, '..', 'dist', 'engine', 'session-policy.js'));
 
 const HOST = 'lemida.biu.ac.il';
@@ -83,6 +85,24 @@ test('cookiesToRestore: skips name+path already live, restores missing, never no
     ['MoodleSessionprod', 'MoodleSessionother'],
     'same name, different path is not live',
   );
+});
+
+test('legacy twin pair: only the host-only MoodleSession is persisted/restored, set without domain', () => {
+  const saved = [domainCk('MoodleSessionprod'), hostOnly('MoodleSessionprod')];
+  assert.equal(isPersistable(saved[0], HOST), false);
+  const r = cookiesToRestore(saved, [], HOST);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].hostOnly, true);
+  assert.equal('domain' in toSetDetails(r[0]), false);
+});
+
+test('tri-state check: a timeout (null) is unknown, never expired, and never triggers a wipe', () => {
+  assert.equal(sessionFromCheck(true), 'valid');
+  assert.equal(sessionFromCheck(false), 'expired');
+  assert.equal(sessionFromCheck(null), 'unknown');
+  assert.equal(shouldWipeBeforeSignIn('expired'), true);
+  assert.equal(shouldWipeBeforeSignIn('unknown'), false);
+  assert.equal(shouldWipeBeforeSignIn('valid'), false);
 });
 
 test('duplicateDomainCopies: exactly the domain twin of a host-only cookie', () => {

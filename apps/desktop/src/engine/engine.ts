@@ -170,12 +170,24 @@ export class LemidaEngine {
   private async runCommand(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
     this.current = { id: cmd.id, kind: cmd.kind };
     const deadlineMs = commandDeadlineMs(cmd.kind);
+    let beating = true;
     try {
       const r = await runWithHeartbeat({
         run: () => this.handle(cmd, payload),
         beat: () => {
+          if (!beating) return;
           // An old server without the route 404s: harmless, the legacy lease applies.
-          void this.client.heartbeatCommand(cmd.id).catch(() => {});
+          void this.client
+            .heartbeatCommand(cmd.id)
+            .then((r) => {
+              if (r && r.active === false && beating) {
+                beating = false;
+                console.warn(
+                  `[lemida] server no longer sees command ${cmd.kind} as running; stopped heartbeating`,
+                );
+              }
+            })
+            .catch(() => {});
         },
         intervalMs: HEARTBEAT_MS,
         deadlineMs,
@@ -194,6 +206,11 @@ export class LemidaEngine {
       if (cmd.kind === 'sync') this.lastSyncEndedAt = Date.now();
       this.current = null;
     }
+  }
+
+  /** True while a command is running; main only delays quit (to fail it as `app_quit`) in that case. */
+  hasCommandInFlight(): boolean {
+    return this.current !== null;
   }
 
   /**
@@ -245,7 +262,8 @@ export class LemidaEngine {
           });
           this.pushStatus(status);
         }
-        if (outcome === 'signed-in') await this.requestAutoSync('auto-sign-in');
+        if (outcome === 'signed-in' || outcome === 'already-signed-in')
+          await this.requestAutoSync('auto-sign-in');
         console.log(`[lemida] login → ${status} (${outcome})`);
       } else if (cmd.kind === 'probe') {
         const status = await probe();
@@ -322,7 +340,8 @@ export class LemidaEngine {
         await this.client.postState({ sessionStatus: status }).catch(() => {});
         this.pushStatus(status);
       }
-      if (outcome === 'signed-in') void this.requestAutoSync('auto-sign-in');
+      if (outcome === 'signed-in' || outcome === 'already-signed-in')
+        void this.requestAutoSync('auto-sign-in');
       return status === 'valid' ? { ok: true } : { ok: false, reason: outcome === 'busy' ? 'busy' : status };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };

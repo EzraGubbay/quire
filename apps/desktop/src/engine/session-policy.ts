@@ -48,10 +48,11 @@ export function isHostOnly(c: StoredCookie): boolean {
 /**
  * Only the Moodle session cookie of the Lemida host is persisted. Chromium already keeps every non-session
  * cookie of the partition on disk; the bot-manager (`__uzm*`) and Microsoft SSO cookies are not needed to reuse
- * the Moodle session and are better left out of a file.
+ * the Moodle session and are better left out of a file. Host-only is required: the old restore turned host-only
+ * cookies into domain twins (and the legacy file holds both), and restoring a twin would re-create the duplicate.
  */
 export function isPersistable(c: StoredCookie, host: string): boolean {
-  return /^MoodleSession/.test(c.name) && host !== '' && bareDomain(c) === host;
+  return /^MoodleSession/.test(c.name) && host !== '' && bareDomain(c) === host && isHostOnly(c);
 }
 
 /** Details for `ses.cookies.set`. A host-only cookie must be set WITHOUT `domain`, or Chromium makes it a domain cookie. */
@@ -69,6 +70,16 @@ export function toSetDetails(c: StoredCookie): SetDetails {
   if (c.expirationDate !== undefined) d.expirationDate = c.expirationDate;
   if (c.sameSite !== undefined) d.sameSite = c.sameSite;
   return d;
+}
+
+/** A probe's login check: true/false are verdicts, null means "could not tell" (timeout), never "expired". */
+export function sessionFromCheck(ok: boolean | null): 'valid' | 'expired' | 'unknown' {
+  return ok === null ? 'unknown' : ok ? 'valid' : 'expired';
+}
+
+/** Sign-in wipes the Lemida cookies only when the probe positively says the session is gone. */
+export function shouldWipeBeforeSignIn(probed: 'valid' | 'expired' | 'unknown'): boolean {
+  return probed === 'expired';
 }
 
 /** Saved cookies worth restoring: persistable ones that the live partition does not already hold (name + path). */
