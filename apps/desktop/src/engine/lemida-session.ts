@@ -15,6 +15,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, type Session, session, type WebContents } from 'electron';
 import { closeHelper, openHelper } from './credential-bar';
+import { NotEnrolled, SessionExpired } from './errors';
 import {
   decideLoggedIn,
   filenameFrom,
@@ -29,12 +30,7 @@ import { reconcileResources } from './reconcile';
 
 export type SessionStatus = 'valid' | 'expired' | 'unknown';
 
-export class SessionExpired extends Error {
-  constructor(url?: string) {
-    super(`Lemida session expired (hit ${url ?? 'a login/bot page'})`);
-    this.name = 'SessionExpired';
-  }
-}
+export { NotEnrolled, SessionExpired };
 
 export interface SyncCourse {
   slug: string;
