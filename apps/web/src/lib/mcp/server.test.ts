@@ -145,7 +145,7 @@ describe('get_page_images', () => {
 
   it('re-renders a 0-byte cached page and leaves no temp files behind', async () => {
     getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 777 }));
-    const dir = path.join(tmp, 'p1', 'd1.mcp-777');
+    const dir = path.join(tmp, 'p1', 'd1.mcp2-777');
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, '7.jpg'), '');
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '7' });
@@ -161,7 +161,7 @@ describe('get_page_images', () => {
 
   it('serves a cached page without re-rendering', async () => {
     getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 888 }));
-    const dir = path.join(tmp, 'p1', 'd1.mcp-888');
+    const dir = path.join(tmp, 'p1', 'd1.mcp2-888');
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, '2.jpg'), Buffer.from('ffd8ffe0cafe', 'hex'));
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '2' });
@@ -169,6 +169,21 @@ describe('get_page_images', () => {
       Buffer.from('ffd8ffe0cafe', 'hex').toString('base64'),
     );
   });
+
+  it('shrinks a page until its JPEG fits maxBytes', async () => {
+    const { renderPages } = await import('@/lib/slides');
+    const d = { projectId: 'p1', id: 'd1', filePath: 'p1/d1.pdf' };
+    const [big] = await renderPages(d, [3], { cacheName: 'capA', maxWidth: 1024, quality: 90 });
+    const bigSize = (await stat(path.join(tmp, big?.path as string))).size;
+    const cap = Math.floor(bigSize * 0.5);
+    const [small] = await renderPages(d, [3], {
+      cacheName: 'capB',
+      maxWidth: 1024,
+      quality: 90,
+      maxBytes: cap,
+    });
+    expect((await stat(path.join(tmp, small?.path as string))).size).toBeLessThanOrEqual(cap);
+  }, 60_000);
 
   it('stays bounded when the page count is unknown', async () => {
     getDocument.mockResolvedValue(doc({ pageCount: null, fileSize: 999 }));

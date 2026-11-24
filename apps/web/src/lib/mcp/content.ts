@@ -24,6 +24,8 @@ export const MAX_IMAGES_PER_CALL = 4;
  * data, so stop adding images past this (a call always returns at least one).
  */
 export const IMAGE_B64_BUDGET = 100_000;
+/** Per-image JPEG cap: 72 KB → ~96k base64 characters, under IMAGE_B64_BUDGET and claude.ai's ~150k cap. */
+export const IMAGE_MAX_BYTES = 72_000;
 /** Without a stored page count, cap page selections here (renderPages skips pages past the real end). */
 export const UNKNOWN_PAGE_CAP = 2000;
 /** A page with less extractable text than this is treated as a figure / scan. */
@@ -164,12 +166,14 @@ export async function loadPageImages(
   doc: Document,
   pageNos: number[],
 ): Promise<{ pageNo: number; data: string }[]> {
-  // 1024×1568 max, q60: ~50–150 KB. The file size in the cache name invalidates it when the PDF is replaced.
+  // 1024×1568 max, q60, shrunk until ≤ IMAGE_MAX_BYTES (one image always fits the per-call budget). The file
+  // size in the cache name invalidates it when the PDF is replaced; v2 drops images cached before the cap.
   const imgs = await renderPages(doc, pageNos, {
-    cacheName: `mcp-${doc.fileSize ?? 0}`,
+    cacheName: `mcp2-${doc.fileSize ?? 0}`,
     maxWidth: 1024,
     maxHeight: 1568,
     quality: 60,
+    maxBytes: IMAGE_MAX_BYTES,
   });
   return Promise.all(
     imgs.map(async (img) => ({
