@@ -26,7 +26,7 @@ const PROBE_MS = Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000);
 const HEARTBEAT_MS = 30_000;
 const SYNC_DEADLINE_MS = Number(process.env.LEMIDA_SYNC_DEADLINE_MS ?? 3_600_000);
 
-/** Per-kind watchdog: how long a command may run before the engine gives up on it. */
+/** Per-kind watchdog: how long a command may go without progress before the engine gives up on it. */
 function commandDeadlineMs(kind: LemidaCommand['kind']): number {
   if (kind === 'open_login') return LOGIN_TIMEOUT_MS + 2 * 60_000;
   if (kind === 'probe') return 2 * 60_000;
@@ -160,9 +160,12 @@ export class LemidaEngine {
     this.current = { id: cmd.id, kind: cmd.kind };
     const deadlineMs = commandDeadlineMs(cmd.kind);
     let beating = true;
+    // Aborted when the watchdog gives up, so an abandoned sync stops between activities instead of crawling on
+    // while the next command (possibly another sync) starts on the same partition and seen-store.
+    const abort = new AbortController();
     try {
       const r = await runWithHeartbeat({
-        run: () => this.handle(cmd, payload),
+        run: (progress) => this.handle(cmd, payload, { signal: abort.signal, progress }),
         beat: () => {
           if (!beating) return;
           // An old server without the route 404s: harmless, the legacy lease applies.
@@ -182,6 +185,7 @@ export class LemidaEngine {
         deadlineMs,
       });
       if (r.kind === 'timeout') {
+        abort.abort();
         const mins = Math.round(deadlineMs / 60_000);
         console.error(`[lemida] command ${cmd.kind} timed out after ${mins} min`);
         await this.client
@@ -225,7 +229,11 @@ export class LemidaEngine {
     if (timer) clearTimeout(timer);
   }
 
-  private async handle(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
+  private async handle(
+    cmd: LemidaCommand,
+    payload: NextCommandResponse,
+    ctx: { signal: AbortSignal; progress: () => void },
+  ): Promise<void> {
     try {
       if (cmd.kind === 'open_login') {
         const { status, outcome } = await openLogin({ onHeartbeat: () => this.heartbeat() });
@@ -264,7 +272,12 @@ export class LemidaEngine {
         const full = cmd.payload?.full === true;
         const courses = payload.courses ?? [];
         this.log.line(`sync start full=${full} courses=${courses.length}`);
-        const report = await this.runSync(courses, full);
+        const report = await this.runSync(courses, full, ctx);
+        if (ctx.signal.aborted) {
+          // The watchdog already failed this command (engine_timeout); don't overwrite its outcome or the status.
+          this.log.line('sync aborted by the watchdog; discarding its late result');
+          return;
+        }
         const summary = summariseSync(report);
         const at = new Date().toISOString();
         const status: SessionStatus | undefined = report.sessionExpired
@@ -304,11 +317,17 @@ export class LemidaEngine {
   }
 
   /** Crawl every mapped course and upload each new or changed file. Each course is isolated. */
-  private runSync(courses: LemidaCourse[], full: boolean): Promise<SyncReport> {
+  private runSync(
+    courses: LemidaCourse[],
+    full: boolean,
+    ctx: { signal: AbortSignal; progress: () => void },
+  ): Promise<SyncReport> {
     const log = (msg: string): void => this.log.line(msg);
     return runSyncCourses(courses, {
       full,
       log,
+      signal: ctx.signal,
+      onProgress: ctx.progress,
       syncCourse: (course, opts) => {
         const key = course.lemidaUrl;
         const sc: SyncCourse = {
@@ -322,6 +341,8 @@ export class LemidaEngine {
           full: opts.full,
           log,
           onLoaded: opts.onLoaded,
+          shouldStop: opts.shouldStop,
+          onProgress: opts.onProgress,
           recordFile: (href, fileUrl, rec) => this.seen.recordFile(key, href, fileUrl, rec),
           persist: () => this.seen.save(),
           upload: (dl, resource) =>

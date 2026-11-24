@@ -561,12 +561,16 @@ export interface SyncCourseDeps {
   log: (msg: string) => void;
   /** Called once the course page loaded signed in and enrolled. */
   onLoaded?: () => void;
+  /** True once the engine watchdog has abandoned this sync: stop between activities. */
+  shouldStop?: () => boolean;
+  /** Called after each activity (restarts the watchdog's idle deadline). */
+  onProgress?: () => void;
 }
 
 /** Crawl one mapped course and upload each new or changed file; records only what the server accepted. */
 export async function syncCourse(
   course: SyncCourse,
-  { records, full, upload, recordFile, persist, log, onLoaded }: SyncCourseDeps,
+  { records, full, upload, recordFile, persist, log, onLoaded, shouldStop, onProgress }: SyncCourseDeps,
 ): Promise<CourseStats> {
   const ses = lemidaSession();
   const win = hiddenWindow();
@@ -590,6 +594,8 @@ export async function syncCourse(
         recordFile,
         persist,
         log,
+        shouldStop,
+        onProgress,
       },
     );
   } finally {

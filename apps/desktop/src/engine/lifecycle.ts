@@ -87,11 +87,11 @@ export type HeartbeatRun<T> =
 
 /**
  * Run `run()` while calling `beat` every `intervalMs` (lease proof-of-life). Gives up with `{ kind: 'timeout' }`
- * after `deadlineMs`. Known limitation: an abandoned `run()` may still finish in the background; its late
+ * after `deadlineMs` without progress (the deadline restarts whenever `run` calls its `progress` argument). Known limitation: an abandoned `run()` may still finish in the background; its late
  * result or rejection is ignored here (and the server ignores a completion for a row that is no longer running).
  */
 export function runWithHeartbeat<T>(o: {
-  run: () => Promise<T>;
+  run: (progress: () => void) => Promise<T>;
   beat: () => void;
   intervalMs: number;
   deadlineMs: number;
@@ -114,10 +114,19 @@ export function runWithHeartbeat<T>(o: {
         // a failed beat is not fatal; the lease only lapses after several misses
       }
     }, o.intervalMs);
-    deadline = setTimeout(() => finish({ kind: 'timeout' }), o.deadlineMs);
+    const armDeadline = () => {
+      if (deadline) clearTimeout(deadline);
+      deadline = setTimeout(() => finish({ kind: 'timeout' }), o.deadlineMs);
+    };
+    armDeadline();
+    // `deadlineMs` is an idle limit: each `progress()` call from the command restarts it, so a long but
+    // advancing sync is never cut off, while a stalled one still is.
+    const progress = () => {
+      if (!settled) armDeadline();
+    };
     let p: Promise<T>;
     try {
-      p = o.run();
+      p = o.run(progress);
     } catch (error) {
       finish({ kind: 'error', error });
       return;
