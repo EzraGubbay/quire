@@ -6,7 +6,8 @@ vi.mock('@/lib/lemida/commands', () => ({ heartbeatCommand }));
 vi.mock('@/lib/lemida/state', () => ({ saveLemidaState: vi.fn(async () => ({})) }));
 
 const { POST } = await import('./route');
-const call = () => POST(new Request('http://x', { method: 'POST' }), { params: Promise.resolve({ id: 'abc' }) });
+const call = () =>
+  POST(new Request('http://x', { method: 'POST' }), { params: Promise.resolve({ id: 'abc' }) });
 
 describe('POST heartbeat', () => {
   it('returns active from heartbeatCommand', async () => {

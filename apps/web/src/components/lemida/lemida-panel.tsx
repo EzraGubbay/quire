@@ -19,7 +19,9 @@ import {
 import { Field, Input } from '@/components/ui/field';
 import { PollWhile } from '@/components/ui/poll-while';
 import { useToast } from '@/components/ui/toast';
+import type { CommandView } from '@/lib/lemida/command-view';
 import type { LemidaState } from '@/lib/lemida/state';
+import { CommandStatus } from './command-status';
 import s from './lemida-panel.module.css';
 
 interface Mapping {
@@ -61,6 +63,7 @@ export interface LemidaPanelProps {
   courses: CourseOpt[];
   review: ReviewRow[];
   recent: RecentRow[];
+  commands: { current: CommandView | null; last: CommandView | null };
 }
 
 const SESSION_LABEL: Record<LemidaSessionStatus, string> = {
@@ -174,10 +177,11 @@ export function LemidaPanel(props: LemidaPanelProps) {
             Last sync {ago(state.lastSyncAt)}: {state.lastSyncSummary}
           </p>
         )}
+        <CommandStatus {...props.commands} />
         {!online && (
           <p className={s.hint}>
-            The agent isn’t reporting in. Start it on your Mac (<code>tools/lemida-agent</code>), then the
-            buttons above will take effect on the next poll.
+            The desktop app isn’t reporting in. Open Quire on your Mac; queued commands expire after 10
+            minutes.
           </p>
         )}
       </Card>

@@ -108,3 +108,30 @@ test('lemida panel: map a course to its Lemida page', async ({ page }) => {
   await page.getByRole('button', { name: 'Link', exact: true }).click();
   await expect(page.getByRole('link', { name })).toBeVisible();
 });
+
+test('lemida panel: shows current and last command', async ({ page, request }) => {
+  await page.goto('/courses/lemida');
+  await hydrated(page);
+  await page.getByRole('button', { name: 'Sign in to Lemida' }).click();
+  const current = page.getByTestId('lemida-command-current');
+  await expect(current).toHaveAttribute('data-status', 'pending');
+
+  // Play the desktop engine: claim with a lease, then fail the command.
+  const claimed = await request.get('/api/lemida/commands?lease=1');
+  const id = (await claimed.json()).command?.id as string;
+  expect(id).toBeTruthy();
+  await page.reload();
+  await hydrated(page);
+  await expect(current).toHaveAttribute('data-status', 'running');
+
+  const done = await request.post(`/api/lemida/commands/${id}`, {
+    data: { status: 'error', result: { message: 'boom' } },
+  });
+  expect((await done.json()).applied).toBe(true);
+  await page.reload();
+  await hydrated(page);
+  const last = page.getByTestId('lemida-command-last');
+  await expect(last).toHaveAttribute('data-status', 'error');
+  await expect(last).toContainText('boom');
+  await expect(current).toHaveAttribute('data-status', 'idle');
+});

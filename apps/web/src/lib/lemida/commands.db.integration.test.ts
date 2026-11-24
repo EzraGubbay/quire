@@ -133,7 +133,11 @@ describe.skipIf(!run)('lemida command lease (integration)', () => {
     const running = await seed({ status: 'running', updatedAt: ago(1 * MIN) });
     expect(await completeCommand(running.id, 'done', { ok: 1 }, now)).toBe(true);
 
-    const lease = await seed({ status: 'error', updatedAt: ago(1 * MIN), result: { reason: 'lease_expired' } });
+    const lease = await seed({
+      status: 'error',
+      updatedAt: ago(1 * MIN),
+      result: { reason: 'lease_expired' },
+    });
     expect(await completeCommand(lease.id, 'done', { late: true }, now)).toBe(true);
     expect((await get(lease.id)).status).toBe('done');
 
@@ -145,18 +149,32 @@ describe.skipIf(!run)('lemida command lease (integration)', () => {
     expect(await completeCommand(done.id, 'error', { x: 1 }, now)).toBe(false);
     expect((await get(done.id)).result).toEqual({ keep: 1 });
 
-    const timeout = await seed({ status: 'error', updatedAt: ago(1 * MIN), result: { reason: 'engine_timeout' } });
+    const timeout = await seed({
+      status: 'error',
+      updatedAt: ago(1 * MIN),
+      result: { reason: 'engine_timeout' },
+    });
     expect(await completeCommand(timeout.id, 'done', {}, now)).toBe(false);
   });
 
   it('enqueueIfIdle never clobbers a pending/running sync; inserts when idle', async () => {
-    const pending = await seed({ kind: 'sync', status: 'pending', updatedAt: ago(1 * MIN), payload: { full: true } });
+    const pending = await seed({
+      kind: 'sync',
+      status: 'pending',
+      updatedAt: ago(1 * MIN),
+      payload: { full: true },
+    });
     const r1 = await enqueueIfIdle('sync', { trigger: 'auto-timer' }, now);
     expect(r1.created).toBe(false);
     expect((await get(pending.id)).payload.full).toBe(true);
     await drop(pending.id);
 
-    const running = await seed({ kind: 'sync', status: 'running', updatedAt: ago(1 * MIN), heartbeatAt: ago(5_000) });
+    const running = await seed({
+      kind: 'sync',
+      status: 'running',
+      updatedAt: ago(1 * MIN),
+      heartbeatAt: ago(5_000),
+    });
     expect((await enqueueIfIdle('sync', { trigger: 'auto-timer' }, now)).created).toBe(false);
     await drop(running.id);
 

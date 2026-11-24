@@ -175,10 +175,7 @@ export async function completeCommand(
         eq(lemidaCommands.id, id),
         or(
           eq(lemidaCommands.status, 'running'),
-          and(
-            eq(lemidaCommands.status, 'error'),
-            sql`${lemidaCommands.result}->>'reason' = 'lease_expired'`,
-          ),
+          and(eq(lemidaCommands.status, 'error'), sql`${lemidaCommands.result}->>'reason' = 'lease_expired'`),
         ),
       ),
     )

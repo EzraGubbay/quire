@@ -1,6 +1,8 @@
 import { AppShell } from '@/components/app-shell';
 import { LemidaPanel } from '@/components/lemida/lemida-panel';
-import { hasActiveCommand } from '@/lib/lemida/commands';
+import type { LemidaCommand } from '@/db/schema';
+import type { CommandView } from '@/lib/lemida/command-view';
+import { commandOverview, hasActiveCommand, reapStaleCommands } from '@/lib/lemida/commands';
 import { listMappings } from '@/lib/lemida/courses';
 import { listReviewQueue, recentFiles } from '@/lib/lemida/files';
 import { agentOnline, getLemidaState } from '@/lib/lemida/state';
@@ -16,14 +18,29 @@ function moodleLink(meta: ReturnType<typeof projectMeta>): string {
   return hit?.url ?? '';
 }
 
+function commandView(c: LemidaCommand | null): CommandView | null {
+  if (!c) return null;
+  return {
+    id: c.id,
+    kind: c.kind,
+    status: c.status,
+    payload: c.payload,
+    result: c.result,
+    createdAt: c.createdAt.toISOString(),
+    updatedAt: c.updatedAt.toISOString(),
+  };
+}
+
 export default async function LemidaSyncPage() {
-  const [state, mappings, review, recent, courses, active] = await Promise.all([
+  await reapStaleCommands();
+  const [state, mappings, review, recent, courses, active, overview] = await Promise.all([
     getLemidaState(),
     listMappings(),
     listReviewQueue(),
     recentFiles(20),
     listProjects({ kind: 'course', status: 'active' }),
     hasActiveCommand(),
+    commandOverview(),
   ]);
 
   return (
@@ -32,6 +49,7 @@ export default async function LemidaSyncPage() {
         state={state}
         online={agentOnline(state)}
         active={active}
+        commands={{ current: commandView(overview.current), last: commandView(overview.last) }}
         mappings={mappings.map((m) => ({
           id: m.id,
           projectId: m.projectId,

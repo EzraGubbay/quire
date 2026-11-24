@@ -1,0 +1,31 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font: 400 13px / 1.4 var(--eg-font-ui);
+  color: var(--eg-text-2);
+}
+.name {
+  flex: none;
+  width: 36px;
+  font: 500 11.5px / 1.4 var(--eg-font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--eg-muted);
+}
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.row[data-tone="error"] .text {
+  color: #c0392b;
+}
+.row[data-tone="ok"] .text strong {
+  color: #1a7f54;
+}
