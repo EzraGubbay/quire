@@ -6,6 +6,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import {
   isSignInInProgress,
+  LOGIN_TIMEOUT_MS,
   openLogin,
   probe,
   SessionExpired,
@@ -107,11 +108,30 @@ export class LemidaEngine {
   private async handle(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
     try {
       if (cmd.kind === 'open_login') {
-        const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
-        await this.client.postState({ sessionStatus: status });
-        await this.client.completeCommand(cmd.id, 'done', { sessionStatus: status });
-        this.pushStatus(status);
-        console.log(`[lemida] login → ${status}`);
+        const { status, outcome } = await openLogin({ onHeartbeat: () => this.heartbeat() });
+        if (outcome === 'busy') {
+          // Another sign-in owns the window: leave the session status alone.
+          await this.client.completeCommand(cmd.id, 'done', {
+            outcome,
+            message: 'A sign-in window is already open',
+          });
+        } else if (outcome === 'timeout') {
+          await this.client.postState({ sessionStatus: status });
+          await this.client.completeCommand(cmd.id, 'error', {
+            message: `Sign-in window timed out after ${Math.round(LOGIN_TIMEOUT_MS / 60_000)} min`,
+            outcome,
+          });
+          this.pushStatus(status);
+        } else {
+          await this.client.postState({ sessionStatus: status });
+          await this.client.completeCommand(cmd.id, 'done', {
+            sessionStatus: status,
+            outcome,
+            ...(outcome === 'closed' ? { message: 'Sign-in window was closed before finishing' } : {}),
+          });
+          this.pushStatus(status);
+        }
+        console.log(`[lemida] login → ${status} (${outcome})`);
       } else if (cmd.kind === 'probe') {
         const status = await probe();
         await this.client.postState({ sessionStatus: status });
@@ -182,10 +202,12 @@ export class LemidaEngine {
   /** Entry point for the native menu / preload IPC: open the embedded sign-in window directly. */
   async signIn(): Promise<{ ok: boolean; reason?: string }> {
     try {
-      const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
-      await this.client.postState({ sessionStatus: status }).catch(() => {});
-      this.pushStatus(status);
-      return status === 'valid' ? { ok: true } : { ok: false, reason: status };
+      const { status, outcome } = await openLogin({ onHeartbeat: () => this.heartbeat() });
+      if (outcome !== 'busy') {
+        await this.client.postState({ sessionStatus: status }).catch(() => {});
+        this.pushStatus(status);
+      }
+      return status === 'valid' ? { ok: true } : { ok: false, reason: outcome === 'busy' ? 'busy' : status };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
     }
