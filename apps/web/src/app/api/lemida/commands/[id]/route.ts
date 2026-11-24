@@ -16,6 +16,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   await saveLemidaState({ agentSeenAt: new Date().toISOString() });
   const body = await readJson(req, schema);
   if (!body.ok) return body.res;
-  await completeCommand(id, body.data.status, body.data.result);
-  return json({ ok: true });
+  const applied = await completeCommand(id, body.data.status, body.data.result);
+  return json({ ok: true, applied });
 }

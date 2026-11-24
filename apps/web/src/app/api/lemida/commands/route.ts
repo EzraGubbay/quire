@@ -1,14 +1,18 @@
 // The Mac agent long-polls this to pick up the next command the panel queued. Claiming is atomic.
-import { json } from '@/lib/api';
-import { claimNextCommand } from '@/lib/lemida/commands';
+import { z } from 'zod';
+import { json, readJson } from '@/lib/api';
+import { claimNextCommand, enqueueIfIdle, reapStaleCommands } from '@/lib/lemida/commands';
 import { enabledMappings } from '@/lib/lemida/courses';
 import { saveLemidaState } from '@/lib/lemida/state';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
   await saveLemidaState({ agentSeenAt: new Date().toISOString() });
-  const cmd = await claimNextCommand();
+  await reapStaleCommands();
+  // ?lease=1: the caller will heartbeat, so it gets the short lease. Legacy callers get the long one.
+  const leased = new URL(req.url).searchParams.get('lease') === '1';
+  const cmd = await claimNextCommand({ leased });
   if (!cmd) return json({ command: null });
   const body: Record<string, unknown> = {
     command: { id: cmd.id, kind: cmd.kind, payload: cmd.payload },
@@ -24,4 +28,18 @@ export async function GET() {
     }));
   }
   return json(body);
+}
+
+const enqueueSchema = z.object({
+  kind: z.literal('sync'),
+  trigger: z.enum(['auto-sign-in', 'auto-timer']),
+});
+
+/** The engine's auto-sync: queue a sync unless one is already waiting/running (or nothing is mapped). */
+export async function POST(req: Request) {
+  const body = await readJson(req, enqueueSchema);
+  if (!body.ok) return body.res;
+  await saveLemidaState({ agentSeenAt: new Date().toISOString() });
+  const { command, created, reason } = await enqueueIfIdle('sync', { trigger: body.data.trigger });
+  return json({ created, reason, id: command?.id ?? null });
 }
