@@ -23,6 +23,12 @@ export async function enqueueSyncAction(): Promise<void> {
   revalidatePath(PANEL);
 }
 
+/** Full rescan: the engine ignores its per-file records (no conditional requests, no hash skip). */
+export async function enqueueRescanAction(): Promise<void> {
+  await enqueueCommand('sync', { full: true });
+  revalidatePath(PANEL);
+}
+
 export async function mapCourseAction(
   projectId: string,
   lemidaUrl: string,
