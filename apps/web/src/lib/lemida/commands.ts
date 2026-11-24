@@ -67,7 +67,7 @@ export async function reapStaleCommands(
             sql`NOT EXISTS (
               SELECT 1 FROM lemida_commands c2
               WHERE c2.status IN ('done', 'error')
-                AND c2.updated_at >= ${pendingCutoff}
+                AND c2.updated_at >= ${pendingCutoff.toISOString()}::timestamptz
                 AND coalesce(c2.result->>'reason', '') NOT IN ('expired', 'lease_expired')
             )`,
           ),
