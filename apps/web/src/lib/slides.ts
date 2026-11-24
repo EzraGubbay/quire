@@ -68,8 +68,9 @@ type CreateCanvas = typeof import('@napi-rs/canvas').createCanvas;
 
 /**
  * Render one page of an open pdf.js document to a JPEG at `target` (white background, width ≤ maxWidth and,
- * when given, height ≤ maxHeight). Written to a temp file and renamed, so a crash, a full disk or a concurrent
- * reader never sees a truncated JPEG at `target`.
+ * when given, height ≤ maxHeight). With maxBytes, quality and then scale step down until the JPEG fits (dense
+ * text pages can otherwise exceed a client's size cap). Written to a temp file and renamed, so a crash, a full
+ * disk or a concurrent reader never sees a truncated JPEG at `target`.
  */
 async function renderPageTo(
   pdf: PdfDoc,
@@ -79,26 +80,36 @@ async function renderPageTo(
   maxWidth: number,
   quality: number,
   maxHeight?: number,
+  maxBytes?: number,
 ): Promise<void> {
   const { writeFile } = await import('node:fs/promises');
   const page = await pdf.getPage(pageNo);
   const base = page.getViewport({ scale: 1 });
-  const scale = Math.min(
+  let scale = Math.min(
     2,
     maxWidth / base.width,
     maxHeight ? maxHeight / base.height : Number.POSITIVE_INFINITY,
   );
-  const viewport = page.getViewport({ scale });
-  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await page.render({
-    canvasContext: ctx as unknown as CanvasRenderingContext2D,
-    viewport,
-    canvas: canvas as unknown as HTMLCanvasElement,
-  }).promise;
-  const jpeg = await canvas.encode('jpeg', quality);
+  let jpeg: Buffer | undefined;
+  // Without maxBytes this runs once, exactly as before. With it: up to 4 scales × 3 qualities.
+  for (let attempt = 0; attempt < (maxBytes ? 4 : 1); attempt++, scale *= 0.8) {
+    const viewport = page.getViewport({ scale });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({
+      canvasContext: ctx as unknown as CanvasRenderingContext2D,
+      viewport,
+      canvas: canvas as unknown as HTMLCanvasElement,
+    }).promise;
+    for (const q of maxBytes ? [quality, quality - 10, quality - 20] : [quality]) {
+      jpeg = await canvas.encode('jpeg', Math.max(20, q));
+      if (!maxBytes || jpeg.length <= maxBytes) break;
+    }
+    if (!maxBytes || (jpeg && jpeg.length <= maxBytes)) break;
+  }
+  if (!jpeg) throw new Error(`page ${pageNo} did not render`);
   const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {
     await writeFile(tmp, jpeg);
@@ -118,7 +129,7 @@ async function renderPageTo(
 export async function renderPages(
   doc: Pick<Document, 'projectId' | 'id' | 'filePath'>,
   pageNos: number[],
-  opts: { cacheName: string; maxWidth: number; maxHeight?: number; quality: number },
+  opts: { cacheName: string; maxWidth: number; maxHeight?: number; quality: number; maxBytes?: number },
 ): Promise<SlideImage[]> {
   if (!doc.filePath || pageNos.length === 0) return [];
   const dir = path.join(doc.projectId, `${doc.id}.${opts.cacheName}`);
@@ -142,7 +153,16 @@ export async function renderPages(
       for (const n of missing) {
         if (n < 1 || n > pdf.numPages) continue;
         const rel = path.join(dir, `${n}.jpg`);
-        await renderPageTo(pdf, createCanvas, n, filePath(rel), opts.maxWidth, opts.quality, opts.maxHeight);
+        await renderPageTo(
+          pdf,
+          createCanvas,
+          n,
+          filePath(rel),
+          opts.maxWidth,
+          opts.quality,
+          opts.maxHeight,
+          opts.maxBytes,
+        );
         out.push({ pageNo: n, path: rel });
       }
     } finally {
