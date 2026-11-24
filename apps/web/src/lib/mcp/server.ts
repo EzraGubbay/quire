@@ -7,8 +7,8 @@ import {
   formatRanges,
   IMAGE_B64_BUDGET,
   loadDoc,
+  loadPageContent,
   loadPageImages,
-  loadPageTexts,
   MAX_IMAGES_PER_CALL,
   parsePageSpec,
   UNKNOWN_PAGE_CAP,
@@ -97,14 +97,15 @@ async function textToolResult(
         (doc.originalPath ? ' The original upload is available with format="original" (raw binary).' : ''),
     );
   }
-  const texts = await loadPageTexts(doc);
-  const pageCount = doc.pageCount ?? texts.size;
+  const content = await loadPageContent(doc, pages);
   const result = buildTextResult({
     title: doc.title,
     courseName,
-    pageCount,
-    pageTexts: (n) => texts.get(n) ?? '',
-    wanted: parsePageSpec(pages, pageCount),
+    pageCount: content.pageCount,
+    pageTexts: (n) => content.texts.get(n) ?? '',
+    wanted: content.wanted,
+    figurePages: (n) => content.figures.has(n),
+    mathPages: (n) => content.math.has(n),
   });
   return { content: [{ type: 'text', text: result.text }] };
 }
@@ -147,14 +148,15 @@ async function imagesToolResult(
 /** First budget's worth of a PDF's page text, for resources/read. */
 async function pagesAsText(course: string, fileId: string): Promise<string> {
   const { doc, courseName } = await loadDoc(course, fileId);
-  const texts = await loadPageTexts(doc);
-  const pageCount = doc.pageCount ?? texts.size;
+  const content = await loadPageContent(doc);
   return buildTextResult({
     title: doc.title,
     courseName,
-    pageCount,
-    pageTexts: (n) => texts.get(n) ?? '',
-    wanted: parsePageSpec(undefined, pageCount),
+    pageCount: content.pageCount,
+    pageTexts: (n) => content.texts.get(n) ?? '',
+    wanted: content.wanted,
+    figurePages: (n) => content.figures.has(n),
+    mathPages: (n) => content.math.has(n),
   }).text;
 }
 
@@ -176,8 +178,8 @@ export function registerQuireMcp(server: McpServer): void {
   server.tool(
     'get_file',
     'Read a course file. By default returns its text page by page ("--- Page N ---" markers, ~30k characters ' +
-      'per call; pass `pages` to continue) and flags pages that are mostly figures. Use get_page_images to ' +
-      'see diagrams, slides or scans. format="pdf"/"original" returns the raw file as an embedded binary ' +
+      'per call; pass `pages` to continue) and flags pages that are mostly figures, contain embedded images ' +
+      'or are heavy on formulas. Use get_page_images to see diagrams, slides, formulas or scans. format="pdf"/"original" returns the raw file as an embedded binary ' +
       'resource, which only Claude Code can open (other clients fail or drop it); use it only when the user ' +
       'needs the file itself.',
     {

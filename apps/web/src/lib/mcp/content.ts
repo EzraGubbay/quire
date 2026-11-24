@@ -4,10 +4,13 @@
 // markers — the one form every client (Claude Code, Desktop/claude.ai, voice) passes to the model. Page images
 // are opt-in (get_page_images): small JPEGs for figures, unverified in voice and dropped by the API connector.
 // The pure helpers (parsePageSpec, formatRanges, buildTextResult) unit-test without a DB.
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { Document } from '@/db/schema';
 import { getDocument, getDocumentPages } from '@/lib/documents';
-import { readStoredFile } from '@/lib/files';
-import { extractPdf } from '@/lib/pdf';
+import { filePath, readStoredFile } from '@/lib/files';
+import { openPdfAnalyzer, type PageAnalysis, type PdfAnalyzer } from '@/lib/pdf';
 import { renderPages } from '@/lib/slides';
 import { resolveCourse } from './courses';
 
@@ -32,6 +35,8 @@ export const UNKNOWN_PAGE_CAP = 2000;
 export const SPARSE_CHARS = 40;
 /** Don't extract text on the fly from PDFs bigger than this (pages are normally stored at upload). */
 const MAX_ON_THE_FLY_BYTES = 60 * 1024 * 1024;
+/** Bump when the extractor's output changes: it is part of the on-disk cache name. */
+const TEXT_CACHE_VERSION = 1;
 
 const range = (a: number, b: number): number[] => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
@@ -78,6 +83,10 @@ export interface TextResult {
   remaining: number[];
   /** Shown pages with (almost) no extractable text: figures, diagrams, scans. */
   sparse: number[];
+  /** Shown pages that have text and also embedded images / figures the text cannot carry. */
+  figures: number[];
+  /** Shown pages whose formulas (fractions, sums, limits) are flattened in the text. */
+  math: number[];
 }
 
 /**
@@ -92,10 +101,16 @@ export function buildTextResult(input: {
   pageTexts: (pageNo: number) => string;
   wanted: number[];
   budget?: number;
+  /** Pages known to draw embedded images / figures. */
+  figurePages?: (pageNo: number) => boolean;
+  /** Pages known to be math-heavy. */
+  mathPages?: (pageNo: number) => boolean;
 }): TextResult {
   const budget = input.budget ?? TEXT_BUDGET;
   const shown: number[] = [];
   const sparse: number[] = [];
+  const figures: number[] = [];
+  const math: number[] = [];
   const sections: string[] = [];
   let used = 0;
   let k = 0;
@@ -113,6 +128,8 @@ export function buildTextResult(input: {
     used += block.length;
     shown.push(n);
     if (body.length < SPARSE_CHARS) sparse.push(n);
+    else if (input.figurePages?.(n)) figures.push(n);
+    if (input.mathPages?.(n)) math.push(n);
   }
   const remaining = input.wanted.slice(k);
   const lines = [
@@ -132,7 +149,19 @@ export function buildTextResult(input: {
         `Call get_page_images with pages="${formatRanges(sparse)}" to see them.]`,
     );
   }
-  return { text: lines.join('\n'), shown, remaining, sparse };
+  if (figures.length > 0) {
+    lines.push(
+      `[Pages ${formatRanges(figures)} contain images or figures that this text does not include. ` +
+        `Call get_page_images with pages="${formatRanges(figures)}" to see them.]`,
+    );
+  }
+  if (math.length > 0) {
+    lines.push(
+      `[Pages ${formatRanges(math)} contain formulas whose layout (fractions, sums, limits) is flattened in ` +
+        `this text. Call get_page_images with pages="${formatRanges(math)}" to read them exactly.]`,
+    );
+  }
+  return { text: lines.join('\n'), shown, remaining, sparse, figures, math };
 }
 
 export interface LoadedDoc {
@@ -149,16 +178,112 @@ export async function loadDoc(course: string, fileId: string): Promise<LoadedDoc
   return { doc, courseName: project.name, slug: project.slug };
 }
 
-/** Page texts by page number: the stored per-page text, or a one-off extraction when none was stored. */
-export async function loadPageTexts(doc: Document): Promise<Map<number, string>> {
-  const rows = await getDocumentPages(doc.id);
-  if (rows.length > 0) return new Map(rows.map((r) => [r.pageNo, r.text]));
-  if (!doc.filePath) return new Map();
-  if ((doc.fileSize ?? 0) > MAX_ON_THE_FLY_BYTES) {
-    throw new Error('No stored text for this large PDF. Use get_page_images to read its pages.');
+export interface PageContent {
+  pageCount: number;
+  /** The requested pages (parsePageSpec of the selection). */
+  wanted: number[];
+  /** Text by page number, for at least every page the budget will show. */
+  texts: Map<number, string>;
+  figures: Set<number>;
+  math: Set<number>;
+}
+
+type CachedPage = { t: string; f?: 1; m?: 1 };
+type TextCache = { v: number; pages: Record<string, CachedPage> };
+
+/** <project>/<doc>.mcp-text-v<N>-<size>.json: the version and the file size invalidate it. */
+const textCachePath = (doc: Pick<Document, 'projectId' | 'id' | 'fileSize'>): string =>
+  path.join(doc.projectId, `${doc.id}.mcp-text-v${TEXT_CACHE_VERSION}-${doc.fileSize ?? 0}.json`);
+
+async function readTextCache(rel: string): Promise<TextCache> {
+  try {
+    const parsed = JSON.parse(await readFile(filePath(rel), 'utf8')) as TextCache;
+    if (parsed?.v === TEXT_CACHE_VERSION && parsed.pages && typeof parsed.pages === 'object') return parsed;
+  } catch {
+    // missing or unreadable: start over
   }
-  const pdf = await extractPdf(await readStoredFile(doc.filePath));
-  return new Map(pdf.pages.map((t, i) => [i + 1, t]));
+  return { v: TEXT_CACHE_VERSION, pages: {} };
+}
+
+/** Temp file + rename, so a concurrent reader never sees half a cache. A failed write only costs a re-extract. */
+async function writeTextCache(rel: string, cache: TextCache): Promise<void> {
+  const target = filePath(rel);
+  const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(tmp, JSON.stringify(cache));
+    await rename(tmp, target);
+  } catch {
+    await rm(tmp, { force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * Page text and figure/math flags for a get_file call. The text is re-extracted from the PDF with the
+ * current extractor (reading order for right-to-left text, real word gaps, image detection) rather than taken
+ * from `document_pages`, whose rows were written by whatever extractor ran at upload. Only as many of the
+ * wanted pages as the text budget can show are analysed, and each analysed page is cached on disk. The stored
+ * rows remain the fallback when the PDF is missing, too large or unreadable.
+ */
+export async function loadPageContent(
+  doc: Document,
+  pages?: string,
+  budget: number = TEXT_BUDGET,
+): Promise<PageContent> {
+  const rows = await getDocumentPages(doc.id);
+  const texts = new Map(rows.map((r) => [r.pageNo, r.text]));
+  const figures = new Set<number>();
+  const math = new Set<number>();
+  const tooLarge = (doc.fileSize ?? 0) > MAX_ON_THE_FLY_BYTES;
+  if (!doc.filePath || tooLarge) {
+    if (doc.filePath && rows.length === 0) {
+      throw new Error('No stored text for this large PDF. Use get_page_images to read its pages.');
+    }
+    const pageCount = doc.pageCount ?? texts.size;
+    return { pageCount, wanted: parsePageSpec(pages, pageCount), texts, figures, math };
+  }
+
+  const source = doc.filePath;
+  const cacheRel = textCachePath(doc);
+  const cache = await readTextCache(cacheRel);
+  let analyzer: PdfAnalyzer | undefined;
+  const open = async (): Promise<PdfAnalyzer> => {
+    analyzer ??= await openPdfAnalyzer(await readStoredFile(source), SPARSE_CHARS);
+    return analyzer;
+  };
+  let added = 0;
+  try {
+    let pageCount = doc.pageCount ?? rows.length;
+    if (pageCount < 1) pageCount = (await open()).pageCount;
+    const wanted = parsePageSpec(pages, pageCount);
+    try {
+      let used = 0;
+      for (const n of wanted) {
+        let page: CachedPage | undefined = cache.pages[n];
+        if (!page) {
+          const pdf = await open();
+          if (n > pdf.pageCount) break;
+          const fresh: PageAnalysis = await pdf.page(n);
+          page = { t: fresh.text, ...(fresh.figure ? { f: 1 } : {}), ...(fresh.math ? { m: 1 } : {}) };
+          cache.pages[n] = page;
+          added++;
+        }
+        texts.set(n, page.t);
+        if (page.f) figures.add(n);
+        if (page.m) math.add(n);
+        // buildTextResult stops at the first page that overflows the budget; nothing later is shown.
+        used += page.t.length;
+        if (used > budget) break;
+      }
+    } catch (err) {
+      // Unreadable PDF: the stored text stands in. With nothing stored there is nothing to fall back to.
+      if (rows.length === 0) throw err;
+    }
+    return { pageCount, wanted, texts, figures, math };
+  } finally {
+    await analyzer?.close().catch(() => undefined);
+    if (added > 0) await writeTextCache(cacheRel, cache);
+  }
 }
 
 /** JPEG page images as base64, in page order (cached on disk after the first render). */

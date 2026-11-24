@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/documents', () => ({ getDocument: vi.fn(), getDocumentPages: vi.fn() }));
-vi.mock('@/lib/files', () => ({ readStoredFile: vi.fn() }));
-vi.mock('@/lib/pdf', () => ({ extractPdf: vi.fn() }));
+vi.mock('@/lib/files', () => ({ readStoredFile: vi.fn(), filePath: vi.fn() }));
+vi.mock('@/lib/pdf', () => ({ openPdfAnalyzer: vi.fn() }));
 vi.mock('@/lib/slides', () => ({ renderPages: vi.fn() }));
 vi.mock('./courses', () => ({ resolveCourse: vi.fn() }));
 
@@ -90,6 +90,70 @@ describe('buildTextResult', () => {
     expect('Fig. 1'.length).toBeLessThan(SPARSE_CHARS);
     expect(r.text).toContain('--- Page 2 ---\n[no extractable text on this page]');
     expect(r.text).toContain('get_page_images with pages="2-3"');
+  });
+
+  it('flags pages with embedded images even when they have text, next to the sparse-page hint', () => {
+    const texts: Record<number, string> = {
+      1: words(20),
+      2: words(20),
+      3: 'Fig. 1',
+      4: words(20),
+      5: words(20),
+    };
+    const r = buildTextResult({
+      ...base,
+      pageTexts: (n) => texts[n] ?? '',
+      wanted: [1, 2, 3, 4, 5],
+      // Page 3 has an image too, but it is already listed as a page with (almost) no text.
+      figurePages: (n) => [1, 2, 3, 5].includes(n),
+    });
+    expect(r.sparse).toEqual([3]);
+    expect(r.figures).toEqual([1, 2, 5]);
+    expect(r.math).toEqual([]);
+    expect(r.text).toContain(
+      '[Pages 3 have little or no text (figures, diagrams or scans). Call get_page_images with pages="3" to see them.]',
+    );
+    expect(r.text).toContain(
+      '[Pages 1-2,5 contain images or figures that this text does not include. ' +
+        'Call get_page_images with pages="1-2,5" to see them.]',
+    );
+    expect(r.text).not.toContain('formulas');
+  });
+
+  it('flags math-heavy pages', () => {
+    const r = buildTextResult({
+      ...base,
+      pageTexts: () => words(20),
+      wanted: [1, 2, 3],
+      mathPages: (n) => n === 2,
+    });
+    expect(r.math).toEqual([2]);
+    expect(r.figures).toEqual([]);
+    expect(r.text).toContain(
+      '[Pages 2 contain formulas whose layout (fractions, sums, limits) is flattened in this text. ' +
+        'Call get_page_images with pages="2" to read them exactly.]',
+    );
+  });
+
+  it('only flags pages it shows', () => {
+    const r = buildTextResult({
+      ...base,
+      pageTexts: () => 'x'.repeat(400),
+      wanted: [1, 2, 3, 4, 5],
+      budget: 1000,
+      figurePages: () => true,
+      mathPages: () => true,
+    });
+    expect(r.shown).toEqual([1, 2]);
+    expect(r.figures).toEqual([1, 2]);
+    expect(r.math).toEqual([1, 2]);
+  });
+
+  it('adds no flag footers without flags', () => {
+    const r = buildTextResult({ ...base, pageTexts: () => words(20), wanted: [1, 2] });
+    expect(r.figures).toEqual([]);
+    expect(r.math).toEqual([]);
+    expect(r.text).not.toContain('get_page_images');
   });
 
   it('never splits a surrogate pair when cutting a page', () => {
