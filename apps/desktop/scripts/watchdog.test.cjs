@@ -88,6 +88,75 @@ test('reconcile: shouldStop ends the crawl before the next activity; onProgress 
   assert.equal(stats.activities, 3);
 });
 
+test('progress fires per download (collectActivity) and per upload (reconcile)', async () => {
+  const { collectActivity } = dist('downloads');
+  const BASE = 'https://lemida.biu.ac.il';
+  const link = (n) => `${BASE}/pluginfile.php/1/mod_folder/content/0/f${n}.pdf`;
+  const folder = {
+    name: 'F',
+    href: `${BASE}/mod/folder/view.php?id=1`,
+    moduleType: 'mod_folder',
+    sectionTitle: 'S',
+  };
+  const html = `<html><body id="page-mod-folder-view">${[1, 2, 3].map((n) => `<a href="${link(n)}">f</a>`).join('')}</body></html>`;
+  const mk = (url, type, body) => ({
+    requestedUrl: url,
+    hops: [],
+    finalUrl: url,
+    status: 200,
+    headers: { 'content-type': type },
+    body: Buffer.from(body),
+  });
+  let downloads = 0;
+  const out = await collectActivity(folder, {
+    get: async (url) => (url === folder.href ? mk(url, 'text/html', html) : mk(url, 'application/pdf', url)),
+    records: undefined,
+    full: false,
+    log: () => {},
+    onProgress: () => {
+      downloads += 1;
+    },
+  });
+  assert.equal(out.files.length, 3);
+  assert.equal(downloads, 4, 'one page + three files');
+
+  let uploads = 0;
+  await reconcileResources(
+    [folder],
+    { records: {}, full: false },
+    {
+      collect: async () => out,
+      upload: async () => ({ ok: true, status: 'imported', duplicate: false }),
+      recordFile: () => {},
+      persist: async () => {},
+      log: () => {},
+      onProgress: () => {
+        uploads += 1;
+      },
+    },
+  );
+  assert.equal(uploads, 4, 'three uploads + one per activity');
+});
+
+test('SeenStore: overlapping saves are serialized and leave valid JSON with the latest content', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const { SeenStore } = dist('seen');
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'seen-')), 'lemida-seen.json');
+  const s = new SeenStore(f);
+  await s.load();
+  const rec = (n) => ({ sha256: `s${n}`, at: '2026-01-01T00:00:00Z' });
+  const saves = [];
+  for (let i = 0; i < 20; i++) {
+    s.recordFile('course', 'act', `file${i}`, rec(i));
+    saves.push(s.save()); // not awaited: overlap
+  }
+  await Promise.all(saves);
+  const parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
+  assert.equal(Object.keys(parsed.courses.course.act.files).length, 20);
+  assert.equal(fs.existsSync(`${f}.tmp`), false);
+});
+
 test('runWithHeartbeat: progress restarts the idle deadline (advancing run survives, stalled run times out)', async () => {
   const advancing = await runWithHeartbeat({
     run: async (progress) => {

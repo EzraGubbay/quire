@@ -24,7 +24,7 @@ import { runSync as runSyncCourses, type SyncReport, safeUpload, summariseSync }
 const POLL_MS = Number(process.env.LEMIDA_POLL_MS ?? 5000);
 const PROBE_MS = Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000);
 const HEARTBEAT_MS = 30_000;
-const SYNC_DEADLINE_MS = Number(process.env.LEMIDA_SYNC_DEADLINE_MS ?? 3_600_000);
+const SYNC_DEADLINE_MS = Number(process.env.LEMIDA_SYNC_DEADLINE_MS ?? 600_000);
 
 /** Per-kind watchdog: how long a command may go without progress before the engine gives up on it. */
 function commandDeadlineMs(kind: LemidaCommand['kind']): number {
@@ -306,6 +306,11 @@ export class LemidaEngine {
         this.log.line(`sync done: ${summary}`);
       }
     } catch (err) {
+      if (ctx.signal.aborted) {
+        // The watchdog already failed this command (engine_timeout); a late error must not touch status/outcome.
+        console.error(`[lemida] aborted command ${cmd.kind} ended with: ${(err as Error).message}`);
+        return;
+      }
       const expired = err instanceof SessionExpired;
       if (expired) {
         await this.client.postState({ sessionStatus: 'expired' }).catch(() => {});

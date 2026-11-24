@@ -64,6 +64,7 @@ export async function reconcileResources(
     for (const dl of result.files) {
       stats.downloaded++;
       const out = await upload(dl, resource);
+      onProgress?.();
       if (!out.ok) {
         stats.uploadFailed++;
         log(`upload ${dl.name} FAILED: ${out.error}`);

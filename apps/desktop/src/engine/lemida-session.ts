@@ -589,7 +589,13 @@ export async function syncCourse(
       { records, full },
       {
         collect: (r) =>
-          collectActivity(r, { get: (u, o) => httpGet(ses, u, o), records: records[r.href], full, log }),
+          collectActivity(r, {
+            get: (u, o) => httpGet(ses, u, o),
+            records: records[r.href],
+            full,
+            log,
+            onProgress,
+          }),
         upload,
         recordFile,
         persist,
