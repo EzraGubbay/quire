@@ -196,3 +196,16 @@ test('13. exactly one req log line per request', async () => {
   assert.equal(h.lines.length, h.calls.length);
   assert.ok(h.lines.every((l) => l.startsWith('req ')));
 });
+
+test('review: a follow-up file fetch returning HTML logs html_no_link, not resource_page', async () => {
+  const r = res('mod_resource');
+  const link = `${BASE}/pluginfile.php/1/mod_resource/content/8/t1.pdf`;
+  const h = harness({
+    [r.href]: page(r.href, `<html><a href="${link}">dl</a></html>`),
+    [link]: page(link, `<html><a href="${BASE}/pluginfile.php/1/x/y.pdf">again</a></html>`),
+  });
+  const out = await collectActivity(r, h.ctx);
+  assert.ok(h.lines[0].includes('outcome=resource_page'), h.lines[0]);
+  assert.ok(h.lines[1].includes('outcome=html_no_link'), h.lines[1]);
+  assert.equal(out.failures[0].outcome, 'html_no_link');
+});

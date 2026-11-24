@@ -331,12 +331,12 @@ function httpGetOnce(ses: Session, url: string, opts: { ifNoneMatch?: string }):
         session: ses,
         useSessionCookies: true,
         redirect: 'manual',
+        // no-store keeps Chromium's HTTP cache from answering instead of Lemida (the log then shows the live
+        // answer) without adding Cache-Control/Pragma headers a normal navigation would not send. A manual
+        // If-None-Match still reaches Moodle, so a 304 comes back to us.
+        cache: 'no-store',
         headers: {
           'user-agent': LEMIDA.userAgent,
-          // net.request has no cache option: ask Chromium to revalidate so the log shows Lemida's live
-          // answer. A manual If-None-Match still works (a 304 comes back to us).
-          'cache-control': 'no-cache',
-          pragma: 'no-cache',
           // Cheap hypothesis: the previous download request sent no Accept header at all.
           accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           ...(opts.ifNoneMatch ? { 'if-none-match': opts.ifNoneMatch } : {}),

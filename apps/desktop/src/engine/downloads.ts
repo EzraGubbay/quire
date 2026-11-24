@@ -72,6 +72,7 @@ export async function collectActivity(resource: Resource, ctx: CollectContext): 
     if (
       outcome.kind === 'html_no_link' &&
       resource.moduleType === 'mod_resource' &&
+      url === resource.href &&
       outcome.html !== undefined &&
       parseResourceWorkaround(outcome.html, raw.finalUrl || url)
     ) {
