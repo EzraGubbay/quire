@@ -35,6 +35,7 @@ vi.mock('@/lib/documents', () => ({
   builtinFolder: vi.fn(),
   createDeckDocument: vi.fn(),
   createFolder: vi.fn(async () => ({ id: 'folder-1' })),
+  deleteDocument: vi.fn(async () => {}),
   listFolders: vi.fn(async () => []),
 }));
 vi.mock('@/lib/files', () => ({ readStoredFile: vi.fn(), sha256: vi.fn(() => 'hash-1') }));
