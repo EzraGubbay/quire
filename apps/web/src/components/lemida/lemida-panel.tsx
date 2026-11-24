@@ -10,6 +10,7 @@ import {
   deleteMappingAction,
   dismissReviewAction,
   enqueueProbeAction,
+  enqueueRescanAction,
   enqueueSignInAction,
   enqueueSyncAction,
   mapCourseAction,
@@ -167,6 +168,15 @@ export function LemidaPanel(props: LemidaPanelProps) {
             disabled={mappings.filter((m) => m.enabled).length === 0}
           >
             Sync now
+          </Button>
+          <Button
+            variant="secondary"
+            icon={<Icon icon={RefreshCw} />}
+            onClick={() => run(enqueueRescanAction, 'Full rescan queued')}
+            disabled={mappings.filter((m) => m.enabled).length === 0}
+            title="Re-download every file from Lemida; Quire skips the ones it already has"
+          >
+            Rescan everything
           </Button>
         </div>
         {state.lastSyncSummary && (

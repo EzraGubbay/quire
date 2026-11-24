@@ -42,9 +42,12 @@ export interface ImportArgs {
   mappingId?: string;
 }
 
-/** The import route returns the placement result; we only read `status` for the sync tally. */
+/** The import route returns the placement result; the sync reads `status`, `duplicate` and `error`. */
 export interface ImportResult {
   status: string;
+  /** True when the server already had this file (the existing row's status is returned). */
+  duplicate?: boolean;
+  error?: string | null;
   [k: string]: unknown;
 }
 

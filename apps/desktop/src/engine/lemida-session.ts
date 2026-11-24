@@ -13,20 +13,15 @@
 // honest desktop UA (the partition's UA is set to a plain Chrome string so no "Electron" token leaks).
 import { chmod, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, BrowserWindow, type Session, safeStorage, session, type WebContents } from 'electron';
+import { app, BrowserWindow, net, type Session, safeStorage, session, type WebContents } from 'electron';
 import { closeHelper, openHelper } from './credential-bar';
+import { collectActivity, type Download } from './downloads';
+import { NotEnrolled, SessionExpired } from './errors';
+import { type RawResponse, redactUrl } from './fetch-outcome';
 import { waitForSignIn, withTimeout } from './lifecycle';
-import {
-  decideLoggedIn,
-  filenameFrom,
-  isAuthWall,
-  type LoginSignals,
-  parseMoodleCourse,
-  parsePluginfileLinks,
-  parseResourceWorkaround,
-  type Resource,
-} from './moodle';
-import { reconcileResources } from './reconcile';
+import { decideLoggedIn, isAuthWall, type LoginSignals, parseMoodleCourse, type Resource } from './moodle';
+import { type CourseStats, reconcileResources, type UploadOutcome } from './reconcile';
+import type { CourseRecords, FileRecord } from './seen';
 import {
   cookiesToRestore,
   decodeCookieFile,
@@ -44,33 +39,13 @@ import {
 
 export type SessionStatus = 'valid' | 'expired' | 'unknown';
 
-export class SessionExpired extends Error {
-  constructor(url?: string) {
-    super(`Lemida session expired (hit ${url ?? 'a login/bot page'})`);
-    this.name = 'SessionExpired';
-  }
-}
+export { NotEnrolled, SessionExpired };
 
 export interface SyncCourse {
   slug: string;
   lemidaUrl: string;
   mappingId?: string;
   label?: string;
-}
-
-export interface Download {
-  name: string;
-  bytes: ArrayBuffer;
-  contentType: string;
-  sourceUrl: string;
-}
-
-export type OnFile = (download: Download, resource: Resource) => Promise<void>;
-
-export interface SyncStats {
-  resources: number;
-  downloaded: number;
-  skipped: number;
 }
 
 /** The module types we pull files from; anything else (url, page, quiz, …) is left alone. */
@@ -420,60 +395,132 @@ export async function probe(): Promise<SessionStatus> {
   return probeSession();
 }
 
-interface FetchHead {
-  finalUrl: string;
-  contentType: string;
-  disposition: string;
-  resp: Response;
+const MAX_BYTES = 200 * 1024 * 1024; // matches the server's limit in apps/web import/route.ts
+const MAX_HOPS = 10;
+/** Inactivity timeout: fires when no response/data arrives for this long (not a whole-body deadline). */
+const FETCH_TIMEOUT_MS = Number(process.env.LEMIDA_FETCH_TIMEOUT_MS ?? 120_000);
+/** Minimum gap between Lemida requests, to stay polite to the bot manager. One place to tune. */
+const REQUEST_PACE_MS = 300;
+
+let lastRequestAt = 0;
+async function pace(): Promise<void> {
+  const wait = lastRequestAt + REQUEST_PACE_MS - Date.now();
+  lastRequestAt = Math.max(Date.now(), lastRequestAt + REQUEST_PACE_MS);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
 
-async function fetchBytes(ses: Session, url: string): Promise<FetchHead | null> {
-  const resp = await ses.fetch(url, { headers: { 'user-agent': LEMIDA.userAgent } });
-  const finalUrl = resp.url;
-  if (isAuthWall(finalUrl)) throw new SessionExpired(finalUrl);
-  if (!resp.ok) return null;
-  return {
-    finalUrl,
-    contentType: resp.headers.get('content-type') ?? '',
-    disposition: resp.headers.get('content-disposition') ?? '',
-    resp,
-  };
+/** Paced GET through the Lemida session; see httpGetOnce. */
+export async function httpGet(
+  ses: Session,
+  url: string,
+  opts: { ifNoneMatch?: string } = {},
+): Promise<RawResponse> {
+  await pace();
+  return httpGetOnce(ses, url, opts);
 }
 
-/** Download the actual file(s) behind one activity (resource = 1 file; folder/assign = possibly several). */
-async function collectDownloads(ses: Session, resource: Resource): Promise<Download[]> {
-  const out: Download[] = [];
-  const head = await fetchBytes(ses, resource.href);
-  if (!head) return out;
-  const isHtml = /text\/html/i.test(head.contentType);
-
-  if (resource.moduleType === 'mod_resource' && !isHtml) {
-    out.push({
-      name: filenameFrom(head.finalUrl, head.disposition),
-      bytes: await head.resp.arrayBuffer(),
-      contentType: head.contentType,
-      sourceUrl: head.finalUrl,
+/**
+ * One GET through the Lemida session via net.request, recording every redirect hop. Session.fetch cannot be
+ * used here: Electron documents its Response.url/type as incorrect, so a bounce to the login page was
+ * invisible. Always resolves (never throws, never hangs); transport problems come back in `error`.
+ */
+function httpGetOnce(ses: Session, url: string, opts: { ifNoneMatch?: string }): Promise<RawResponse> {
+  return new Promise<RawResponse>((resolve) => {
+    const hops: string[] = [];
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const done = (r: Partial<RawResponse>): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve({
+        requestedUrl: url,
+        hops,
+        finalUrl: hops.length ? (hops[hops.length - 1] as string) : url,
+        status: 0,
+        headers: {},
+        body: null,
+        ...r,
+      });
+    };
+    let request: ReturnType<typeof net.request>;
+    try {
+      request = net.request({
+        url,
+        session: ses,
+        useSessionCookies: true,
+        redirect: 'manual',
+        // no-store keeps Chromium's HTTP cache from answering instead of Lemida (the log then shows the live
+        // answer) without adding Cache-Control/Pragma headers a normal navigation would not send. A manual
+        // If-None-Match still reaches Moodle, so a 304 comes back to us.
+        cache: 'no-store',
+        headers: {
+          'user-agent': LEMIDA.userAgent,
+          // Cheap hypothesis: the previous download request sent no Accept header at all.
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          ...(opts.ifNoneMatch ? { 'if-none-match': opts.ifNoneMatch } : {}),
+        },
+      });
+    } catch (err) {
+      done({ error: 'network_error', errorMessage: (err as Error).message });
+      return;
+    }
+    // If a 304 never shows up, the sha256 fallback in downloads.ts keeps the result correct (only bandwidth
+    // is wasted). The timer is re-armed on every response/data event, so slow large downloads can finish.
+    const arm = (): void => {
+      if (settled) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        done({ error: 'timeout', errorMessage: `no data for ${FETCH_TIMEOUT_MS}ms` });
+        request.abort();
+      }, FETCH_TIMEOUT_MS);
+    };
+    arm();
+    request.on('redirect', (_status, _method, redirectUrl) => {
+      hops.push(redirectUrl);
+      if (isAuthWall(redirectUrl)) {
+        done({ error: 'aborted_auth_wall' });
+        request.abort();
+        return;
+      }
+      if (hops.length > MAX_HOPS) {
+        done({ error: 'network_error', errorMessage: 'too many redirects' });
+        request.abort();
+        return;
+      }
+      request.followRedirect();
     });
-    return out;
-  }
-
-  const html = await head.resp.text();
-  const links =
-    resource.moduleType === 'mod_resource'
-      ? [parseResourceWorkaround(html, head.finalUrl)].filter(Boolean)
-      : parsePluginfileLinks(html, head.finalUrl);
-
-  for (const link of links) {
-    const file = await fetchBytes(ses, link);
-    if (!file) continue;
-    out.push({
-      name: filenameFrom(file.finalUrl, file.disposition),
-      bytes: await file.resp.arrayBuffer(),
-      contentType: file.contentType,
-      sourceUrl: file.finalUrl,
+    request.on('response', (response) => {
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(response.headers)) {
+        headers[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : String(v);
+      }
+      arm();
+      const declared = Number(headers['content-length']);
+      if (Number.isFinite(declared) && declared > MAX_BYTES) {
+        done({ status: response.statusCode, headers, error: 'too_large' });
+        request.abort();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let total = 0;
+      response.on('data', (chunk) => {
+        arm();
+        total += chunk.length;
+        if (total > MAX_BYTES) {
+          done({ status: response.statusCode, headers, error: 'too_large' });
+          request.abort();
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => done({ status: response.statusCode, headers, body: Buffer.concat(chunks) }));
+      response.on('error', (err: Error) => done({ error: 'network_error', errorMessage: err.message }));
     });
-  }
-  return out;
+    request.on('error', (err) => done({ error: 'network_error', errorMessage: err.message }));
+    request.on('abort', () => done({ error: 'network_error', errorMessage: 'aborted' }));
+    request.end();
+  });
 }
 
 /**
@@ -504,26 +551,46 @@ async function gatherResources(win: BrowserWindow): Promise<Resource[]> {
   return deduped;
 }
 
-/** Crawl one mapped course and hand each new file to `onFile`. `seen` holds hrefs from earlier runs. */
+export interface SyncCourseDeps {
+  /** This course's records (live object owned by the SeenStore). */
+  records: CourseRecords;
+  full: boolean;
+  upload: (download: Download, resource: Resource) => Promise<UploadOutcome>;
+  recordFile: (activityHref: string, fileUrl: string, rec: FileRecord) => void;
+  persist: () => Promise<void>;
+  log: (msg: string) => void;
+  /** Called once the course page loaded signed in and enrolled. */
+  onLoaded?: () => void;
+}
+
+/** Crawl one mapped course and upload each new or changed file; records only what the server accepted. */
 export async function syncCourse(
   course: SyncCourse,
-  onFile: OnFile,
-  { seen = new Set<string>(), full = false }: { seen?: Set<string>; full?: boolean } = {},
-): Promise<SyncStats> {
+  { records, full, upload, recordFile, persist, log, onLoaded }: SyncCourseDeps,
+): Promise<CourseStats> {
   const ses = lemidaSession();
   const win = hiddenWindow();
+  const name = course.label ?? course.slug;
   try {
     const landed = await navigate(win, course.lemidaUrl);
+    log(`course ${name} page=${redactUrl(landed)}`);
     if (isAuthWall(landed)) throw new SessionExpired(landed);
-    // Not signed in as an enrolled student ⇒ Moodle sends us to the enrolment page, not the course.
-    if (/\/enrol\//.test(landed)) {
-      throw new SessionExpired(`${landed} (not enrolled, or signed in only as a guest — sign in again)`);
-    }
+    // Signed in but sent to the enrolment page: not enrolled in this course (other courses are unaffected).
+    if (/\/enrol\//.test(landed)) throw new NotEnrolled(landed);
+    onLoaded?.();
     const resources = await gatherResources(win);
+    log(`course ${name} activities=${resources.length}`);
     return await reconcileResources(
       resources,
-      { seen, full },
-      { collect: (r) => collectDownloads(ses, r), onFile },
+      { records, full },
+      {
+        collect: (r) =>
+          collectActivity(r, { get: (u, o) => httpGet(ses, u, o), records: records[r.href], full, log }),
+        upload,
+        recordFile,
+        persist,
+        log,
+      },
     );
   } finally {
     if (!win.isDestroyed()) win.close();

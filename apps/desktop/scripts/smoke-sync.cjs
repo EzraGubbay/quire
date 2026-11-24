@@ -1,6 +1,6 @@
-// Headless check of the sync reconcile step (dist/engine/reconcile.js). Proves the fix: a resource that
-// yields no download is NOT marked seen (so it retries next sync), while one that yields a file is. Runs
-// against the compiled CommonJS output, like smoke-parser.cjs.
+// Headless check of the sync reconcile step (dist/engine/reconcile.js). Proves: an activity whose file the
+// server did not accept is NOT recorded (so it retries next sync), while an accepted one is. Runs against
+// the compiled CommonJS output, like smoke-parser.cjs.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
@@ -14,31 +14,44 @@ const res = (id) => ({
 });
 
 (async () => {
-  const A = res(1); // downloads a file
-  const B = res(2); // yields no download (transient / challenge page)
-  const C = res(3); // already seen
+  const A = res(1); // accepted
+  const B = res(2); // upload rejected
 
-  const seen = new Set([C.href]);
-  const handled = [];
-  const collect = async (r) =>
-    r === B ? [] : [{ name: 'f', bytes: new ArrayBuffer(1), contentType: 'x', sourceUrl: 'u' }];
-  const onFile = async (_dl, r) => {
-    handled.push(r.href);
+  const recorded = new Set();
+  const collect = async (r) => ({
+    files: [
+      {
+        name: 'f',
+        bytes: new ArrayBuffer(1),
+        contentType: 'x',
+        sourceUrl: 'u',
+        fileUrl: r.href,
+        sha256: 'h',
+      },
+    ],
+    unchanged: [],
+    failures: [],
+  });
+  const upload = async (_dl, r) =>
+    r === B ? { ok: false, error: 'boom' } : { ok: true, status: 'imported', duplicate: false };
+  const deps = {
+    collect,
+    upload,
+    recordFile: (href) => recorded.add(href),
+    persist: async () => {},
+    log: () => {},
   };
 
-  const stats = await reconcileResources([A, B, C], { seen, full: false }, { collect, onFile });
-  assert.equal(stats.resources, 3, 'counts all resources');
-  assert.equal(stats.skipped, 1, 'C already seen → skipped');
-  assert.equal(stats.downloaded, 1, 'only A produced a file');
-  assert.ok(seen.has(A.href), 'A downloaded → marked seen');
-  assert.ok(!seen.has(B.href), 'B produced no file → NOT marked seen, retries next sync');
-  assert.ok(seen.has(C.href), 'C stays seen');
-  assert.deepEqual(handled, [A.href], 'onFile called once, for A only');
+  const stats = await reconcileResources([A, B], { records: {}, full: false }, deps);
+  assert.equal(stats.activities, 2);
+  assert.equal(stats.imported, 1);
+  assert.equal(stats.uploadFailed, 1);
+  assert.ok(recorded.has(A.href), 'A accepted -> recorded');
+  assert.ok(!recorded.has(B.href), 'B rejected -> NOT recorded, retries next sync');
 
-  // full=true ignores the seen set and reprocesses anything that yields a file.
-  const seen2 = new Set([A.href, B.href, C.href]);
-  const stats2 = await reconcileResources([A, B, C], { seen: seen2, full: true }, { collect, onFile });
-  assert.equal(stats2.downloaded, 2, 'full mode re-downloads A and C; B still yields nothing');
+  // full=true re-processes everything the collector hands back.
+  const stats2 = await reconcileResources([A, B], { records: {}, full: true }, deps);
+  assert.equal(stats2.downloaded, 2, 'full mode re-processes both');
 
   console.log('smoke-sync OK');
 })().catch((e) => {
