@@ -216,11 +216,9 @@ export async function importLemidaFile(
       if (cls.kind === 'unknown') status = 'needs_review';
     }
   } catch (err) {
-    // Don't leave a half-placed document behind (its content_hash would make the retry match it as a twin).
-    if (createdDocId) {
-      await deleteDocument(project.id, createdDocId).catch(() => {});
-      delete placement.documentId;
-    }
+    // Record the error without the half-placed document, then drop that document (its content_hash would make
+    // the retry match it as a twin). If a concurrent import adopted it as its twin, settleLostRace keeps it.
+    const { documentId: _orphan, ...errorPlacement } = placement;
     const row = await recordFile(
       project.id,
       meta,
@@ -228,10 +226,11 @@ export async function importLemidaFile(
       data.byteLength,
       cls,
       'error',
-      placement,
+      errorPlacement,
       (err as Error).message,
     );
-    if (!row) return settleLostRace(project.id, hash);
+    if (!row) return settleLostRace(project.id, hash, createdDocId);
+    if (createdDocId) await deleteDocument(project.id, createdDocId).catch(() => {});
     return asResult(row, false);
   }
 
@@ -248,13 +247,16 @@ async function setHash(documentId: string, hash: string): Promise<void> {
 
 /** Another import already recorded this hash: drop the copy this attempt placed and report the winner. */
 async function settleLostRace(projectId: string, hash: string, createdDocId?: string): Promise<ImportResult> {
-  if (createdDocId) await deleteDocument(projectId, createdDocId).catch(() => {});
   const [existing] = await db
     .select()
     .from(lemidaFiles)
     .where(and(eq(lemidaFiles.projectId, projectId), eq(lemidaFiles.sha256, hash)))
     .limit(1);
   if (!existing) throw new Error('lemida_files row vanished during import');
+  // The winner may have adopted our in-flight document as its twin; only delete it when it didn't.
+  if (createdDocId && existing.placement?.documentId !== createdDocId) {
+    await deleteDocument(projectId, createdDocId).catch(() => {});
+  }
   return asResult(existing, true);
 }
 

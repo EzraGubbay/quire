@@ -61,7 +61,7 @@ vi.mock('./classify', async (orig) => ({
 }));
 vi.mock('@/lib/mobile/push/triggers', () => ({ notifyFilesAdded: vi.fn() }));
 
-import type { Project } from '@/db/schema';
+import { lemidaFiles, type Project } from '@/db/schema';
 import { createDeckDocument, deleteDocument } from '@/lib/documents';
 import { updateAssignment } from '@/lib/homework';
 import { notifyFilesAdded } from '@/lib/mobile/push/triggers';
@@ -91,7 +91,7 @@ describe('importLemidaFile retry', () => {
     expect(r).toMatchObject({ status: 'imported', duplicate: false, error: null });
     expect(h.state.upserts).toHaveLength(1);
     const up = h.state.upserts[0] as { target: unknown[]; setWhere: unknown };
-    expect(up.target).toHaveLength(2);
+    expect(up.target).toEqual([lemidaFiles.projectId, lemidaFiles.sha256]);
     expect(up.setWhere).toBeDefined();
     expect(deleteDocument).not.toHaveBeenCalled();
   });
@@ -146,5 +146,29 @@ describe('importLemidaFile retry', () => {
     h.state.selects = [[], [], [], [winner]];
     const r = await run();
     expect(r).toMatchObject({ duplicate: true, status: 'imported', lemidaFileId: 'lf-1' });
+  });
+
+  it('a lost race whose winner adopted our document keeps it', async () => {
+    h.state.inserts = [[]];
+    h.state.selects = [[], [], [], [{ id: 'lf-1', status: 'duplicate', placement: { documentId: 'doc-9' } }]];
+    const r = await run();
+    expect(r).toMatchObject({ duplicate: true, lemidaFileId: 'lf-1' });
+    expect(deleteDocument).not.toHaveBeenCalled();
+  });
+
+  it('a failure after the winner adopted our document keeps it', async () => {
+    classifyAs('homework');
+    vi.mocked(updateAssignment).mockRejectedValueOnce(new Error('db hiccup'));
+    h.state.inserts = [[]];
+    h.state.selects = [
+      [],
+      [],
+      [],
+      [],
+      [{ id: 'lf-1', status: 'duplicate', placement: { documentId: 'doc-9' } }],
+    ];
+    const r = await run();
+    expect(r).toMatchObject({ duplicate: true, status: 'duplicate' });
+    expect(deleteDocument).not.toHaveBeenCalled();
   });
 });
