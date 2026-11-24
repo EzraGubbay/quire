@@ -126,28 +126,9 @@ export function parseResourceWorkaround(html: string, baseUrl: string): string {
   return src ? absolute(src, baseUrl) : '';
 }
 
-/** A readable file name from a Content-Disposition header or, failing that, the URL's last segment. */
-export function filenameFrom(url: string, contentDisposition?: string): string {
-  if (contentDisposition) {
-    const star = contentDisposition.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
-    if (star?.[1]) {
-      try {
-        return decodeURIComponent(star[1].replace(/"/g, '').trim());
-      } catch {
-        /* fall through */
-      }
-    }
-    const plain = contentDisposition.match(/filename="?([^";]+)"?/i);
-    if (plain?.[1]) return plain[1].trim();
-  }
-  try {
-    const pathname = new URL(url).pathname;
-    const seg = pathname.split('/').filter(Boolean).pop() ?? 'file';
-    return decodeURIComponent(seg);
-  } catch {
-    return 'file';
-  }
-}
+// Content-Disposition / URL file-name decoding lives in an electron-free module of its own (Hebrew names
+// arrive as UTF-8 bytes read as Latin-1; see filename.ts). Re-exported so existing importers keep working.
+export { filenameFrom } from './filename';
 
 /** URLs under these paths on the Lemida host mean the session is gone / a bot wall. */
 const AUTH_WALL = [/\/login\//i, /login\.microsoftonline\.com/i, /perfdrive\.com/i, /validate\.perfdrive/i];

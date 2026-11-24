@@ -58,4 +58,14 @@ describe('classifyLemidaFile', () => {
     // "תרגיל בית" (homework) must win over the bare "תרגיל"/"תרגול" family.
     expect(classifyLemidaFile({ fileName: 'תרגיל בית 2 - עצים.pdf' }).kind).toBe('homework');
   });
+
+  it('classifies a Hebrew file name only once it is decoded (Lemida mojibake, bug 11)', () => {
+    const name = 'תרגול 4.pdf';
+    const c = classifyLemidaFile({ fileName: name });
+    expect(c.kind).toBe('recitation');
+    expect(c.number).toBe(4);
+    // What the desktop engine used to send: the UTF-8 bytes read as Latin-1.
+    const garbled = String.fromCharCode(...new TextEncoder().encode(name));
+    expect(classifyLemidaFile({ fileName: garbled }).kind).toBe('unknown');
+  });
 });
