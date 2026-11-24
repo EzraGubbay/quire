@@ -67,7 +67,16 @@ export async function collectActivity(resource: Resource, ctx: CollectContext): 
     ifNoneMatch?: string,
   ): Promise<{ raw: RawResponse; outcome: Outcome }> {
     const raw = await get(url, ifNoneMatch ? { ifNoneMatch } : {});
-    const outcome = classifyResponse(raw, expect, resource.moduleType);
+    let outcome = classifyResponse(raw, expect, resource.moduleType);
+    // An embed page that carries a file link is expected, not a failure: log it distinctly.
+    if (
+      outcome.kind === 'html_no_link' &&
+      resource.moduleType === 'mod_resource' &&
+      outcome.html !== undefined &&
+      parseResourceWorkaround(outcome.html, raw.finalUrl || url)
+    ) {
+      outcome = { ...outcome, kind: 'resource_page', detail: 'resource embed page with a file link' };
+    }
     log(formatRequestLog(resource.href, raw, outcome));
     if (outcome.kind === 'login_page' || outcome.kind === 'bot_page') {
       throw new SessionExpired(raw.finalUrl || url);
@@ -148,7 +157,7 @@ export async function collectActivity(resource: Resource, ctx: CollectContext): 
       });
       return result;
     }
-    if (outcome.kind === 'html_no_link' && outcome.html !== undefined) {
+    if ((outcome.kind === 'html_no_link' || outcome.kind === 'resource_page') && outcome.html !== undefined) {
       const link = parseResourceWorkaround(outcome.html, raw.finalUrl || resource.href);
       if (!link) {
         fail(resource.href, outcome, 'resource page has no file link');

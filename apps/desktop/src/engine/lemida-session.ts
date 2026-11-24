@@ -17,7 +17,7 @@ import { app, BrowserWindow, net, type Session, session, type WebContents } from
 import { closeHelper, openHelper } from './credential-bar';
 import { collectActivity, type Download } from './downloads';
 import { NotEnrolled, SessionExpired } from './errors';
-import type { RawResponse } from './fetch-outcome';
+import { type RawResponse, redactUrl } from './fetch-outcome';
 import { decideLoggedIn, isAuthWall, type LoginSignals, parseMoodleCourse, type Resource } from './moodle';
 import { type CourseStats, reconcileResources, type UploadOutcome } from './reconcile';
 import type { CourseRecords, FileRecord } from './seen';
@@ -278,18 +278,34 @@ export async function probe(): Promise<SessionStatus> {
 
 const MAX_BYTES = 200 * 1024 * 1024; // matches the server's limit in apps/web import/route.ts
 const MAX_HOPS = 10;
+/** Inactivity timeout: fires when no response/data arrives for this long (not a whole-body deadline). */
 const FETCH_TIMEOUT_MS = Number(process.env.LEMIDA_FETCH_TIMEOUT_MS ?? 120_000);
+/** Minimum gap between Lemida requests, to stay polite to the bot manager. One place to tune. */
+const REQUEST_PACE_MS = 300;
+
+let lastRequestAt = 0;
+async function pace(): Promise<void> {
+  const wait = lastRequestAt + REQUEST_PACE_MS - Date.now();
+  lastRequestAt = Math.max(Date.now(), lastRequestAt + REQUEST_PACE_MS);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+}
+
+/** Paced GET through the Lemida session; see httpGetOnce. */
+export async function httpGet(
+  ses: Session,
+  url: string,
+  opts: { ifNoneMatch?: string } = {},
+): Promise<RawResponse> {
+  await pace();
+  return httpGetOnce(ses, url, opts);
+}
 
 /**
  * One GET through the Lemida session via net.request, recording every redirect hop. Session.fetch cannot be
  * used here: Electron documents its Response.url/type as incorrect, so a bounce to the login page was
  * invisible. Always resolves (never throws, never hangs); transport problems come back in `error`.
  */
-export function httpGet(
-  ses: Session,
-  url: string,
-  opts: { ifNoneMatch?: string } = {},
-): Promise<RawResponse> {
+function httpGetOnce(ses: Session, url: string, opts: { ifNoneMatch?: string }): Promise<RawResponse> {
   return new Promise<RawResponse>((resolve) => {
     const hops: string[] = [];
     let settled = false;
@@ -317,6 +333,10 @@ export function httpGet(
         redirect: 'manual',
         headers: {
           'user-agent': LEMIDA.userAgent,
+          // net.request has no cache option: ask Chromium to revalidate so the log shows Lemida's live
+          // answer. A manual If-None-Match still works (a 304 comes back to us).
+          'cache-control': 'no-cache',
+          pragma: 'no-cache',
           // Cheap hypothesis: the previous download request sent no Accept header at all.
           accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           ...(opts.ifNoneMatch ? { 'if-none-match': opts.ifNoneMatch } : {}),
@@ -326,12 +346,17 @@ export function httpGet(
       done({ error: 'network_error', errorMessage: (err as Error).message });
       return;
     }
-    // A request carrying If-None-Match bypasses Chromium's HTTP cache, so a 304 reaches us. If it never
-    // does, the sha256 fallback in downloads.ts keeps the result correct (only bandwidth is wasted).
-    timer = setTimeout(() => {
-      done({ error: 'timeout', errorMessage: `no answer in ${FETCH_TIMEOUT_MS}ms` });
-      request.abort();
-    }, FETCH_TIMEOUT_MS);
+    // If a 304 never shows up, the sha256 fallback in downloads.ts keeps the result correct (only bandwidth
+    // is wasted). The timer is re-armed on every response/data event, so slow large downloads can finish.
+    const arm = (): void => {
+      if (settled) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        done({ error: 'timeout', errorMessage: `no data for ${FETCH_TIMEOUT_MS}ms` });
+        request.abort();
+      }, FETCH_TIMEOUT_MS);
+    };
+    arm();
     request.on('redirect', (_status, _method, redirectUrl) => {
       hops.push(redirectUrl);
       if (isAuthWall(redirectUrl)) {
@@ -351,9 +376,17 @@ export function httpGet(
       for (const [k, v] of Object.entries(response.headers)) {
         headers[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : String(v);
       }
+      arm();
+      const declared = Number(headers['content-length']);
+      if (Number.isFinite(declared) && declared > MAX_BYTES) {
+        done({ status: response.statusCode, headers, error: 'too_large' });
+        request.abort();
+        return;
+      }
       const chunks: Buffer[] = [];
       let total = 0;
       response.on('data', (chunk) => {
+        arm();
         total += chunk.length;
         if (total > MAX_BYTES) {
           done({ status: response.statusCode, headers, error: 'too_large' });
@@ -407,12 +440,14 @@ export interface SyncCourseDeps {
   recordFile: (activityHref: string, fileUrl: string, rec: FileRecord) => void;
   persist: () => Promise<void>;
   log: (msg: string) => void;
+  /** Called once the course page loaded signed in and enrolled. */
+  onLoaded?: () => void;
 }
 
 /** Crawl one mapped course and upload each new or changed file; records only what the server accepted. */
 export async function syncCourse(
   course: SyncCourse,
-  { records, full, upload, recordFile, persist, log }: SyncCourseDeps,
+  { records, full, upload, recordFile, persist, log, onLoaded }: SyncCourseDeps,
 ): Promise<CourseStats> {
   await restoreCookies();
   const ses = lemidaSession();
@@ -420,10 +455,11 @@ export async function syncCourse(
   const name = course.label ?? course.slug;
   try {
     const landed = await navigate(win, course.lemidaUrl);
-    log(`course ${name} page=${landed}`);
+    log(`course ${name} page=${redactUrl(landed)}`);
     if (isAuthWall(landed)) throw new SessionExpired(landed);
     // Signed in but sent to the enrolment page: not enrolled in this course (other courses are unaffected).
     if (/\/enrol\//.test(landed)) throw new NotEnrolled(landed);
+    onLoaded?.();
     const resources = await gatherResources(win);
     log(`course ${name} activities=${resources.length}`);
     return await reconcileResources(

@@ -41,6 +41,7 @@ export class LemidaEngine {
   private timer: NodeJS.Timeout | undefined;
   private running = false;
   private lastProbe = 0;
+  private lastStatus: SessionStatus = 'unknown';
 
   constructor(opts: EngineOptions) {
     this.client = new QuireClient(opts.quireUrl);
@@ -136,7 +137,7 @@ export class LemidaEngine {
           failedCourses,
           ...(isError ? { message: summary } : {}),
         });
-        this.pushStatus(status ?? 'unknown', summary);
+        this.pushStatus(status ?? this.lastStatus, summary);
         this.log.line(`sync done: ${summary}`);
       }
     } catch (err) {
@@ -168,6 +169,7 @@ export class LemidaEngine {
           records: this.seen.course(key),
           full: opts.full,
           log,
+          onLoaded: opts.onLoaded,
           recordFile: (href, fileUrl, rec) => this.seen.recordFile(key, href, fileUrl, rec),
           persist: () => this.seen.save(),
           upload: (dl, resource) =>
@@ -206,6 +208,7 @@ export class LemidaEngine {
   }
 
   private pushStatus(sessionStatus: SessionStatus, lastSyncSummary?: string): void {
+    this.lastStatus = sessionStatus;
     try {
       this.emit({ sessionStatus, lastSyncSummary, at: new Date().toISOString() });
     } catch {

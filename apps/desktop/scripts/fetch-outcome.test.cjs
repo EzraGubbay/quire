@@ -128,3 +128,46 @@ test('redactUrl redacts code/state/token', () => {
   const u = fo.redactUrl('https://x/cb?code=abc123&state=st4te&token=tok&keep=1');
   assert.equal(u, 'https://x/cb?code=[redacted]&state=[redacted]&token=[redacted]&keep=1');
 });
+
+test('review 1: signed-in folder page with a perfdrive script and CAPTCHA.pdf link is a page', () => {
+  const body =
+    '<html><head><script src="https://cdn.perfdrive.com/aperture/x.js"></script></head>' +
+    '<body id="page-mod-folder-view" class="path-mod path-mod-folder userloggedin">' +
+    '<a href="/pluginfile.php/1/mod_folder/content/3/CAPTCHA.pdf">CAPTCHA.pdf</a> Access denied to others</body></html>';
+  assert.equal(fo.classifyResponse(html(body), 'page', 'mod_folder').kind, 'page');
+  const chrome = '<html><body class="userloggedin path-course-view">shieldsquare</body></html>';
+  assert.equal(fo.classifyResponse(html(chrome), 'page', 'mod_folder').kind, 'html_no_link');
+});
+
+test('review 1: genuine bot challenge without Moodle chrome is bot_page', () => {
+  const body =
+    '<html><head><title>Access Denied</title><script src="https://cdn.perfdrive.com/c.js"></script></head><body>captcha</body></html>';
+  assert.equal(fo.classifyResponse(html(body), 'file').kind, 'bot_page');
+});
+
+test('review 2: SessionExpired / NotEnrolled messages carry no URL secrets', () => {
+  const { SessionExpired, NotEnrolled } = require(path.join(__dirname, '..', 'dist', 'engine', 'errors.js'));
+  const u = 'https://login.microsoftonline.com/x/oauth2?state=ST4TEVAL&nonce=N0NCEVAL&code=C0DEVAL&client=1';
+  for (const E of [SessionExpired, NotEnrolled]) {
+    const m = new E(u).message;
+    assert.ok(!/ST4TEVAL|N0NCEVAL|C0DEVAL/.test(m), m);
+  }
+});
+
+test('review 5: Hebrew survives in titles and snippets, control chars do not', () => {
+  const t = fo.pageTitle('<html><title>קורס: מבוא\u0001</title></html>');
+  assert.equal(t, 'קורס: מבוא.');
+  assert.ok(fo.sanitizeSnippet(Buffer.from('<p>שלום עולם</p>')).includes('שלום עולם'));
+});
+
+test('review 6: redaction happens before truncation; JSON pairs and unterminated values redacted', () => {
+  const secret = 'ZYXWVUTSRQ';
+  const pad = `<div>${'x '.repeat(90)}</div><input type="hidden" value="${secret}${'q'.repeat(30)}">`;
+  const out = fo.sanitizeSnippet(Buffer.from(pad));
+  assert.ok(!out.includes(secret), out);
+  const j = fo.sanitizeSnippet(Buffer.from('<script>{"sesskey":"abcd1234","token":"tok-9","ok":1}</script>'));
+  assert.ok(!/abcd1234|tok-9/.test(j), j);
+  assert.ok(j.includes('"ok":1'));
+  const cut = fo.sanitizeSnippet(Buffer.from(`<input value="${secret}`));
+  assert.ok(!cut.includes(secret), cut);
+});

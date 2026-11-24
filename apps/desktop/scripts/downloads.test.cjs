@@ -69,6 +69,7 @@ test('2. resource embed page -> second request', async () => {
   const out = await collectActivity(r, h.ctx);
   assert.equal(out.files.length, 1);
   assert.equal(h.calls.length, 2);
+  assert.ok(h.lines[0].includes('outcome=resource_page'), h.lines[0]);
 });
 
 test('3. bug 1: resource HTML without a link is a failure, not silence', async () => {

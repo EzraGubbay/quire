@@ -143,3 +143,13 @@ test('safeUpload: a throw (non-2xx / network) is a failed outcome', async () => 
   assert.deepEqual(o, { ok: false, error: 'import x → 500' });
   assert.equal((await safeUpload(async () => ({ status: 'imported' }))).ok, true);
 });
+
+test('review 8: a course counts as loaded once its page loaded, even if a later step failed', async () => {
+  const syncCourse = async (_c, o) => {
+    o.onLoaded();
+    throw new Error('activity crawl failed');
+  };
+  const r = await runSync([course('A')], { syncCourse, log: () => {}, full: false });
+  assert.equal(r.courses[0].ok, false);
+  assert.equal(r.courses[0].loaded, true);
+});

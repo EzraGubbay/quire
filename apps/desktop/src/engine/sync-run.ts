@@ -28,7 +28,7 @@ export interface SyncReport {
 }
 
 export interface RunSyncDeps<C extends CourseLike> {
-  syncCourse: (course: C, opts: { full: boolean }) => Promise<CourseStats>;
+  syncCourse: (course: C, opts: { full: boolean; onLoaded: () => void }) => Promise<CourseStats>;
   log: (msg: string) => void;
   full: boolean;
 }
@@ -60,8 +60,9 @@ export async function runSync<C extends CourseLike>(courses: C[], deps: RunSyncD
     const course = courses[i] as C;
     const label = course.label || course.slug;
     log(`course ${label} (${course.slug}) start`);
+    let loaded = false;
     try {
-      const stats = await syncCourse(course, { full });
+      const stats = await syncCourse(course, { full, onLoaded: () => (loaded = true) });
       addStats(report.totals, stats);
       report.courses.push({ label, slug: course.slug, ok: true, loaded: true, stats });
       log(`course ${label} done: ${describe(stats)}`);
@@ -82,7 +83,7 @@ export async function runSync<C extends CourseLike>(courses: C[], deps: RunSyncD
         break;
       }
       const reason = err instanceof NotEnrolled ? 'not enrolled' : (err as Error).message.slice(0, 80);
-      report.courses.push({ label, slug: course.slug, ok: false, loaded: false, reason });
+      report.courses.push({ label, slug: course.slug, ok: false, loaded, reason });
       log(`course ${label} FAILED: ${reason}`);
     }
   }
