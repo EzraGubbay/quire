@@ -13,28 +13,13 @@ import {
   type SyncCourse,
   syncCourse,
 } from './lemida-session';
-import type { Resource } from './moodle';
 import { type LemidaCommand, type LemidaCourse, type NextCommandResponse, QuireClient } from './quire';
 import { SeenStore } from './seen';
+import { SyncLog } from './sync-log';
+import { runSync as runSyncCourses, type SyncReport, safeUpload, summariseSync } from './sync-run';
 
 const POLL_MS = Number(process.env.LEMIDA_POLL_MS ?? 5000);
 const PROBE_MS = Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000);
-
-interface Tally {
-  imported: number;
-  needs_review: number;
-  duplicate: number;
-  error: number;
-}
-
-function summarise(tally: Tally): string {
-  const parts: string[] = [];
-  if (tally.imported) parts.push(`${tally.imported} imported`);
-  if (tally.needs_review) parts.push(`${tally.needs_review} to review`);
-  if (tally.duplicate) parts.push(`${tally.duplicate} already had`);
-  if (tally.error) parts.push(`${tally.error} failed`);
-  return parts.join(', ') || 'nothing new';
-}
 
 export interface LemidaStatus {
   sessionStatus: SessionStatus;
@@ -51,14 +36,19 @@ export interface EngineOptions {
 export class LemidaEngine {
   private readonly client: QuireClient;
   private readonly seen: SeenStore;
+  private readonly log: SyncLog;
   private readonly emit: (status: LemidaStatus) => void;
   private timer: NodeJS.Timeout | undefined;
   private running = false;
   private lastProbe = 0;
+  private lastStatus: SessionStatus = 'unknown';
 
   constructor(opts: EngineOptions) {
     this.client = new QuireClient(opts.quireUrl);
-    this.seen = new SeenStore(path.join(app.getPath('userData'), 'lemida-seen.json'));
+    this.log = new SyncLog(path.join(app.getPath('userData'), 'logs'));
+    this.seen = new SeenStore(path.join(app.getPath('userData'), 'lemida-seen.json'), (m) =>
+      this.log.line(m),
+    );
     this.emit = opts.emit ?? (() => {});
   }
 
@@ -119,12 +109,36 @@ export class LemidaEngine {
         this.pushStatus(status);
         console.log(`[lemida] probe → ${status}`);
       } else if (cmd.kind === 'sync') {
-        const summary = await this.runSync(payload.courses ?? []);
+        const full = cmd.payload?.full === true;
+        const courses = payload.courses ?? [];
+        this.log.line(`sync start full=${full} courses=${courses.length}`);
+        const report = await this.runSync(courses, full);
+        const summary = summariseSync(report);
         const at = new Date().toISOString();
-        await this.client.postState({ sessionStatus: 'valid', lastSyncSummary: summary, lastSyncAt: at });
-        await this.client.completeCommand(cmd.id, 'done', { summary });
-        this.pushStatus('valid', summary);
-        console.log(`[lemida] sync → ${summary}`);
+        const status: SessionStatus | undefined = report.sessionExpired
+          ? 'expired'
+          : report.courses.some((c) => c.loaded)
+            ? 'valid'
+            : undefined;
+        await this.client.postState({
+          ...(status ? { sessionStatus: status } : {}),
+          lastSyncSummary: summary,
+          lastSyncAt: at,
+        });
+        const failedCourses = report.courses
+          .filter((c) => !c.ok)
+          .map((c) => ({ label: c.label, reason: c.reason }));
+        const allFailed = report.courses.length > 0 && failedCourses.length === report.courses.length;
+        const isError = Boolean(report.sessionExpired) || allFailed;
+        await this.client.completeCommand(cmd.id, isError ? 'error' : 'done', {
+          summary,
+          downloaded: report.totals.imported + report.totals.review + report.totals.alreadyHad,
+          failed: report.totals.downloadFailed + report.totals.uploadFailed,
+          failedCourses,
+          ...(isError ? { message: summary } : {}),
+        });
+        this.pushStatus(status ?? this.lastStatus, summary);
+        this.log.line(`sync done: ${summary}`);
       }
     } catch (err) {
       const expired = err instanceof SessionExpired;
@@ -137,46 +151,42 @@ export class LemidaEngine {
     }
   }
 
-  /** Crawl every mapped course and upload each new file. Returns a one-line summary. */
-  private async runSync(courses: LemidaCourse[]): Promise<string> {
-    const tally: Tally = { imported: 0, needs_review: 0, duplicate: 0, error: 0 };
-    for (const course of courses) {
-      const key = course.lemidaUrl;
-      const seen = this.seen.for(key);
-      const sc: SyncCourse = {
-        slug: course.slug,
-        lemidaUrl: course.lemidaUrl,
-        mappingId: course.mappingId,
-        label: course.label,
-      };
-      const onFile = async (
-        dl: { name: string; bytes: ArrayBuffer; contentType: string; sourceUrl: string },
-        resource: Resource,
-      ) => {
-        try {
-          const res = await this.client.importFile(course.slug, {
-            fileName: dl.name,
-            bytes: dl.bytes,
-            contentType: dl.contentType,
-            sourceUrl: dl.sourceUrl,
-            sectionTitle: resource.sectionTitle,
-            moduleType: resource.moduleType,
-            mappingId: course.mappingId,
-          });
-          if (res.status in tally) tally[res.status as keyof Tally] += 1;
-        } catch (err) {
-          tally.error += 1;
-          console.error(`[lemida] import failed (${dl.name}): ${(err as Error).message}`);
-        }
-      };
-      console.log(`[lemida] → ${course.label} (${course.slug})`);
-      const stats = await syncCourse(sc, onFile, { seen });
-      await this.seen.save(key, seen);
-      console.log(
-        `[lemida]   ${stats.resources} activities, ${stats.downloaded} files, ${stats.skipped} skipped`,
-      );
-    }
-    return summarise(tally);
+  /** Crawl every mapped course and upload each new or changed file. Each course is isolated. */
+  private runSync(courses: LemidaCourse[], full: boolean): Promise<SyncReport> {
+    const log = (msg: string): void => this.log.line(msg);
+    return runSyncCourses(courses, {
+      full,
+      log,
+      syncCourse: (course, opts) => {
+        const key = course.lemidaUrl;
+        const sc: SyncCourse = {
+          slug: course.slug,
+          lemidaUrl: course.lemidaUrl,
+          mappingId: course.mappingId,
+          label: course.label,
+        };
+        return syncCourse(sc, {
+          records: this.seen.course(key),
+          full: opts.full,
+          log,
+          onLoaded: opts.onLoaded,
+          recordFile: (href, fileUrl, rec) => this.seen.recordFile(key, href, fileUrl, rec),
+          persist: () => this.seen.save(),
+          upload: (dl, resource) =>
+            safeUpload(() =>
+              this.client.importFile(course.slug, {
+                fileName: dl.name,
+                bytes: dl.bytes,
+                contentType: dl.contentType,
+                sourceUrl: dl.sourceUrl,
+                sectionTitle: resource.sectionTitle,
+                moduleType: resource.moduleType,
+                mappingId: course.mappingId,
+              }),
+            ),
+        });
+      },
+    });
   }
 
   /** Entry point for the native menu / preload IPC: open the embedded sign-in window directly. */
@@ -198,6 +208,7 @@ export class LemidaEngine {
   }
 
   private pushStatus(sessionStatus: SessionStatus, lastSyncSummary?: string): void {
+    this.lastStatus = sessionStatus;
     try {
       this.emit({ sessionStatus, lastSyncSummary, at: new Date().toISOString() });
     } catch {
