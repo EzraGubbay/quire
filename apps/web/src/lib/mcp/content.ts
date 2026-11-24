@@ -11,11 +11,21 @@ import { extractPdf } from '@/lib/pdf';
 import { renderPages } from '@/lib/slides';
 import { resolveCourse } from './courses';
 
-/** Characters of page text per get_file call — about 8–15k tokens, under Claude Code's 25k-token MCP cap. */
-export const TEXT_BUDGET = Number(process.env.MCP_TEXT_BUDGET_CHARS ?? 30_000);
-/** Page images per get_page_images call (1024 px JPEG q70: ~80–200 KB each; rendering is ~1 s/page). */
+/**
+ * Characters of page text per get_file call. Hebrew and math cost more tokens per character than English,
+ * so 20k keeps a call well under Claude Code's 25k-token MCP cap and claude.ai's ~150k-character cap.
+ */
+const envBudget = Number(process.env.MCP_TEXT_BUDGET_CHARS);
+export const TEXT_BUDGET = Number.isFinite(envBudget) && envBudget >= 1000 ? envBudget : 20_000;
+/** Page images per get_page_images call (rendering is ~1–3 s/page on the Pi). */
 export const MAX_IMAGES_PER_CALL = 4;
-const IMAGE_RENDER = { cacheName: 'mcp', maxWidth: 1024, quality: 70 } as const;
+/**
+ * Base64 characters of images per call. claude.ai caps a tool result at ~150k characters and may count image
+ * data, so stop adding images past this (a call always returns at least one).
+ */
+export const IMAGE_B64_BUDGET = 100_000;
+/** Without a stored page count, cap page selections here (renderPages skips pages past the real end). */
+export const UNKNOWN_PAGE_CAP = 2000;
 /** A page with less extractable text than this is treated as a figure / scan. */
 export const SPARSE_CHARS = 40;
 /** Don't extract text on the fly from PDFs bigger than this (pages are normally stored at upload). */
@@ -93,7 +103,9 @@ export function buildTextResult(input: {
     let block = `--- Page ${n} ---\n${body || '[no extractable text on this page]'}\n`;
     if (used + block.length > budget) {
       if (shown.length > 0) break;
-      block = `${block.slice(0, budget)}\n[… page ${n} cut at ${budget} characters]\n`;
+      // Don't split a surrogate pair (math alphanumerics like 𝑥 are outside the BMP).
+      const end = /[\uD800-\uDBFF]/.test(block.charAt(budget - 1)) ? budget - 1 : budget;
+      block = `${block.slice(0, end)}\n[… page ${n} cut at ${budget} characters]\n`;
     }
     sections.push(block);
     used += block.length;
@@ -152,7 +164,13 @@ export async function loadPageImages(
   doc: Document,
   pageNos: number[],
 ): Promise<{ pageNo: number; data: string }[]> {
-  const imgs = await renderPages(doc, pageNos, IMAGE_RENDER);
+  // 1024×1568 max, q60: ~50–150 KB. The file size in the cache name invalidates it when the PDF is replaced.
+  const imgs = await renderPages(doc, pageNos, {
+    cacheName: `mcp-${doc.fileSize ?? 0}`,
+    maxWidth: 1024,
+    maxHeight: 1568,
+    quality: 60,
+  });
   return Promise.all(
     imgs.map(async (img) => ({
       pageNo: img.pageNo,

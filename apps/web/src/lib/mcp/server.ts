@@ -5,11 +5,13 @@ import { z } from 'zod';
 import {
   buildTextResult,
   formatRanges,
+  IMAGE_B64_BUDGET,
   loadDoc,
   loadPageImages,
   loadPageTexts,
   MAX_IMAGES_PER_CALL,
   parsePageSpec,
+  UNKNOWN_PAGE_CAP,
 } from './content';
 import {
   type FileFormat,
@@ -89,6 +91,12 @@ async function textToolResult(
   if (doc.kind === 'markdown' && !doc.filePath) {
     return text(`# ${doc.title}\n\n${doc.markdownBody ?? ''}`);
   }
+  if (!doc.filePath) {
+    return text(
+      `"${doc.title}" has no PDF (its conversion may have failed), so there is no page text.` +
+        (doc.originalPath ? ' The original upload is available with format="original" (raw binary).' : ''),
+    );
+  }
   const texts = await loadPageTexts(doc);
   const pageCount = doc.pageCount ?? texts.size;
   const result = buildTextResult({
@@ -108,22 +116,31 @@ async function imagesToolResult(
 ): Promise<{ content: Content[] }> {
   const { doc } = await loadDoc(course, fileId);
   if (!doc.filePath) return text('This file has no PDF to render; use get_file for its text.');
-  const wanted = parsePageSpec(pages, doc.pageCount ?? Number.MAX_SAFE_INTEGER);
+  const wanted = parsePageSpec(pages, doc.pageCount ?? UNKNOWN_PAGE_CAP);
   const batch = wanted.slice(0, MAX_IMAGES_PER_CALL);
   const imgs = await loadPageImages(doc, batch);
+  // Fewer images than asked for means the selection ran past the PDF's real end.
+  const pastEnd = imgs.length < batch.length;
   const content: Content[] = [];
+  const sent = new Set<number>();
+  let used = 0;
   for (const img of imgs) {
+    if (sent.size > 0 && used + img.data.length > IMAGE_B64_BUDGET) break;
     content.push({ type: 'text', text: `Page ${img.pageNo} of "${doc.title}":` });
     content.push({ type: 'image', data: img.data, mimeType: 'image/jpeg' });
+    sent.add(img.pageNo);
+    used += img.data.length;
   }
-  const rest = wanted.slice(MAX_IMAGES_PER_CALL);
-  if (rest.length > 0) {
+  const lastSent = Math.max(0, ...sent);
+  const rest = wanted.filter((n) => n > lastSent && (!pastEnd || imgs.some((i) => i.pageNo === n)));
+  if (sent.size === 0) {
+    content.push({ type: 'text', text: 'No pages rendered: check the page numbers.' });
+  } else if (rest.length > 0) {
     content.push({
       type: 'text',
-      text: `[${MAX_IMAGES_PER_CALL} pages per call. Next: get_page_images with pages="${formatRanges(rest)}".]`,
+      text: `[More pages: call get_page_images with pages="${formatRanges(rest)}".]`,
     });
   }
-  if (imgs.length === 0) content.push({ type: 'text', text: 'No pages rendered: check the page numbers.' });
   return { content };
 }
 

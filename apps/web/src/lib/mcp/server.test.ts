@@ -1,6 +1,6 @@
 // get_file / get_page_images / resources/read through the real registerQuireMcp + content.ts, with the data
 // layer mocked, and page rendering exercised for real (pdf.js + @napi-rs/canvas) on the e2e fixture PDF.
-import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -142,6 +142,44 @@ describe('get_page_images', () => {
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '1' });
     expect(res.content[0]?.text).toMatch(/no PDF/);
   });
+
+  it('re-renders a 0-byte cached page and leaves no temp files behind', async () => {
+    getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 777 }));
+    const dir = path.join(tmp, 'p1', 'd1.mcp-777');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, '7.jpg'), '');
+    const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '7' });
+    const img = res.content.find((c) => c.type === 'image');
+    expect(
+      Buffer.from(img?.data as string, 'base64')
+        .subarray(0, 3)
+        .toString('hex'),
+    ).toBe('ffd8ff');
+    expect((await stat(path.join(dir, '7.jpg'))).size).toBeGreaterThan(0);
+    expect((await readdir(dir)).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  }, 60_000);
+
+  it('serves a cached page without re-rendering', async () => {
+    getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 888 }));
+    const dir = path.join(tmp, 'p1', 'd1.mcp-888');
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, '2.jpg'), Buffer.from('ffd8ffe0cafe', 'hex'));
+    const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '2' });
+    expect(res.content.find((c) => c.type === 'image')?.data).toBe(
+      Buffer.from('ffd8ffe0cafe', 'hex').toString('base64'),
+    );
+  });
+
+  it('stays bounded when the page count is unknown', async () => {
+    getDocument.mockResolvedValue(doc({ pageCount: null, fileSize: 999 }));
+    const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '9-' });
+    const images = res.content.filter((c) => c.type === 'image');
+    expect(images).toHaveLength(2);
+    expect(res.content.filter((c) => c.type === 'text').map((c) => c.text)).toEqual([
+      'Page 9 of "Project: Simplified Waze Prototype":',
+      'Page 10 of "Project: Simplified Waze Prototype":',
+    ]);
+  }, 60_000);
 });
 
 describe('resources/read', () => {
@@ -164,5 +202,35 @@ describe('resources/read', () => {
     expect(res.contents).toHaveLength(2);
     expect(res.contents[0]?.text).toContain('--- Page 1 ---');
     expect(res.contents[1]?.blob).toBe(Buffer.from('%PDF').toString('base64'));
+  });
+
+  it('still returns the blob when text extraction fails', async () => {
+    resolveFile.mockResolvedValue({
+      kind: 'binary',
+      format: 'pdf',
+      mimeType: 'application/pdf',
+      filename: 'waze.pdf',
+      slug: 'parallel',
+      docId: 'd1',
+      sizeBytes: 4,
+      rel: 'p1/d1.pdf',
+    });
+    readFileBytes.mockResolvedValue(Buffer.from('%PDF'));
+    getDocumentPages.mockRejectedValue(new Error('db down'));
+    const res = await readResource(new URL('quire://course/parallel/file/d1'), {
+      slug: 'parallel',
+      docId: 'd1',
+    });
+    expect(res.contents).toHaveLength(1);
+    expect(res.contents[0]?.blob).toBeDefined();
+  });
+});
+
+describe('get_file without a PDF', () => {
+  it('points at format="original" when a deck has no PDF', async () => {
+    getDocument.mockResolvedValue(doc({ filePath: null, originalPath: 'p1/d1.pptx' }));
+    const res = await call('get_file', { course: 'parallel', fileId: 'd1' });
+    expect(res.content).toHaveLength(1);
+    expect(res.content[0]?.text).toMatch(/format="original"/);
   });
 });

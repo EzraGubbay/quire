@@ -92,6 +92,11 @@ describe('buildTextResult', () => {
     expect(r.text).toContain('get_page_images with pages="2-3"');
   });
 
+  it('never splits a surrogate pair when cutting a page', () => {
+    const r = buildTextResult({ ...base, pageTexts: () => '𝑥'.repeat(3000), wanted: [1], budget: 1001 });
+    expect(r.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+
   it('keeps Hebrew text intact', () => {
     const r = buildTextResult({
       ...base,
