@@ -11,9 +11,9 @@
 //
 // Guardrails preserved from the original: SessionExpired on any auth-wall / enrolment landing, and the
 // honest desktop UA (the partition's UA is set to a plain Chrome string so no "Electron" token leaks).
-import { readFile, writeFile } from 'node:fs/promises';
+import { chmod, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, BrowserWindow, type Session, session, type WebContents } from 'electron';
+import { app, BrowserWindow, type Session, safeStorage, session, type WebContents } from 'electron';
 import { closeHelper, openHelper } from './credential-bar';
 import { waitForSignIn, withTimeout } from './lifecycle';
 import {
@@ -27,6 +27,18 @@ import {
   type Resource,
 } from './moodle';
 import { reconcileResources } from './reconcile';
+import {
+  cookiesToRestore,
+  decodeCookieFile,
+  desktopUserAgent,
+  duplicateDomainCopies,
+  encodeCookieFile,
+  isHostOnly,
+  isPersistable,
+  lemidaHost,
+  type StoredCookie,
+  toSetDetails,
+} from './session-policy';
 
 export type SessionStatus = 'valid' | 'expired' | 'unknown';
 
@@ -71,10 +83,9 @@ const LEMIDA = {
   /** Cap on a single "am I logged in" check (see isLoggedIn). */
   checkTimeoutMs: 5_000,
   // Honest, ordinary desktop UA; we never impersonate the Moodle mobile app, and we strip Electron's own
-  // UA token (which would otherwise advertise automation).
-  userAgent:
-    process.env.LEMIDA_USER_AGENT ??
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  // UA token (which would otherwise advertise automation). The Chrome major comes from the bundled Chromium so
+  // the UA agrees with the real Sec-CH-UA client hints and stays right across Electron upgrades.
+  userAgent: process.env.LEMIDA_USER_AGENT ?? desktopUserAgent(process.versions.chrome),
 };
 
 export const LOGIN_TIMEOUT_MS = LEMIDA.loginTimeoutMs;
@@ -100,11 +111,21 @@ function lemidaSession(): Session {
   return ses;
 }
 
-// --- cookie save/restore ---------------------------------------------------------------------------
-// Moodle's login cookie is a *session* cookie that Chromium (and so Electron) drops when the partition
-// is torn down between app runs, so we persist all cookies after a confirmed-valid session and re-inject
-// them on startup — exactly as the agent did with Playwright's storageState.
+// --- cookie persistence ----------------------------------------------------------------------------
+// Moodle's login cookie is a *session* cookie that Chromium (and so Electron) drops when the partition is torn
+// down between app runs, so we persist it after a confirmed-valid session and re-inject it ONCE per launch
+// (initSessionCookies, from engine.start). Only the Lemida host's `MoodleSession*` is persisted: Chromium
+// already keeps every non-session cookie of the partition on disk, and the bot-manager / Microsoft cookies
+// are not needed to reuse the session. The file is encrypted with the Keychain (safeStorage) and mode 0600;
+// there is no plaintext fallback. Logs name cookies and counts only, never values.
+const LEMIDA_HOST = lemidaHost(LEMIDA.homeUrl);
+
 function cookieFile(): string {
+  return path.join(app.getPath('userData'), 'lemida-cookies.enc');
+}
+
+/** The pre-hardening plaintext file; migrated then deleted at startup. */
+function legacyCookieFile(): string {
   return path.join(app.getPath('userData'), 'lemida-cookies.json');
 }
 
@@ -114,47 +135,99 @@ function cookieUrl(c: Electron.Cookie): string {
   return `${scheme}://${host}${c.path ?? '/'}`;
 }
 
-export async function restoreCookies(): Promise<void> {
-  if (loginInFlight) return; // never re-inject stale cookies over a live sign-in (clobbers the OAuth session)
+/** Write encrypted bytes with owner-only permissions: tmp file (0600) + rename + chmod. */
+async function writeEncrypted(text: string): Promise<boolean> {
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.warn('[lemida] cookies: OS encryption unavailable, not persisting the session cookie');
+    return false;
+  }
+  const file = cookieFile();
+  const tmp = `${file}.tmp`;
+  await writeFile(tmp, safeStorage.encryptString(text), { mode: 0o600 });
+  await rename(tmp, file);
+  await chmod(file, 0o600);
+  return true;
+}
+
+async function readSavedCookies(): Promise<StoredCookie[]> {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return [];
+    return decodeCookieFile(safeStorage.decryptString(await readFile(cookieFile())));
+  } catch {
+    return []; // nothing saved yet, or unreadable: rely on the persistent partition
+  }
+}
+
+/** Persist the (persistable subset of the) live session. Called after a valid sign-in / probe. */
+export async function saveCookies(): Promise<void> {
   const ses = lemidaSession();
-  let raw: string;
+  const live = (await ses.cookies.get({})) as StoredCookie[];
+  const keep = live.filter((c) => isPersistable(c, LEMIDA_HOST));
+  if (keep.length === 0) return; // never overwrite a good file with an empty one
+  await writeEncrypted(encodeCookieFile(keep)).catch(() => {});
+}
+
+/**
+ * Once per app launch: migrate the plaintext file, remove the duplicate domain copies an older restore created,
+ * then restore saved cookies that are not already live. Never called from probe/sync/sign-in.
+ */
+export async function initSessionCookies(): Promise<{
+  restored: string[];
+  deduped: number;
+  migrated: boolean;
+}> {
+  const ses = lemidaSession();
+  let migrated = false;
+
+  // 1. Migrate the legacy plaintext file (keep only persistable cookies), then always delete it.
   try {
-    raw = await readFile(cookieFile(), 'utf8');
+    const legacy = decodeCookieFile(await readFile(legacyCookieFile(), 'utf8'));
+    const keep = legacy.filter((c) => isPersistable(c, LEMIDA_HOST));
+    const hasEnc = await stat(cookieFile()).then(
+      () => true,
+      () => false,
+    );
+    if (!hasEnc && keep.length > 0) await writeEncrypted(encodeCookieFile(keep));
+    migrated = true;
   } catch {
-    return; // nothing saved yet — rely on whatever the persistent partition still holds
+    // no legacy file
   }
-  let parsed: { cookies?: Electron.Cookie[] };
-  try {
-    parsed = JSON.parse(raw) as { cookies?: Electron.Cookie[] };
-  } catch {
-    return;
-  }
-  for (const c of parsed.cookies ?? []) {
+  if (migrated) await unlink(legacyCookieFile()).catch(() => {});
+
+  // 2. Dedupe the partition: drop domain copies shadowing a host-only twin, re-set the host-only value.
+  let live = (await ses.cookies.get({})) as StoredCookie[];
+  const dupes = duplicateDomainCopies(live, LEMIDA_HOST);
+  for (const d of dupes) {
+    const twin = live.find(
+      (o) =>
+        isHostOnly(o) &&
+        o.name === d.name &&
+        (o.path ?? '/') === (d.path ?? '/') &&
+        (o.domain ?? '').replace(/^\./, '') === LEMIDA_HOST,
+    );
     try {
-      await ses.cookies.set({
-        url: cookieUrl(c),
-        name: c.name,
-        value: c.value,
-        domain: c.domain,
-        path: c.path,
-        secure: c.secure,
-        httpOnly: c.httpOnly,
-        expirationDate: c.expirationDate,
-        sameSite: c.sameSite,
-      });
+      // remove() by url+name clears every copy visible to that URL; repeat to be sure both are gone.
+      await ses.cookies.remove(cookieUrl(d as Electron.Cookie), d.name);
+      await ses.cookies.remove(cookieUrl(d as Electron.Cookie), d.name);
+      if (twin) await ses.cookies.set(toSetDetails(twin) as Electron.CookiesSetDetails);
+    } catch {
+      // best effort
+    }
+  }
+  if (dupes.length > 0) live = (await ses.cookies.get({})) as StoredCookie[];
+
+  // 3. Restore what is saved and not already live.
+  const restored: string[] = [];
+  for (const c of cookiesToRestore(await readSavedCookies(), live, LEMIDA_HOST)) {
+    try {
+      await ses.cookies.set(toSetDetails(c) as Electron.CookiesSetDetails);
+      restored.push(c.name);
     } catch {
       // A single malformed cookie shouldn't sink the restore.
     }
   }
+  return { restored, deduped: dupes.length, migrated };
 }
-
-export async function saveCookies(): Promise<void> {
-  const ses = lemidaSession();
-  const cookies = await ses.cookies.get({});
-  await writeFile(cookieFile(), JSON.stringify({ cookies }, null, 2)).catch(() => {});
-}
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // --- navigation helpers ----------------------------------------------------------------------------
 /** Load a URL and resolve once the page has gone quiet (emulates Playwright's `networkidle`). */
@@ -422,7 +495,6 @@ export async function syncCourse(
   onFile: OnFile,
   { seen = new Set<string>(), full = false }: { seen?: Set<string>; full?: boolean } = {},
 ): Promise<SyncStats> {
-  await restoreCookies();
   const ses = lemidaSession();
   const win = hiddenWindow();
   try {

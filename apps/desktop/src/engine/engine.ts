@@ -5,6 +5,7 @@
 import path from 'node:path';
 import { app } from 'electron';
 import {
+  initSessionCookies,
   isSignInInProgress,
   LOGIN_TIMEOUT_MS,
   openLogin,
@@ -67,6 +68,16 @@ export class LemidaEngine {
     if (this.running) return;
     this.running = true;
     await this.seen.load().catch(() => {});
+    // The one and only cookie restore of this launch (probe/sync/sign-in never restore). Names and counts only.
+    const r = await initSessionCookies().catch((err: Error) => {
+      console.error(`[lemida] cookie init failed: ${err.message}`);
+      return null;
+    });
+    if (r) {
+      console.log(
+        `[lemida] cookies: restored ${r.restored.length}${r.restored.length ? ` (${r.restored.join(', ')})` : ''}, removed ${r.deduped} duplicate domain copies${r.migrated ? ', migrated plaintext file' : ''}`,
+      );
+    }
     console.log(`[lemida] engine watching (poll ${POLL_MS}ms, probe ${PROBE_MS}ms)`);
     this.scheduleNext(0);
   }
