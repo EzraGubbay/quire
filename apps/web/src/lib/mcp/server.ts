@@ -3,6 +3,17 @@
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
+  buildTextResult,
+  formatRanges,
+  IMAGE_B64_BUDGET,
+  loadDoc,
+  loadPageImages,
+  loadPageTexts,
+  MAX_IMAGES_PER_CALL,
+  parsePageSpec,
+  UNKNOWN_PAGE_CAP,
+} from './content';
+import {
   type FileFormat,
   listAllFileResources,
   listCourseFiles,
@@ -22,6 +33,7 @@ const mb = (n: number) => (n / (1024 * 1024)).toFixed(n < 1024 * 1024 ? 2 : 1);
 
 type Content =
   | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string }
   | { type: 'resource'; resource: { uri: string; mimeType?: string; blob: string } };
 const text = (value: unknown): { content: Content[] } => ({
   content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
@@ -51,6 +63,13 @@ async function fileToolResult(
   return {
     content: [
       {
+        type: 'text',
+        text:
+          `Raw ${r.mimeType} file "${r.filename}" (${mb(r.sizeBytes)} MB) is attached as an embedded resource. ` +
+          'Many clients cannot read binary attachments: for the content use get_file without format (page ' +
+          'text) and get_page_images (pages as images).',
+      },
+      {
         type: 'resource',
         resource: {
           uri: `quire://course/${r.slug}/file/${r.docId}`,
@@ -60,6 +79,83 @@ async function fileToolResult(
       },
     ],
   };
+}
+
+/** Default get_file result: page text with page markers (text only — the form every client reads). */
+async function textToolResult(
+  course: string,
+  fileId: string,
+  pages?: string,
+): Promise<{ content: Content[] }> {
+  const { doc, courseName } = await loadDoc(course, fileId);
+  if (doc.kind === 'markdown' && !doc.filePath) {
+    return text(`# ${doc.title}\n\n${doc.markdownBody ?? ''}`);
+  }
+  if (!doc.filePath) {
+    return text(
+      `"${doc.title}" has no PDF (its conversion may have failed), so there is no page text.` +
+        (doc.originalPath ? ' The original upload is available with format="original" (raw binary).' : ''),
+    );
+  }
+  const texts = await loadPageTexts(doc);
+  const pageCount = doc.pageCount ?? texts.size;
+  const result = buildTextResult({
+    title: doc.title,
+    courseName,
+    pageCount,
+    pageTexts: (n) => texts.get(n) ?? '',
+    wanted: parsePageSpec(pages, pageCount),
+  });
+  return { content: [{ type: 'text', text: result.text }] };
+}
+
+async function imagesToolResult(
+  course: string,
+  fileId: string,
+  pages: string,
+): Promise<{ content: Content[] }> {
+  const { doc } = await loadDoc(course, fileId);
+  if (!doc.filePath) return text('This file has no PDF to render; use get_file for its text.');
+  const wanted = parsePageSpec(pages, doc.pageCount ?? UNKNOWN_PAGE_CAP);
+  const batch = wanted.slice(0, MAX_IMAGES_PER_CALL);
+  const imgs = await loadPageImages(doc, batch);
+  // Fewer images than asked for means the selection ran past the PDF's real end.
+  const pastEnd = imgs.length < batch.length;
+  const content: Content[] = [];
+  const sent = new Set<number>();
+  let used = 0;
+  for (const img of imgs) {
+    if (sent.size > 0 && used + img.data.length > IMAGE_B64_BUDGET) break;
+    content.push({ type: 'text', text: `Page ${img.pageNo} of "${doc.title}":` });
+    content.push({ type: 'image', data: img.data, mimeType: 'image/jpeg' });
+    sent.add(img.pageNo);
+    used += img.data.length;
+  }
+  const lastSent = Math.max(0, ...sent);
+  const rest = wanted.filter((n) => n > lastSent && (!pastEnd || imgs.some((i) => i.pageNo === n)));
+  if (sent.size === 0) {
+    content.push({ type: 'text', text: 'No pages rendered: check the page numbers.' });
+  } else if (rest.length > 0) {
+    content.push({
+      type: 'text',
+      text: `[More pages: call get_page_images with pages="${formatRanges(rest)}".]`,
+    });
+  }
+  return { content };
+}
+
+/** First budget's worth of a PDF's page text, for resources/read. */
+async function pagesAsText(course: string, fileId: string): Promise<string> {
+  const { doc, courseName } = await loadDoc(course, fileId);
+  const texts = await loadPageTexts(doc);
+  const pageCount = doc.pageCount ?? texts.size;
+  return buildTextResult({
+    title: doc.title,
+    courseName,
+    pageCount,
+    pageTexts: (n) => texts.get(n) ?? '',
+    wanted: parsePageSpec(undefined, pageCount),
+  }).text;
 }
 
 export function registerQuireMcp(server: McpServer): void {
@@ -79,16 +175,41 @@ export function registerQuireMcp(server: McpServer): void {
 
   server.tool(
     'get_file',
-    'Retrieve a course file. Small PDFs and markdown come back inline; large files return a download URL instead. Prefer reading the resourceUri from list_course_files when you can.',
+    'Read a course file. By default returns its text page by page ("--- Page N ---" markers, ~30k characters ' +
+      'per call; pass `pages` to continue) and flags pages that are mostly figures. Use get_page_images to ' +
+      'see diagrams, slides or scans. format="pdf"/"original" returns the raw file as an embedded binary ' +
+      'resource, which only Claude Code can open (other clients fail or drop it); use it only when the user ' +
+      'needs the file itself.',
     {
       course: z.string().describe('course slug or id'),
       fileId: z.string().describe('the fileId from list_course_files'),
-      format: z
-        .enum(['pdf', 'original', 'markdown'])
+      pages: z
+        .string()
         .optional()
-        .describe('which representation; defaults to the PDF (or markdown / original when there is no PDF)'),
+        .describe('pages to read, e.g. "1-10", "3,7" or "20-" (to the end); default: from page 1'),
+      format: z
+        .enum(['text', 'pdf', 'original', 'markdown'])
+        .optional()
+        .describe(
+          'text (default) = extracted page text; pdf/original = raw binary file; markdown = note body',
+        ),
     },
-    async ({ course, fileId, format }) => fileToolResult(course, fileId, format),
+    async ({ course, fileId, pages, format }) =>
+      !format || format === 'text'
+        ? textToolResult(course, fileId, pages)
+        : fileToolResult(course, fileId, format),
+  );
+
+  server.tool(
+    'get_page_images',
+    `Render pages of a course file's PDF as JPEG images (max ${MAX_IMAGES_PER_CALL} per call) to see slides, ` +
+      'diagrams, formulas, tables or scanned pages.',
+    {
+      course: z.string().describe('course slug or id'),
+      fileId: z.string().describe('the fileId from list_course_files'),
+      pages: z.string().describe('pages to render, e.g. "4", "2-5" or "1,3,8"'),
+    },
+    async ({ course, fileId, pages }) => imagesToolResult(course, fileId, pages),
   );
 
   server.resource(
@@ -115,7 +236,13 @@ export function registerQuireMcp(server: McpServer): void {
         };
       }
       const bytes = await readFileBytes(r.rel as string);
-      return { contents: [{ uri: uri.href, mimeType: r.mimeType, blob: bytes.toString('base64') }] };
+      const blob = { uri: uri.href, mimeType: r.mimeType, blob: bytes.toString('base64') };
+      if (r.format !== 'pdf') return { contents: [blob] };
+      // Lead with the page text so clients that can't open a PDF blob still get the content.
+      const extracted = await pagesAsText(slug, docId).catch(() => null);
+      return {
+        contents: extracted ? [{ uri: uri.href, mimeType: 'text/plain', text: extracted }, blob] : [blob],
+      };
     },
   );
 }

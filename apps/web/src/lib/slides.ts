@@ -1,5 +1,6 @@
 // Renders a PDF's pages to JPEG files for vision input, with pdf.js (legacy build) and @napi-rs/canvas.
-import { mkdir, readdir, readFile, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Document } from '@/db/schema';
 import { filePath } from './files';
@@ -47,7 +48,6 @@ export async function renderPageImages(
   const data = await readFile(filePath(doc.filePath));
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
   const out: SlideImage[] = [];
-  const { writeFile } = await import('node:fs/promises');
   const n = Math.min(pdf.numPages, want);
   for (let i = 1; i <= n; i++) {
     const rel = path.join(dir, `${i}.jpg`);
@@ -56,26 +56,100 @@ export async function renderPageImages(
       out.push({ pageNo: i, path: rel });
       continue;
     }
-    const page = await pdf.getPage(i);
-    const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(2, maxWidth / base.width);
-    const viewport = page.getViewport({ scale });
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({
-      canvasContext: ctx as unknown as CanvasRenderingContext2D,
-      viewport,
-      canvas: canvas as unknown as HTMLCanvasElement,
-    }).promise;
-    const jpeg = await canvas.encode('jpeg', opts.quality ?? 80);
-    await writeFile(target, jpeg);
-    page.cleanup();
+    await renderPageTo(pdf, createCanvas, i, target, maxWidth, opts.quality ?? 80);
     out.push({ pageNo: i, path: rel });
   }
   await pdf.destroy();
   return out;
+}
+
+type PdfDoc = Awaited<ReturnType<typeof import('pdfjs-dist/legacy/build/pdf.mjs').getDocument>['promise']>;
+type CreateCanvas = typeof import('@napi-rs/canvas').createCanvas;
+
+/**
+ * Render one page of an open pdf.js document to a JPEG at `target` (white background, width ≤ maxWidth and,
+ * when given, height ≤ maxHeight). Written to a temp file and renamed, so a crash, a full disk or a concurrent
+ * reader never sees a truncated JPEG at `target`.
+ */
+async function renderPageTo(
+  pdf: PdfDoc,
+  createCanvas: CreateCanvas,
+  pageNo: number,
+  target: string,
+  maxWidth: number,
+  quality: number,
+  maxHeight?: number,
+): Promise<void> {
+  const { writeFile } = await import('node:fs/promises');
+  const page = await pdf.getPage(pageNo);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(
+    2,
+    maxWidth / base.width,
+    maxHeight ? maxHeight / base.height : Number.POSITIVE_INFINITY,
+  );
+  const viewport = page.getViewport({ scale });
+  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({
+    canvasContext: ctx as unknown as CanvasRenderingContext2D,
+    viewport,
+    canvas: canvas as unknown as HTMLCanvasElement,
+  }).promise;
+  const jpeg = await canvas.encode('jpeg', quality);
+  const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, jpeg);
+    await rename(tmp, target);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+  page.cleanup();
+}
+
+/**
+ * Specific pages of a PDF as JPEGs, cached on disk under <project>/<doc>.<cacheName>/<n>.jpg — a cache of its
+ * own, so a partial set never confuses renderPageImages' all-pages cache. Only uncached pages are rendered;
+ * page numbers past the end of the document are skipped.
+ */
+export async function renderPages(
+  doc: Pick<Document, 'projectId' | 'id' | 'filePath'>,
+  pageNos: number[],
+  opts: { cacheName: string; maxWidth: number; maxHeight?: number; quality: number },
+): Promise<SlideImage[]> {
+  if (!doc.filePath || pageNos.length === 0) return [];
+  const dir = path.join(doc.projectId, `${doc.id}.${opts.cacheName}`);
+  await mkdir(filePath(dir), { recursive: true });
+  const out: SlideImage[] = [];
+  const missing: number[] = [];
+  for (const n of pageNos) {
+    const rel = path.join(dir, `${n}.jpg`);
+    const cached = await stat(filePath(rel)).catch(() => null);
+    if (cached && cached.size > 0) out.push({ pageNo: n, path: rel });
+    else missing.push(n);
+  }
+  if (missing.length > 0) {
+    const [{ createCanvas }, pdfjs] = await Promise.all([
+      import('@napi-rs/canvas'),
+      import('pdfjs-dist/legacy/build/pdf.mjs'),
+    ]);
+    const data = await readFile(filePath(doc.filePath));
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
+    try {
+      for (const n of missing) {
+        if (n < 1 || n > pdf.numPages) continue;
+        const rel = path.join(dir, `${n}.jpg`);
+        await renderPageTo(pdf, createCanvas, n, filePath(rel), opts.maxWidth, opts.quality, opts.maxHeight);
+        out.push({ pageNo: n, path: rel });
+      }
+    } finally {
+      await pdf.destroy();
+    }
+  }
+  return out.sort((a, b) => a.pageNo - b.pageNo);
 }
 
 /** data: URL for a stored JPEG, for the chat API's image parts. */
