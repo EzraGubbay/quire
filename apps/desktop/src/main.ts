@@ -138,6 +138,15 @@ function buildMenu(): void {
           label: 'Credentials…',
           click: () => openCredentialsWindow(),
         },
+        { type: 'separator' },
+        {
+          // Opt-in (off by default). Only meaningful for the packaged app: a dev run would register Electron itself.
+          label: 'Open Quire at Login',
+          type: 'checkbox',
+          checked: app.getLoginItemSettings().openAtLogin,
+          enabled: app.isPackaged,
+          click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
+        },
       ],
     },
     { role: 'windowMenu' },
@@ -171,6 +180,7 @@ app.whenReady().then(() => {
   // It pushes status to the renderer via `lemida:status` (the preload exposes onLemidaStatus()).
   engine = new LemidaEngine({
     quireUrl: config.quireUrl,
+    autoSyncMs: config.autoSyncMinutes * 60_000,
     emit: (status) => getMainWindow()?.webContents.send('lemida:status', status),
   });
   void engine.start();

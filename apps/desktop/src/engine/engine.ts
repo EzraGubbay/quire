@@ -15,7 +15,7 @@ import {
   type SyncCourse,
   syncCourse,
 } from './lemida-session';
-import { runWithHeartbeat } from './lifecycle';
+import { autoSyncDue, runWithHeartbeat } from './lifecycle';
 import type { Resource } from './moodle';
 import { type LemidaCommand, type LemidaCourse, type NextCommandResponse, QuireClient } from './quire';
 import { SeenStore } from './seen';
@@ -58,6 +58,8 @@ export interface EngineOptions {
   quireUrl: string;
   /** Pushes status to the renderer (wired by main to mainWindow.webContents.send('lemida:status', …)). */
   emit?: (status: LemidaStatus) => void;
+  /** Interval between automatic syncs while signed in, in ms; 0/undefined disables. */
+  autoSyncMs?: number;
 }
 
 export class LemidaEngine {
@@ -71,11 +73,14 @@ export class LemidaEngine {
   private current: { id: string; kind: LemidaCommand['kind'] } | null = null;
   private sessionStatus: SessionStatus = 'unknown';
   private lastSyncEndedAt = 0;
+  private lastAutoRequestAt = 0;
+  private readonly autoSyncMs: number;
 
   constructor(opts: EngineOptions) {
     this.client = new QuireClient(opts.quireUrl);
     this.seen = new SeenStore(path.join(app.getPath('userData'), 'lemida-seen.json'));
     this.emit = opts.emit ?? (() => {});
+    this.autoSyncMs = opts.autoSyncMs ?? 0;
   }
 
   async start(): Promise<void> {
@@ -123,11 +128,37 @@ export class LemidaEngine {
         await this.client.postState({ sessionStatus: status }).catch(() => {});
         this.pushStatus(status);
         console.log(`[lemida] passive probe → ${status}`);
+      } else if (
+        autoSyncDue({
+          intervalMs: this.autoSyncMs,
+          sessionStatus: this.sessionStatus,
+          signInInProgress: isSignInInProgress(),
+          now: Date.now(),
+          lastSyncEndedAt: this.lastSyncEndedAt,
+          lastAutoRequestAt: this.lastAutoRequestAt,
+        })
+      ) {
+        await this.requestAutoSync('auto-timer');
       }
     } catch (err) {
       console.error(`[lemida] loop error: ${(err as Error).message}`);
     }
     this.scheduleNext();
+  }
+
+  /**
+   * Ask the server to queue a sync (it coalesces with any queued/running sync and does nothing with no enabled
+   * mappings), so an automatic sync gets the same lease / watchdog / panel status as a manual one. Failures
+   * (offline, an old server without the route) are logged and retried no sooner than the next interval.
+   */
+  private async requestAutoSync(trigger: 'auto-sign-in' | 'auto-timer'): Promise<void> {
+    this.lastAutoRequestAt = Date.now();
+    try {
+      const r = await this.client.enqueueSync(trigger);
+      console.log(`[lemida] auto-sync (${trigger}) → ${r.created ? 'queued' : (r.reason ?? 'not queued')}`);
+    } catch (err) {
+      console.error(`[lemida] auto-sync (${trigger}) failed: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -214,6 +245,7 @@ export class LemidaEngine {
           });
           this.pushStatus(status);
         }
+        if (outcome === 'signed-in') await this.requestAutoSync('auto-sign-in');
         console.log(`[lemida] login → ${status} (${outcome})`);
       } else if (cmd.kind === 'probe') {
         const status = await probe();
@@ -290,6 +322,7 @@ export class LemidaEngine {
         await this.client.postState({ sessionStatus: status }).catch(() => {});
         this.pushStatus(status);
       }
+      if (outcome === 'signed-in') void this.requestAutoSync('auto-sign-in');
       return status === 'valid' ? { ok: true } : { ok: false, reason: outcome === 'busy' ? 'busy' : status };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
