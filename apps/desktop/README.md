@@ -24,7 +24,22 @@ Resolution order: `QUIRE_URL` env → `<userData>/config.json` → the Pi defaul
 value is written to `config.json` so there's a file to edit. On macOS that's:
 
 ```
-~/Library/Application Support/Quire/config.json
+~/Library/Application Support/desktop/config.json
+```
+
+That folder (`app.getPath('userData')`) is shared by the installed app and `pnpm --filter desktop dev`. It holds:
+
+- `config.json`: `quireUrl`, and `autoSyncMinutes` (minutes between automatic Lemida syncs while signed in,
+  default 120, `0` disables; env `LEMIDA_AUTO_SYNC_MINUTES` overrides)
+- `lemida-cookies.enc`: the Moodle session cookie, encrypted with the Keychain, mode 0600
+- `lemida-credentials.enc`: the Lemida credential vault (Keychain-encrypted)
+- `lemida-seen.json`: which Lemida files were already pulled
+
+To test against a throwaway profile (so your real Lemida session and cookie file are never touched), set
+`QUIRE_USER_DATA_DIR` to an empty folder:
+
+```bash
+QUIRE_USER_DATA_DIR=$(mktemp -d) pnpm --filter desktop dev
 ```
 
 ```bash

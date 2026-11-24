@@ -154,6 +154,9 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// A throwaway profile for manual testing, so the real Lemida session and cookie file are never touched.
+if (process.env.QUIRE_USER_DATA_DIR) app.setPath('userData', process.env.QUIRE_USER_DATA_DIR);
+
 app.whenReady().then(() => {
   const config = loadConfig();
 
