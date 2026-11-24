@@ -28,6 +28,10 @@ export interface ReconcileDeps {
   recordFile: (activityHref: string, fileUrl: string, rec: FileRecord) => void;
   persist: () => Promise<void>;
   log: (msg: string) => void;
+  /** Checked before each activity; true ends the crawl early (the sync watchdog gave up on this run). */
+  shouldStop?: () => boolean;
+  /** Called after each activity, so the watchdog can tell a slow sync from a stuck one. */
+  onProgress?: () => void;
 }
 
 export function emptyStats(): CourseStats {
@@ -47,15 +51,20 @@ export function emptyStats(): CourseStats {
 export async function reconcileResources(
   resources: Resource[],
   _opts: { records: CourseRecords; full: boolean },
-  { collect, upload, recordFile, persist, log }: ReconcileDeps,
+  { collect, upload, recordFile, persist, log, shouldStop, onProgress }: ReconcileDeps,
 ): Promise<CourseStats> {
   const stats = emptyStats();
   stats.activities = resources.length;
   for (const resource of resources) {
+    if (shouldStop?.()) {
+      log('sync aborted by the engine watchdog: stopping before the next activity');
+      break;
+    }
     const result = await collect(resource);
     for (const dl of result.files) {
       stats.downloaded++;
       const out = await upload(dl, resource);
+      onProgress?.();
       if (!out.ok) {
         stats.uploadFailed++;
         log(`upload ${dl.name} FAILED: ${out.error}`);
@@ -82,6 +91,7 @@ export async function reconcileResources(
     stats.downloadFailed += result.failures.length;
     stats.failures.push(...result.failures);
     await persist();
+    onProgress?.();
   }
   return stats;
 }

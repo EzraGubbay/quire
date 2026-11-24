@@ -138,12 +138,24 @@ function buildMenu(): void {
           label: 'Credentials…',
           click: () => openCredentialsWindow(),
         },
+        { type: 'separator' },
+        {
+          // Opt-in (off by default). Only meaningful for the packaged app: a dev run would register Electron itself.
+          label: 'Open Quire at Login',
+          type: 'checkbox',
+          checked: app.getLoginItemSettings().openAtLogin,
+          enabled: app.isPackaged,
+          click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }),
+        },
       ],
     },
     { role: 'windowMenu' },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+// A throwaway profile for manual testing, so the real Lemida session and cookie file are never touched.
+if (process.env.QUIRE_USER_DATA_DIR) app.setPath('userData', process.env.QUIRE_USER_DATA_DIR);
 
 app.whenReady().then(() => {
   const config = loadConfig();
@@ -171,6 +183,7 @@ app.whenReady().then(() => {
   // It pushes status to the renderer via `lemida:status` (the preload exposes onLemidaStatus()).
   engine = new LemidaEngine({
     quireUrl: config.quireUrl,
+    autoSyncMs: config.autoSyncMinutes * 60_000,
     emit: (status) => getMainWindow()?.webContents.send('lemida:status', status),
   });
   void engine.start();
@@ -182,8 +195,17 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => {
-  engine?.stop();
+// Quit cleanup: hold the first before-quit until the engine has failed any in-flight command as `app_quit`
+// (bounded to ~1.5 s), then quit for real. The flag lets the second before-quit through.
+let quitCleanupDone = false;
+app.on('before-quit', (event) => {
+  if (quitCleanupDone || !engine || !engine.hasCommandInFlight()) {
+    engine?.stop();
+    return;
+  }
+  quitCleanupDone = true;
+  event.preventDefault();
+  void engine.shutdown().finally(() => app.quit());
 });
 
 app.on('window-all-closed', () => {

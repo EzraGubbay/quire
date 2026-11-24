@@ -25,12 +25,21 @@ export interface SyncReport {
   courses: CourseReport[];
   totals: CourseStats;
   sessionExpired?: string;
+  /** True when the engine aborted the run (watchdog); remaining courses are reported as skipped. */
+  aborted?: boolean;
 }
 
 export interface RunSyncDeps<C extends CourseLike> {
-  syncCourse: (course: C, opts: { full: boolean; onLoaded: () => void }) => Promise<CourseStats>;
+  syncCourse: (
+    course: C,
+    opts: { full: boolean; onLoaded: () => void; shouldStop: () => boolean; onProgress: () => void },
+  ) => Promise<CourseStats>;
   log: (msg: string) => void;
   full: boolean;
+  /** Aborted by the engine watchdog: checked between courses (and, via `shouldStop`, between activities). */
+  signal?: AbortSignal;
+  /** Reports forward progress so the watchdog deadline can restart. */
+  onProgress?: () => void;
 }
 
 function describe(stats: CourseStats): string {
@@ -54,15 +63,37 @@ function addStats(into: CourseStats, s: CourseStats): void {
 }
 
 export async function runSync<C extends CourseLike>(courses: C[], deps: RunSyncDeps<C>): Promise<SyncReport> {
-  const { syncCourse, log, full } = deps;
+  const { syncCourse, log, full, signal, onProgress } = deps;
+  const shouldStop = () => signal?.aborted === true;
+  const progress = () => onProgress?.();
   const report: SyncReport = { full, courses: [], totals: emptyStats() };
   for (let i = 0; i < courses.length; i++) {
+    if (shouldStop()) {
+      report.aborted = true;
+      for (const rest of courses.slice(i)) {
+        report.courses.push({
+          label: rest.label || rest.slug,
+          slug: rest.slug,
+          ok: false,
+          loaded: false,
+          reason: 'skipped (timed out)',
+        });
+      }
+      log('sync aborted by the engine watchdog');
+      break;
+    }
     const course = courses[i] as C;
     const label = course.label || course.slug;
     log(`course ${label} (${course.slug}) start`);
     let loaded = false;
     try {
-      const stats = await syncCourse(course, { full, onLoaded: () => (loaded = true) });
+      const stats = await syncCourse(course, {
+        full,
+        onLoaded: () => (loaded = true),
+        shouldStop,
+        onProgress: progress,
+      });
+      progress();
       addStats(report.totals, stats);
       report.courses.push({ label, slug: course.slug, ok: true, loaded: true, stats });
       log(`course ${label} done: ${describe(stats)}`);

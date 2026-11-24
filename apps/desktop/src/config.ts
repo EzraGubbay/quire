@@ -10,6 +10,17 @@ const DEFAULT_QUIRE_URL = 'https://quire.ezragubbay.com';
 export interface DesktopConfig {
   /** Base URL of the Quire instance the main window loads (no trailing slash). */
   quireUrl: string;
+  /** Minutes between automatic Lemida syncs while signed in; 0 disables. Env LEMIDA_AUTO_SYNC_MINUTES overrides. */
+  autoSyncMinutes: number;
+}
+
+const DEFAULT_AUTO_SYNC_MINUTES = 120;
+
+/** A usable minutes value is a finite number >= 0; anything else falls through to the next source. */
+function minutesOrUndefined(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
 function configPath(): string {
@@ -36,5 +47,9 @@ export function loadConfig(): DesktopConfig {
       // Non-fatal: we still have the resolved value in memory for this run.
     }
   }
-  return { quireUrl };
+  const autoSyncMinutes =
+    minutesOrUndefined(process.env.LEMIDA_AUTO_SYNC_MINUTES) ??
+    minutesOrUndefined(stored.autoSyncMinutes) ??
+    DEFAULT_AUTO_SYNC_MINUTES;
+  return { quireUrl, autoSyncMinutes };
 }

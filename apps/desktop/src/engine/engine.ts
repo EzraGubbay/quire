@@ -5,7 +5,9 @@
 import path from 'node:path';
 import { app } from 'electron';
 import {
+  initSessionCookies,
   isSignInInProgress,
+  LOGIN_TIMEOUT_MS,
   openLogin,
   probe,
   SessionExpired,
@@ -13,6 +15,7 @@ import {
   type SyncCourse,
   syncCourse,
 } from './lemida-session';
+import { autoSyncDue, runWithHeartbeat } from './lifecycle';
 import { type LemidaCommand, type LemidaCourse, type NextCommandResponse, QuireClient } from './quire';
 import { SeenStore } from './seen';
 import { SyncLog } from './sync-log';
@@ -20,6 +23,15 @@ import { runSync as runSyncCourses, type SyncReport, safeUpload, summariseSync }
 
 const POLL_MS = Number(process.env.LEMIDA_POLL_MS ?? 5000);
 const PROBE_MS = Number(process.env.LEMIDA_PROBE_MS ?? 3_600_000);
+const HEARTBEAT_MS = 30_000;
+const SYNC_DEADLINE_MS = Number(process.env.LEMIDA_SYNC_DEADLINE_MS ?? 600_000);
+
+/** Per-kind watchdog: how long a command may go without progress before the engine gives up on it. */
+function commandDeadlineMs(kind: LemidaCommand['kind']): number {
+  if (kind === 'open_login') return LOGIN_TIMEOUT_MS + 2 * 60_000;
+  if (kind === 'probe') return 2 * 60_000;
+  return SYNC_DEADLINE_MS;
+}
 
 export interface LemidaStatus {
   sessionStatus: SessionStatus;
@@ -31,6 +43,8 @@ export interface EngineOptions {
   quireUrl: string;
   /** Pushes status to the renderer (wired by main to mainWindow.webContents.send('lemida:status', …)). */
   emit?: (status: LemidaStatus) => void;
+  /** Interval between automatic syncs while signed in, in ms; 0/undefined disables. */
+  autoSyncMs?: number;
 }
 
 export class LemidaEngine {
@@ -41,7 +55,12 @@ export class LemidaEngine {
   private timer: NodeJS.Timeout | undefined;
   private running = false;
   private lastProbe = 0;
-  private lastStatus: SessionStatus = 'unknown';
+  /** The command in flight (for quit cleanup) and the engine's last known session status / sync times. */
+  private current: { id: string; kind: LemidaCommand['kind'] } | null = null;
+  private sessionStatus: SessionStatus = 'unknown';
+  private lastSyncEndedAt = 0;
+  private lastAutoRequestAt = 0;
+  private readonly autoSyncMs: number;
 
   constructor(opts: EngineOptions) {
     this.client = new QuireClient(opts.quireUrl);
@@ -50,12 +69,23 @@ export class LemidaEngine {
       this.log.line(m),
     );
     this.emit = opts.emit ?? (() => {});
+    this.autoSyncMs = opts.autoSyncMs ?? 0;
   }
 
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
     await this.seen.load().catch(() => {});
+    // The one and only cookie restore of this launch (probe/sync/sign-in never restore). Names and counts only.
+    const r = await initSessionCookies().catch((err: Error) => {
+      console.error(`[lemida] cookie init failed: ${err.message}`);
+      return null;
+    });
+    if (r) {
+      console.log(
+        `[lemida] cookies: restored ${r.restored.length}${r.restored.length ? ` (${r.restored.join(', ')})` : ''}, removed ${r.deduped} duplicate domain copies${r.migrated ? ', migrated plaintext file' : ''}`,
+      );
+    }
     console.log(`[lemida] engine watching (poll ${POLL_MS}ms, probe ${PROBE_MS}ms)`);
     this.scheduleNext(0);
   }
@@ -80,13 +110,24 @@ export class LemidaEngine {
     try {
       const payload = await this.client.nextCommand();
       if (payload.command) {
-        await this.handle(payload.command, payload);
+        await this.runCommand(payload.command, payload);
       } else if (!isSignInInProgress() && Date.now() - this.lastProbe > PROBE_MS) {
         this.lastProbe = Date.now();
         const status = await probe().catch((): SessionStatus => 'expired');
         await this.client.postState({ sessionStatus: status }).catch(() => {});
         this.pushStatus(status);
         console.log(`[lemida] passive probe → ${status}`);
+      } else if (
+        autoSyncDue({
+          intervalMs: this.autoSyncMs,
+          sessionStatus: this.sessionStatus,
+          signInInProgress: isSignInInProgress(),
+          now: Date.now(),
+          lastSyncEndedAt: this.lastSyncEndedAt,
+          lastAutoRequestAt: this.lastAutoRequestAt,
+        })
+      ) {
+        await this.requestAutoSync('auto-timer');
       }
     } catch (err) {
       console.error(`[lemida] loop error: ${(err as Error).message}`);
@@ -94,14 +135,133 @@ export class LemidaEngine {
     this.scheduleNext();
   }
 
-  private async handle(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
+  /**
+   * Ask the server to queue a sync (it coalesces with any queued/running sync and does nothing with no enabled
+   * mappings), so an automatic sync gets the same lease / watchdog / panel status as a manual one. Failures
+   * (offline, an old server without the route) are logged and retried no sooner than the next interval.
+   */
+  private async requestAutoSync(trigger: 'auto-sign-in' | 'auto-timer'): Promise<void> {
+    this.lastAutoRequestAt = Date.now();
+    try {
+      const r = await this.client.enqueueSync(trigger);
+      console.log(`[lemida] auto-sync (${trigger}) → ${r.created ? 'queued' : (r.reason ?? 'not queued')}`);
+    } catch (err) {
+      console.error(`[lemida] auto-sync (${trigger}) failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Run one command under a lease heartbeat and a per-kind watchdog. Heartbeats prove the app is alive (the server
+   * reaps the row if they stop: quit, crash, sleep); the watchdog proves the command makes progress (a hang inside a
+   * live app). Known limitation: an abandoned operation may still finish in the background; the server then ignores
+   * its completion because the row is no longer running (`applied: false`).
+   */
+  private async runCommand(cmd: LemidaCommand, payload: NextCommandResponse): Promise<void> {
+    this.current = { id: cmd.id, kind: cmd.kind };
+    const deadlineMs = commandDeadlineMs(cmd.kind);
+    let beating = true;
+    // Aborted when the watchdog gives up, so an abandoned sync stops between activities instead of crawling on
+    // while the next command (possibly another sync) starts on the same partition and seen-store.
+    const abort = new AbortController();
+    try {
+      const r = await runWithHeartbeat({
+        run: (progress) => this.handle(cmd, payload, { signal: abort.signal, progress }),
+        beat: () => {
+          if (!beating) return;
+          // An old server without the route 404s: harmless, the legacy lease applies.
+          void this.client
+            .heartbeatCommand(cmd.id)
+            .then((r) => {
+              if (r && r.active === false && beating) {
+                beating = false;
+                console.warn(
+                  `[lemida] server no longer sees command ${cmd.kind} as running; stopped heartbeating`,
+                );
+              }
+            })
+            .catch(() => {});
+        },
+        intervalMs: HEARTBEAT_MS,
+        deadlineMs,
+      });
+      if (r.kind === 'timeout') {
+        abort.abort();
+        const mins = Math.round(deadlineMs / 60_000);
+        console.error(`[lemida] command ${cmd.kind} timed out after ${mins} min`);
+        await this.client
+          .completeCommand(cmd.id, 'error', {
+            reason: 'engine_timeout',
+            message: `Timed out on the Mac after ${mins} min`,
+          })
+          .catch(() => {});
+      }
+    } finally {
+      if (cmd.kind === 'sync') this.lastSyncEndedAt = Date.now();
+      this.current = null;
+    }
+  }
+
+  /** True while a command is running; main only delays quit (to fail it as `app_quit`) in that case. */
+  hasCommandInFlight(): boolean {
+    return this.current !== null;
+  }
+
+  /**
+   * Stop polling and, if a command is in flight, fail it as `app_quit` (within `timeoutMs`) so the panel does not
+   * show it as running until the lease lapses. Called from main's before-quit.
+   */
+  async shutdown(timeoutMs = 1500): Promise<void> {
+    this.stop();
+    const cur = this.current;
+    if (!cur) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      this.client
+        .completeCommand(cur.id, 'error', {
+          reason: 'app_quit',
+          message: 'The Quire desktop app quit while this was running.',
+        })
+        .catch(() => {}),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+  }
+
+  private async handle(
+    cmd: LemidaCommand,
+    payload: NextCommandResponse,
+    ctx: { signal: AbortSignal; progress: () => void },
+  ): Promise<void> {
     try {
       if (cmd.kind === 'open_login') {
-        const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
-        await this.client.postState({ sessionStatus: status });
-        await this.client.completeCommand(cmd.id, 'done', { sessionStatus: status });
-        this.pushStatus(status);
-        console.log(`[lemida] login → ${status}`);
+        const { status, outcome } = await openLogin({ onHeartbeat: () => this.heartbeat() });
+        if (outcome === 'busy') {
+          // Another sign-in owns the window: leave the session status alone.
+          await this.client.completeCommand(cmd.id, 'done', {
+            outcome,
+            message: 'A sign-in window is already open',
+          });
+        } else if (outcome === 'timeout') {
+          await this.client.postState({ sessionStatus: status });
+          await this.client.completeCommand(cmd.id, 'error', {
+            message: `Sign-in window timed out after ${Math.round(LOGIN_TIMEOUT_MS / 60_000)} min`,
+            outcome,
+          });
+          this.pushStatus(status);
+        } else {
+          await this.client.postState({ sessionStatus: status });
+          await this.client.completeCommand(cmd.id, 'done', {
+            sessionStatus: status,
+            outcome,
+            ...(outcome === 'closed' ? { message: 'Sign-in window was closed before finishing' } : {}),
+          });
+          this.pushStatus(status);
+        }
+        if (outcome === 'signed-in' || outcome === 'already-signed-in')
+          await this.requestAutoSync('auto-sign-in');
+        console.log(`[lemida] login → ${status} (${outcome})`);
       } else if (cmd.kind === 'probe') {
         const status = await probe();
         await this.client.postState({ sessionStatus: status });
@@ -112,7 +272,12 @@ export class LemidaEngine {
         const full = cmd.payload?.full === true;
         const courses = payload.courses ?? [];
         this.log.line(`sync start full=${full} courses=${courses.length}`);
-        const report = await this.runSync(courses, full);
+        const report = await this.runSync(courses, full, ctx);
+        if (ctx.signal.aborted) {
+          // The watchdog already failed this command (engine_timeout); don't overwrite its outcome or the status.
+          this.log.line('sync aborted by the watchdog; discarding its late result');
+          return;
+        }
         const summary = summariseSync(report);
         const at = new Date().toISOString();
         const status: SessionStatus | undefined = report.sessionExpired
@@ -137,10 +302,15 @@ export class LemidaEngine {
           failedCourses,
           ...(isError ? { message: summary } : {}),
         });
-        this.pushStatus(status ?? this.lastStatus, summary);
+        this.pushStatus(status ?? this.sessionStatus, summary);
         this.log.line(`sync done: ${summary}`);
       }
     } catch (err) {
+      if (ctx.signal.aborted) {
+        // The watchdog already failed this command (engine_timeout); a late error must not touch status/outcome.
+        console.error(`[lemida] aborted command ${cmd.kind} ended with: ${(err as Error).message}`);
+        return;
+      }
       const expired = err instanceof SessionExpired;
       if (expired) {
         await this.client.postState({ sessionStatus: 'expired' }).catch(() => {});
@@ -152,11 +322,17 @@ export class LemidaEngine {
   }
 
   /** Crawl every mapped course and upload each new or changed file. Each course is isolated. */
-  private runSync(courses: LemidaCourse[], full: boolean): Promise<SyncReport> {
+  private runSync(
+    courses: LemidaCourse[],
+    full: boolean,
+    ctx: { signal: AbortSignal; progress: () => void },
+  ): Promise<SyncReport> {
     const log = (msg: string): void => this.log.line(msg);
     return runSyncCourses(courses, {
       full,
       log,
+      signal: ctx.signal,
+      onProgress: ctx.progress,
       syncCourse: (course, opts) => {
         const key = course.lemidaUrl;
         const sc: SyncCourse = {
@@ -170,6 +346,8 @@ export class LemidaEngine {
           full: opts.full,
           log,
           onLoaded: opts.onLoaded,
+          shouldStop: opts.shouldStop,
+          onProgress: opts.onProgress,
           recordFile: (href, fileUrl, rec) => this.seen.recordFile(key, href, fileUrl, rec),
           persist: () => this.seen.save(),
           upload: (dl, resource) =>
@@ -192,10 +370,14 @@ export class LemidaEngine {
   /** Entry point for the native menu / preload IPC: open the embedded sign-in window directly. */
   async signIn(): Promise<{ ok: boolean; reason?: string }> {
     try {
-      const status = await openLogin({ onHeartbeat: () => this.heartbeat() });
-      await this.client.postState({ sessionStatus: status }).catch(() => {});
-      this.pushStatus(status);
-      return status === 'valid' ? { ok: true } : { ok: false, reason: status };
+      const { status, outcome } = await openLogin({ onHeartbeat: () => this.heartbeat() });
+      if (outcome !== 'busy') {
+        await this.client.postState({ sessionStatus: status }).catch(() => {});
+        this.pushStatus(status);
+      }
+      if (outcome === 'signed-in' || outcome === 'already-signed-in')
+        void this.requestAutoSync('auto-sign-in');
+      return status === 'valid' ? { ok: true } : { ok: false, reason: outcome === 'busy' ? 'busy' : status };
     } catch (err) {
       return { ok: false, reason: (err as Error).message };
     }
@@ -208,7 +390,7 @@ export class LemidaEngine {
   }
 
   private pushStatus(sessionStatus: SessionStatus, lastSyncSummary?: string): void {
-    this.lastStatus = sessionStatus;
+    this.sessionStatus = sessionStatus;
     try {
       this.emit({ sessionStatus, lastSyncSummary, at: new Date().toISOString() });
     } catch {

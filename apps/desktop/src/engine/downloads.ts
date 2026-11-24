@@ -51,6 +51,8 @@ export interface CollectContext {
   records: ActivityRecord | undefined;
   full: boolean;
   log: (msg: string) => void;
+  /** Called after each HTTP fetch, so the engine watchdog can tell a slow sync from a stuck one. */
+  onProgress?: () => void;
 }
 
 function toArrayBuffer(b: Buffer): ArrayBuffer {
@@ -58,7 +60,7 @@ function toArrayBuffer(b: Buffer): ArrayBuffer {
 }
 
 export async function collectActivity(resource: Resource, ctx: CollectContext): Promise<ActivityResult> {
-  const { get, records, full, log } = ctx;
+  const { get, records, full, log, onProgress } = ctx;
   const result: ActivityResult = { files: [], unchanged: [], failures: [] };
 
   async function request(
@@ -67,6 +69,7 @@ export async function collectActivity(resource: Resource, ctx: CollectContext): 
     ifNoneMatch?: string,
   ): Promise<{ raw: RawResponse; outcome: Outcome }> {
     const raw = await get(url, ifNoneMatch ? { ifNoneMatch } : {});
+    onProgress?.();
     let outcome = classifyResponse(raw, expect, resource.moduleType);
     // An embed page that carries a file link is expected, not a failure: log it distinctly.
     if (

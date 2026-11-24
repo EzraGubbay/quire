@@ -74,8 +74,19 @@ export class SeenStore {
     act.files[fileUrl] = rec;
   }
 
-  /** Atomic whole-file write. Errors are swallowed but logged. */
-  async save(): Promise<void> {
+  private saving: Promise<void> = Promise.resolve();
+
+  /**
+   * Atomic whole-file write. Errors are swallowed but logged. Saves are serialized (they share one tmp file, so
+   * overlapping writes could interleave), and each serializes `data` when its turn comes, so the last call wins.
+   */
+  save(): Promise<void> {
+    const run = this.saving.then(() => this.write());
+    this.saving = run;
+    return run;
+  }
+
+  private async write(): Promise<void> {
     const tmp = `${this.file}.tmp`;
     try {
       await writeFile(tmp, JSON.stringify(this.data, null, 2));
