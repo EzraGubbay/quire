@@ -1,14 +1,15 @@
 // Takes a file the agent downloaded from Lemida and places it in the right course/tab — deterministically,
 // with no LLM. Dedupes by content hash (against prior Lemida pulls AND hand-uploaded decks), classifies,
 // creates the document (reusing the deck/PDF import path), and records a lemida_files row that doubles as
-// the review queue and the Phase-2 training log.
+// the review queue and the Phase-2 training log. An earlier failed attempt (status error) is retried in place:
+// the same lemida_files row is updated, never duplicated.
 import type { LemidaFileStatus, LemidaKind } from '@quire/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import { after } from 'next/server';
 import { db } from '@/db/client';
 import { assignments, documents, type Folder, type LemidaFile, lemidaFiles, type Project } from '@/db/schema';
 import { indexOwner } from '@/lib/ai/index';
-import { builtinFolder, createDeckDocument, createFolder, listFolders } from '@/lib/documents';
+import { builtinFolder, createDeckDocument, createFolder, deleteDocument, listFolders } from '@/lib/documents';
 import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { notifyFilesAdded } from '@/lib/mobile/push/triggers';
@@ -34,6 +35,8 @@ export interface ImportResult {
   placement: { documentId?: string; sessionId?: string; assignmentId?: string };
   needsReview: boolean;
   duplicate: boolean;
+  /** The failure reason when status is 'error'. */
+  error: string | null;
 }
 
 /** Schedule background indexing, tolerating being called outside a request (e.g. a test). */
@@ -138,6 +141,7 @@ export async function importLemidaFile(
     const row = await recordFile(project.id, meta, hash, data.byteLength, cls, 'duplicate', {
       documentId: twin.id,
     });
+    if (!row) return settleLostRace(project.id, hash);
     return asResult(row, true);
   }
 
@@ -145,6 +149,7 @@ export async function importLemidaFile(
   const placement: ImportResult['placement'] = {};
   let status: LemidaFileStatus = 'imported';
   const title = cls.title ?? cleanTitle(meta.fileName);
+  let createdDocId: string | undefined;
 
   try {
     if (cls.kind === 'lecture' || cls.kind === 'recitation') {
@@ -155,6 +160,7 @@ export async function importLemidaFile(
         sessionId: session.id,
         title: cls.title ? sessionTitle(session) : undefined,
       });
+      createdDocId = doc.id;
       await setHash(doc.id, hash);
       placement.sessionId = session.id;
       placement.documentId = doc.id;
@@ -167,6 +173,7 @@ export async function importLemidaFile(
         folderId: folder.id,
         title,
       });
+      createdDocId = doc.id;
       await setHash(doc.id, hash);
       const number = homeworkNumber(meta.fileName) ?? (await nextAssignmentNumber(project.id));
       const assignment = await findOrCreateAssignment(project.id, number, title);
@@ -188,6 +195,7 @@ export async function importLemidaFile(
         folderId: folder.id,
         title,
       });
+      createdDocId = doc.id;
       await setHash(doc.id, hash);
       placement.documentId = doc.id;
       if (doc.filePath) indexLater(project.id, doc.id);
@@ -195,12 +203,18 @@ export async function importLemidaFile(
       // book / other / unknown → Documents (a "Course material" folder for book, root otherwise).
       const folderId = cls.kind === 'book' ? (await ensureFolder(project.id, 'Course material')).id : null;
       const doc = await createDeckDocument(project.id, { fileName: meta.fileName, data, folderId, title });
+      createdDocId = doc.id;
       await setHash(doc.id, hash);
       placement.documentId = doc.id;
       if (doc.filePath) indexLater(project.id, doc.id);
       if (cls.kind === 'unknown') status = 'needs_review';
     }
   } catch (err) {
+    // Don't leave a half-placed document behind (its content_hash would make the retry match it as a twin).
+    if (createdDocId) {
+      await deleteDocument(project.id, createdDocId).catch(() => {});
+      delete placement.documentId;
+    }
     const row = await recordFile(
       project.id,
       meta,
@@ -211,10 +225,12 @@ export async function importLemidaFile(
       placement,
       (err as Error).message,
     );
+    if (!row) return settleLostRace(project.id, hash);
     return asResult(row, false);
   }
 
   const row = await recordFile(project.id, meta, hash, data.byteLength, cls, status, placement);
+  if (!row) return settleLostRace(project.id, hash, createdDocId); // no notify: nothing new was added
   const result = asResult(row, false);
   void notifyFilesAdded(project.id, result); // fire-and-forget: never fails or slows the import
   return result;
@@ -224,6 +240,22 @@ async function setHash(documentId: string, hash: string): Promise<void> {
   await db.update(documents).set({ contentHash: hash }).where(eq(documents.id, documentId));
 }
 
+/** Another import already recorded this hash: drop the copy this attempt placed and report the winner. */
+async function settleLostRace(projectId: string, hash: string, createdDocId?: string): Promise<ImportResult> {
+  if (createdDocId) await deleteDocument(projectId, createdDocId).catch(() => {});
+  const [existing] = await db
+    .select()
+    .from(lemidaFiles)
+    .where(and(eq(lemidaFiles.projectId, projectId), eq(lemidaFiles.sha256, hash)))
+    .limit(1);
+  if (!existing) throw new Error('lemida_files row vanished during import');
+  return asResult(existing, true);
+}
+
+/**
+ * Records the outcome. An existing error row for this (project, hash) is overwritten in place (a retry); any
+ * other existing row wins and this returns null (a concurrent import got there first).
+ */
 async function recordFile(
   projectId: string,
   meta: ImportMeta,
@@ -233,29 +265,34 @@ async function recordFile(
   status: LemidaFileStatus,
   placement: ImportResult['placement'],
   error?: string,
-): Promise<LemidaFile> {
+): Promise<LemidaFile | null> {
+  // Everything except the conflict key, so a retry of an error row overwrites the outcome in place.
+  const fields = {
+    lemidaCourseId: meta.mappingId ?? null,
+    sourceUrl: meta.sourceUrl ?? '',
+    fileName: meta.fileName,
+    contentType: meta.contentType ?? 'application/octet-stream',
+    size,
+    sectionTitle: meta.sectionTitle ?? '',
+    moduleType: meta.moduleType ?? '',
+    detectedKind: cls.kind,
+    confidence: cls.confidence,
+    rule: cls.rule,
+    placement,
+    status,
+    error: error ?? null,
+  };
   const [row] = await db
     .insert(lemidaFiles)
-    .values({
-      projectId,
-      lemidaCourseId: meta.mappingId ?? null,
-      sourceUrl: meta.sourceUrl ?? '',
-      fileName: meta.fileName,
-      sha256: hash,
-      contentType: meta.contentType ?? 'application/octet-stream',
-      size,
-      sectionTitle: meta.sectionTitle ?? '',
-      moduleType: meta.moduleType ?? '',
-      detectedKind: cls.kind,
-      confidence: cls.confidence,
-      rule: cls.rule,
-      placement,
-      status,
-      error: error ?? null,
+    .values({ projectId, sha256: hash, ...fields })
+    .onConflictDoUpdate({
+      target: [lemidaFiles.projectId, lemidaFiles.sha256],
+      set: { ...fields, updatedAt: new Date() },
+      // Only an earlier failure is retried; a placed/duplicate row wins (no re-import, no clobber).
+      setWhere: eq(lemidaFiles.status, 'error'),
     })
     .returning();
-  if (!row) throw new Error('insert returned no row');
-  return row;
+  return row ?? null; // null: a non-error row for this hash already exists (lost a concurrent race)
 }
 
 const asResult = (row: LemidaFile, duplicate: boolean): ImportResult => ({
@@ -265,4 +302,5 @@ const asResult = (row: LemidaFile, duplicate: boolean): ImportResult => ({
   placement: row.placement,
   needsReview: row.status === 'needs_review',
   duplicate,
+  error: row.error ?? null,
 });
