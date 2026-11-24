@@ -9,7 +9,14 @@ const res = (id) => ({
   moduleType: 'mod_resource',
   sectionTitle: '',
 });
-const dl = (n) => ({ name: n, bytes: new ArrayBuffer(1), contentType: 'x', sourceUrl: 'u', fileUrl: `f-${n}`, sha256: `h-${n}` });
+const dl = (n) => ({
+  name: n,
+  bytes: new ArrayBuffer(1),
+  contentType: 'x',
+  sourceUrl: 'u',
+  fileUrl: `f-${n}`,
+  sha256: `h-${n}`,
+});
 const oneFile = (n) => async () => ({ files: [dl(n)], unchanged: [], failures: [] });
 
 function deps(over = {}) {
@@ -95,7 +102,11 @@ test('collect failures counted as downloadFailed', async () => {
 test('unchanged files are recorded (re-keyed), counted, and never uploaded', async () => {
   let uploads = 0;
   const h = deps({
-    collect: async () => ({ files: [], unchanged: [{ fileUrl: 'new-url', etag: 'E', sha256: 'h' }], failures: [] }),
+    collect: async () => ({
+      files: [],
+      unchanged: [{ fileUrl: 'new-url', etag: 'E', sha256: 'h' }],
+      failures: [],
+    }),
     upload: async () => {
       uploads++;
       return { ok: true, status: 'imported', duplicate: false };

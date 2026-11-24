@@ -15,8 +15,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, net, type Session, session, type WebContents } from 'electron';
 import { closeHelper, openHelper } from './credential-bar';
-import { NotEnrolled, SessionExpired } from './errors';
 import { collectActivity, type Download } from './downloads';
+import { NotEnrolled, SessionExpired } from './errors';
 import type { RawResponse } from './fetch-outcome';
 import { decideLoggedIn, isAuthWall, type LoginSignals, parseMoodleCourse, type Resource } from './moodle';
 import { type CourseStats, reconcileResources, type UploadOutcome } from './reconcile';
@@ -285,7 +285,11 @@ const FETCH_TIMEOUT_MS = Number(process.env.LEMIDA_FETCH_TIMEOUT_MS ?? 120_000);
  * used here: Electron documents its Response.url/type as incorrect, so a bounce to the login page was
  * invisible. Always resolves (never throws, never hangs); transport problems come back in `error`.
  */
-export function httpGet(ses: Session, url: string, opts: { ifNoneMatch?: string } = {}): Promise<RawResponse> {
+export function httpGet(
+  ses: Session,
+  url: string,
+  opts: { ifNoneMatch?: string } = {},
+): Promise<RawResponse> {
   return new Promise<RawResponse>((resolve) => {
     const hops: string[] = [];
     let settled = false;

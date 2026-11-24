@@ -16,7 +16,8 @@ const raw = (o = {}) => {
     ...o,
   };
 };
-const html = (s, extra = {}) => raw({ headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(s), ...extra });
+const html = (s, extra = {}) =>
+  raw({ headers: { 'content-type': 'text/html; charset=utf-8' }, body: Buffer.from(s), ...extra });
 
 test('200 pdf is a file', () => {
   const r = raw({ headers: { 'content-type': 'application/pdf' }, body: Buffer.from('%PDF-1.7 abc') });
@@ -34,7 +35,9 @@ test('perfdrive hop is bot_page', () => {
 });
 
 test('login form in body is login_page', () => {
-  const r = html('<html><form action="https://lemida.biu.ac.il/login/index.php" method="post"></form></html>');
+  const r = html(
+    '<html><form action="https://lemida.biu.ac.il/login/index.php" method="post"></form></html>',
+  );
   assert.equal(fo.classifyResponse(r, 'page', 'mod_folder').kind, 'login_page');
 });
 
@@ -101,7 +104,19 @@ test('formatRequestLog has all fields, no secret headers, final from last hop', 
     },
   });
   const line = fo.formatRequestLog('https://lemida/act', r, fo.classifyResponse(r, 'page', 'mod_folder'));
-  for (const k of ['activity=', 'url=', 'final=', 'status=', 'type=', 'len=', 'disp=', 'etag=yes', 'outcome=', 'head=', 'title="Course: Foo"']) {
+  for (const k of [
+    'activity=',
+    'url=',
+    'final=',
+    'status=',
+    'type=',
+    'len=',
+    'disp=',
+    'etag=yes',
+    'outcome=',
+    'head=',
+    'title="Course: Foo"',
+  ]) {
     assert.ok(line.includes(k), k);
   }
   assert.ok(!/cookie|authorization|ABCDEFSECRET|ZZZZ|SECRETVALUE1/i.test(line));

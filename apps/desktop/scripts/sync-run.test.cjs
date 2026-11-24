@@ -34,7 +34,10 @@ test('bug 7: NotEnrolled does not stop other courses or expire the session', asy
   assert.equal(r.courses[0].reason, 'not enrolled');
   assert.equal(r.courses[1].ok, true);
   assert.equal(r.sessionExpired, undefined);
-  assert.deepEqual(called.map((c) => c.label), ['A', 'B']);
+  assert.deepEqual(
+    called.map((c) => c.label),
+    ['A', 'B'],
+  );
 });
 
 test('generic error: later courses still run', async () => {
@@ -57,7 +60,10 @@ test('SessionExpired stops the sync, keeps earlier stats, skips the rest', async
     },
     C: () => stats(),
   });
-  assert.deepEqual(called.map((c) => c.label), ['A', 'B']);
+  assert.deepEqual(
+    called.map((c) => c.label),
+    ['A', 'B'],
+  );
   assert.equal(r.courses[2].reason, 'skipped (signed out)');
   assert.equal(r.courses[0].stats.imported, 1);
   assert.equal(r.totals.imported, 1);
@@ -72,9 +78,14 @@ test('full is passed to every syncCourse call', async () => {
 test('summariseSync formats', () => {
   assert.equal(summariseSync(report({ activities: 48 })), 'nothing new (48 activities checked)');
   assert.equal(summariseSync(report({ imported: 2, alreadyHad: 1 })), '3 downloaded (2 new, 1 already had)');
-  assert.match(summariseSync(report({ downloadFailed: 1, uploadFailed: 1 })), /2 failed \(1 download, 1 upload\)/);
   assert.match(
-    summariseSync(report({}, [{ label: 'AI', slug: 'ai', ok: false, loaded: false, reason: 'not enrolled' }])),
+    summariseSync(report({ downloadFailed: 1, uploadFailed: 1 })),
+    /2 failed \(1 download, 1 upload\)/,
+  );
+  assert.match(
+    summariseSync(
+      report({}, [{ label: 'AI', slug: 'ai', ok: false, loaded: false, reason: 'not enrolled' }]),
+    ),
     /courses failed: AI \(not enrolled\)/,
   );
   assert.match(summariseSync(report({}, [], { sessionExpired: 'x' })), /stopped: signed out of Lemida/);
@@ -109,8 +120,16 @@ test('classifyImport: duplicate:true is accepted whatever the status; imported/n
     assert.equal(o.ok, true, status);
     assert.equal(o.duplicate, true, status);
   }
-  assert.deepEqual(classifyImport({ status: 'imported' }), { ok: true, status: 'imported', duplicate: false });
-  assert.deepEqual(classifyImport({ status: 'needs_review' }), { ok: true, status: 'needs_review', duplicate: false });
+  assert.deepEqual(classifyImport({ status: 'imported' }), {
+    ok: true,
+    status: 'imported',
+    duplicate: false,
+  });
+  assert.deepEqual(classifyImport({ status: 'needs_review' }), {
+    ok: true,
+    status: 'needs_review',
+    duplicate: false,
+  });
   assert.equal(classifyImport({ status: 'error' }).ok, false);
   assert.equal(classifyImport({ status: 'error', duplicate: true }).ok, false);
   assert.equal(classifyImport({ status: 'error', error: 'bad pdf' }).error, 'server import error: bad pdf');

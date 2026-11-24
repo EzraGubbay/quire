@@ -61,7 +61,11 @@ export async function reconcileResources(
         log(`upload ${dl.name} FAILED: ${out.error}`);
         continue; // not recorded: retried next sync
       }
-      recordFile(resource.href, dl.fileUrl, { sha256: dl.sha256, etag: dl.etag, at: new Date().toISOString() });
+      recordFile(resource.href, dl.fileUrl, {
+        sha256: dl.sha256,
+        etag: dl.etag,
+        at: new Date().toISOString(),
+      });
       if (out.duplicate || out.status === 'duplicate') stats.alreadyHad++;
       else if (out.status === 'needs_review') stats.review++;
       else stats.imported++;

@@ -26,8 +26,13 @@ function resp(requestedUrl, o = {}) {
   };
 }
 const file = (url, bytes, o = {}) =>
-  resp(url, { headers: { 'content-type': 'application/pdf', ...(o.etag ? { etag: o.etag } : {}) }, body: Buffer.from(bytes), ...o });
-const page = (url, body, o = {}) => resp(url, { headers: { 'content-type': 'text/html' }, body: Buffer.from(body), ...o });
+  resp(url, {
+    headers: { 'content-type': 'application/pdf', ...(o.etag ? { etag: o.etag } : {}) },
+    body: Buffer.from(bytes),
+    ...o,
+  });
+const page = (url, body, o = {}) =>
+  resp(url, { headers: { 'content-type': 'text/html' }, body: Buffer.from(body), ...o });
 
 function harness(routes, extra = {}) {
   const calls = [];

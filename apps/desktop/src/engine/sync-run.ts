@@ -107,7 +107,9 @@ export function summariseSync(report: SyncReport): string {
     if (t.uploadFailed) parts.push(`${t.uploadFailed} upload`);
     segs.push(`${failed} failed (${parts.join(', ')})`);
   }
-  const failedCourses = report.courses.filter((c) => !c.ok).map((c) => `${c.label} (${c.reason ?? 'failed'})`);
+  const failedCourses = report.courses
+    .filter((c) => !c.ok)
+    .map((c) => `${c.label} (${c.reason ?? 'failed'})`);
   const stopped = report.sessionExpired ? 'stopped: signed out of Lemida' : '';
   if (failedCourses.length > 0) {
     const fixed = [...segs, ...(stopped ? [stopped] : [])].join(' · ');

@@ -101,7 +101,8 @@ export function classifyResponse(raw: RawResponse, expect: 'file' | 'page', modu
 
 // --- sanitising ---------------------------------------------------------------------------------------
 
-const KV_SECRET = /\b(sesskey|logintoken|token|key|sig|signature|auth|code|state|nonce|session\w*)=[^&"'\s]+/gi;
+const KV_SECRET =
+  /\b(sesskey|logintoken|token|key|sig|signature|auth|code|state|nonce|session\w*)=[^&"'\s]+/gi;
 
 /** Redact secret-looking query values in a URL. */
 export function redactUrl(url: string): string {
@@ -115,7 +116,9 @@ export function sanitizeSnippet(buf: Buffer | null, max = 200): string {
   let s = slice.toString(htmlish ? 'utf8' : 'latin1');
   s = s.replace(/[^\x20-\x7e\s]/g, '.').replace(/[\r\n\t\f\v]/g, ' ');
   s = s.replace(/\s+/g, ' ');
-  s = s.replace(/value\s*=\s*"[^"]*"/gi, 'value="[redacted]"').replace(/value\s*=\s*'[^']*'/gi, "value='[redacted]'");
+  s = s
+    .replace(/value\s*=\s*"[^"]*"/gi, 'value="[redacted]"')
+    .replace(/value\s*=\s*'[^']*'/gi, "value='[redacted]'");
   s = s.replace(KV_SECRET, '$1=[redacted]');
   s = s.replace(/[A-Za-z0-9_\-+/=.]{24,}/g, '[redacted]');
   return s.slice(0, max);

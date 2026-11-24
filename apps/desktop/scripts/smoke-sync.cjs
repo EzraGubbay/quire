@@ -19,11 +19,21 @@ const res = (id) => ({
 
   const recorded = new Set();
   const collect = async (r) => ({
-    files: [{ name: 'f', bytes: new ArrayBuffer(1), contentType: 'x', sourceUrl: 'u', fileUrl: r.href, sha256: 'h' }],
+    files: [
+      {
+        name: 'f',
+        bytes: new ArrayBuffer(1),
+        contentType: 'x',
+        sourceUrl: 'u',
+        fileUrl: r.href,
+        sha256: 'h',
+      },
+    ],
     unchanged: [],
     failures: [],
   });
-  const upload = async (_dl, r) => (r === B ? { ok: false, error: 'boom' } : { ok: true, status: 'imported', duplicate: false });
+  const upload = async (_dl, r) =>
+    r === B ? { ok: false, error: 'boom' } : { ok: true, status: 'imported', duplicate: false };
   const deps = {
     collect,
     upload,
