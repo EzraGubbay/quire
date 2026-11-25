@@ -6,6 +6,9 @@
   gap: 20px;
   align-content: start;
   min-height: 60vh;
+  /* A flex child of .quire-main: an explicit min-height replaces the automatic content-based minimum, so
+     without this the wrap shrinks to the window, the clipped list hides the last rows and nothing scrolls. */
+  flex-shrink: 0;
 }
 .wrap[data-dragging] {
   outline: 2px dashed var(--eg-accent);
