@@ -57,7 +57,9 @@ export async function fetchArxivMeta(id: string, fetchImpl: typeof fetch = fetch
   };
   const entryRaw = parsed.feed?.entry;
   const entry = Array.isArray(entryRaw) ? entryRaw[0] : entryRaw;
-  if (!entry || !entry.id) throw new Error(`arXiv has no record for ${id}`);
+  if (!entry || !entry.id || entry.id.includes('/api/errors')) {
+    throw new Error(`arXiv has no record for ${id}`);
+  }
   const authorsRaw = entry.author;
   const authors = (Array.isArray(authorsRaw) ? authorsRaw : authorsRaw ? [authorsRaw] : []).map((a) =>
     a.name.trim(),

@@ -136,4 +136,19 @@ describe.skipIf(!run)('MCP upload idempotency queries (integration)', () => {
     expect(await findPaperByRef(other.id, { arxivId: '1706.03762' })).toBeUndefined();
     expect(await findPaperByRef(p.id, {})).toBeUndefined();
   });
+
+  it('research-scope ingestPdf creates a row and dedupes', async () => {
+    const { ingestPdf } = await import('./upload');
+    const { RESEARCH_SCOPE } = await import('./scope');
+    const { samplePdf } = await import('@/lib/testing/sample-pdf');
+    const p = await newProject('research');
+    const data = samplePdf();
+    const a = { data, fileName: 'r.pdf', folder: { id: null, name: null } };
+    const first = await ingestPdf(p, a, RESEARCH_SCOPE);
+    expect(first.status).toBe('created');
+    expect(first.project?.slug).toBe(p.slug);
+    const second = await ingestPdf(p, a, RESEARCH_SCOPE);
+    expect(second.status).toBe('duplicate');
+    expect(second.fileId).toBe(first.fileId);
+  });
 });

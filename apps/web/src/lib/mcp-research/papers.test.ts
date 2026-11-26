@@ -119,4 +119,32 @@ describe('add_paper', () => {
     expect(createPdfDocument).toHaveBeenCalledTimes(1);
     expect(a.fileId).toBe(b.fileId);
   });
+
+  it('refuses a malformed arXiv id before any lookup', async () => {
+    await expect(addPaper({ project: 'kairos', reference: 'arxiv: 2401.1234x' })).rejects.toThrow(
+      /not a valid arXiv id/,
+    );
+    expect(resolveReference).not.toHaveBeenCalled();
+  });
+  it('wraps a failed lookup as an UploadError', async () => {
+    resolveReference.mockRejectedValue(new Error('arXiv API responded 503'));
+    const err = await addPaper({ project: 'kairos', reference: '1706.03762' }).catch((e) => e);
+    expect(err).toBeInstanceOf(UploadError);
+    expect(err.message).toContain('Could not look that paper up');
+  });
+  it('a non-FetchRefused fetch error propagates (no stub)', async () => {
+    fetchPublicPdf.mockRejectedValue(new Error('boom'));
+    await expect(addPaper({ project: 'kairos', reference: '1706.03762' })).rejects.toThrow('boom');
+    expect(createPaperStub).not.toHaveBeenCalled();
+  });
+  it('a title over 200 chars does not fail the call; meta keeps the full title', async () => {
+    const long = 'T'.repeat(300);
+    resolveReference.mockResolvedValue({ ...arxivMeta, title: long });
+    const r = await addPaper({ project: 'kairos', reference: '1706.03762' });
+    expect(r.status).toBe('created');
+    expect(createPdfDocument).toHaveBeenCalledWith(
+      'r1',
+      expect.objectContaining({ meta: expect.objectContaining({ title: 'T'.repeat(200) }) }),
+    );
+  });
 });

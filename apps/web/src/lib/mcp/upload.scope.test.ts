@@ -84,3 +84,17 @@ describe('links and statuses are bound to their scope', () => {
     expect(uploadStatusTool({ uploadId: link.uploadId }, RESEARCH_SCOPE)).toMatch(/Unknown uploadId/);
   });
 });
+
+describe('uploadStatusTool output', () => {
+  it('never exposes the internal scope key (course and research)', async () => {
+    const c = await createUploadLinkTool({ course: 'algo', section: 'notes', filename: 'a.md' });
+    const cs = uploadStatusTool({ uploadId: c.uploadId });
+    expect(cs).not.toHaveProperty('scope');
+    expect(Object.keys(cs as object).sort()).toEqual(['expiresAt', 'state', 'updatedAt', 'uploadId']);
+    const r = await createUploadLinkTool(
+      { course: 'kairos', section: 'notes', filename: 'a.md' },
+      RESEARCH_SCOPE,
+    );
+    expect(uploadStatusTool({ uploadId: r.uploadId }, RESEARCH_SCOPE)).not.toHaveProperty('scope');
+  });
+});

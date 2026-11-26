@@ -21,6 +21,8 @@ import { projectBase } from '@/lib/projects';
 
 const PUBLIC_BASE = () =>
   (process.env.QUIRE_PUBLIC_URL ?? 'https://quire.ezragubbay.com').replace(/\/+$/, '');
+/** Valid new-style (2401.01234[vN]) and old-style (hep-th/9901001[vN]) arXiv ids. */
+const ARXIV_ID_RE = /^(\d{4}\.\d{4,5}(v\d+)?|[a-z-]+(\.[A-Z]{2})?\/\d{7}(v\d+)?)$/i;
 const baseArxiv = (id: string) => id.replace(/v\d+$/i, '');
 
 export async function addPaper(args: {
@@ -28,11 +30,17 @@ export async function addPaper(args: {
   reference: string;
   folder?: string;
 }): Promise<UploadResult> {
+  const started = Date.now();
   const ref = parseReference(args.reference);
   if (!ref)
     throw new UploadError('Not an arXiv id/URL or DOI. Pass e.g. "2401.01234", an arxiv.org link, or a DOI.');
   if (ref.kind === 'url') {
     throw new UploadError('A plain URL is not accepted by add_paper. For a direct PDF link use upload_pdf.');
+  }
+  if (ref.kind === 'arxiv' && !ARXIV_ID_RE.test(ref.id)) {
+    throw new UploadError(
+      `"${ref.id}" is not a valid arXiv id (expected e.g. 2401.01234 or hep-th/9901001).`,
+    );
   }
   const project = await resolveUploadProject(args.project, RESEARCH_SCOPE);
   const folder = await resolveFolder(project, 'documents', args.folder);
@@ -45,13 +53,14 @@ export async function addPaper(args: {
   const arxivId = ref.kind === 'arxiv' ? baseArxiv(ref.id) : meta.arxivId ? baseArxiv(meta.arxivId) : null;
   const doi = ref.kind === 'doi' ? ref.doi : (meta.doi ?? null);
   const key = `paper:${project.id}:${arxivId ?? doi!.toLowerCase()}`;
-  return once(key, () => run(project, folder, { arxivId, doi, meta }));
+  return once(key, () => run(project, folder, { arxivId, doi, meta }, started));
 }
 
 async function run(
   project: Awaited<ReturnType<typeof resolveUploadProject>>,
   folder: ResolvedFolder,
   p: { arxivId: string | null; doi: string | null; meta: Awaited<ReturnType<typeof resolveReference>> },
+  started: number,
 ): Promise<UploadResult> {
   const { arxivId, doi, meta } = p;
   const owner = { project: { slug: project.slug, name: project.name } };
@@ -72,7 +81,6 @@ async function run(
   const sourceUrl = meta.sourceUrl ?? (arxivId ? `https://arxiv.org/abs/${arxivId}` : null);
   const paperMeta = { title: meta.title, authors: meta.authors, year: meta.year, abstract: meta.abstract };
   if (meta.pdfUrl) {
-    const started = Date.now();
     let fetched: Awaited<ReturnType<typeof fetchPublicPdf>> | null = null;
     try {
       fetched = await fetchPublicPdf(meta.pdfUrl);
@@ -84,7 +92,16 @@ async function run(
       const { data, fileName } = fetched;
       const work = ingestPdf(
         project,
-        { data, fileName, title: meta.title, folder, sourceUrl, arxivId, doi, meta: paperMeta },
+        {
+          data,
+          fileName,
+          title: meta.title?.slice(0, 200),
+          folder,
+          sourceUrl,
+          arxivId,
+          doi,
+          meta: paperMeta,
+        },
         RESEARCH_SCOPE,
       );
       const budget = Math.min(uploadLimits().deadlineMs, Math.max(5_000, 50_000 - (Date.now() - started)));

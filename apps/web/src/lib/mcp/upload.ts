@@ -475,7 +475,9 @@ export function uploadStatusTool(
     return 'Unknown uploadId: the link may be older than 24 h or the server restarted; create a new link with create_upload_link.';
   }
   const iso = (t?: number) => (t === undefined ? undefined : new Date(t).toISOString());
-  return { ...s, expiresAt: iso(s.expiresAt) as never, updatedAt: iso(s.updatedAt) as never };
+  // `scope` is internal bookkeeping (it binds the status to its server); never part of the tool's output.
+  const { scope: _scope, ...rest } = s;
+  return { ...rest, expiresAt: iso(s.expiresAt) as never, updatedAt: iso(s.updatedAt) as never };
 }
 
 /** upload_pdf{url}: the server fetches a public https PDF (SSRF-guarded) and ingests it. */
