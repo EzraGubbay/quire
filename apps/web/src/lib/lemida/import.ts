@@ -4,7 +4,7 @@
 // the review queue and the Phase-2 training log. An earlier failed attempt (status error) is retried in place:
 // the same lemida_files row is updated, never duplicated.
 import type { LemidaFileStatus, LemidaKind } from '@quire/shared';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { after } from 'next/server';
 import { db } from '@/db/client';
 import { assignments, documents, type Folder, type LemidaFile, lemidaFiles, type Project } from '@/db/schema';
@@ -148,19 +148,7 @@ export async function importLemidaFile(
       documentId: twin.id,
     });
     if (!row) return settleLostRace(project.id, hash);
-    // #66: the import that created this twin may have deleted it (its catch path) just before or after our
-    // upsert; a row pointing at a deleted document must not stay non-error.
-    const [stillThere] = await db
-      .select({ id: documents.id })
-      .from(documents)
-      .where(and(eq(documents.id, twin.id), eq(documents.projectId, project.id)))
-      .limit(1);
-    if (stillThere) return asResult(row, true);
-    const reset = await releaseDeletedPlacement(project.id, hash, twin.id, TWIN_GONE);
-    if (reset) return asResult(reset, false);
-    const cur = await rowFor(project.id, hash);
-    if (!cur) throw new Error('lemida_files row vanished during import');
-    return asResult(cur, cur.status !== 'error');
+    return asResult(row, true);
   }
 
   // 3. Place it.
@@ -229,9 +217,7 @@ export async function importLemidaFile(
     }
   } catch (err) {
     // Record the error without the half-placed document, then drop that document (its content_hash would make
-    // the retry match it as a twin). If a concurrent import adopted it as its twin before our error row,
-    // settleLostRace keeps it; if it adopts it after (#66), the release below (or its own existence re-check)
-    // turns the row back into a retryable error.
+    // the retry match it as a twin). If a concurrent import adopted it as its twin, settleLostRace keeps it.
     const { documentId: _orphan, ...errorPlacement } = placement;
     const row = await recordFile(
       project.id,
@@ -244,11 +230,7 @@ export async function importLemidaFile(
       (err as Error).message,
     );
     if (!row) return settleLostRace(project.id, hash, createdDocId);
-    if (createdDocId) {
-      await deleteDocument(project.id, createdDocId).catch(() => {});
-      // Even if the delete failed: a surviving document is just matched as a twin on the next retry.
-      await releaseDeletedPlacement(project.id, hash, createdDocId, (err as Error).message);
-    }
+    if (createdDocId) await deleteDocument(project.id, createdDocId).catch(() => {});
     return asResult(row, false);
   }
 
@@ -257,43 +239,6 @@ export async function importLemidaFile(
   const result = asResult(row, false);
   void notifyFilesAdded(project.id, result); // fire-and-forget: never fails or slows the import
   return result;
-}
-
-const TWIN_GONE = 'the matching document was deleted during import; will retry';
-
-/** Un-adopt a deleted document: turn a row that still points at it back into a retryable error (#66). */
-async function releaseDeletedPlacement(
-  projectId: string,
-  hash: string,
-  documentId: string,
-  message: string,
-): Promise<LemidaFile | undefined> {
-  const [row] = await db
-    .update(lemidaFiles)
-    .set({
-      status: 'error',
-      error: message,
-      placement: sql`${lemidaFiles.placement} - 'documentId'`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(lemidaFiles.projectId, projectId),
-        eq(lemidaFiles.sha256, hash),
-        sql`${lemidaFiles.placement}->>'documentId' = ${documentId}`,
-      ),
-    )
-    .returning();
-  return row;
-}
-
-async function rowFor(projectId: string, hash: string): Promise<LemidaFile | undefined> {
-  const [row] = await db
-    .select()
-    .from(lemidaFiles)
-    .where(and(eq(lemidaFiles.projectId, projectId), eq(lemidaFiles.sha256, hash)))
-    .limit(1);
-  return row;
 }
 
 async function setHash(documentId: string, hash: string): Promise<void> {
