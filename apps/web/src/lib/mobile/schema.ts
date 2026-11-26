@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { PUSH_CATEGORIES } from './push/events';
 
 /** Semver of the v1 contract. Additive-only within v1; breaking changes ship as /v2. */
-export const API_VERSION = '1.1.0';
+export const API_VERSION = '1.2.0';
 
 // ── Error envelope ──────────────────────────────────────────────────────────────────────────────────
 
@@ -186,10 +186,13 @@ export type ChatStreamEvent = z.infer<typeof ChatStreamEvent>;
 // ── Uploads (QMOB-E1-S8) ────────────────────────────────────────────────────
 
 export const UploadStatus = z.enum(['queued', 'processing', 'done', 'failed']);
+export const UploadTarget = z.enum(['document', 'note']);
 export const UploadJob = z.object({
   uploadId: Id,
   status: UploadStatus,
+  kind: UploadTarget.optional(),
   fileId: Id.optional(),
+  noteId: Id.optional(),
   error: z.string().optional(),
 });
 export type UploadJob = z.infer<typeof UploadJob>;

@@ -825,7 +825,16 @@ export const mobileUploadJobs = pgTable(
     /** queued | processing | done | failed */
     status: text('status').notNull().default('queued'),
     data: bytea('data'),
+    /** document | note: what the upload becomes. Pre-1.2 rows are PDF documents. */
+    target: text('target').notNull().default('document'),
+    /** application/pdf | text/markdown: how to read `data`. */
+    contentType: text('content_type').notNull().default('application/pdf'),
+    /** Original file name as sent by the client (`?name=`); null for pre-1.2 rows. */
+    fileName: text('file_name'),
+    /** Set when a document (PDF or Markdown) job is done. */
     fileId: uuid('file_id').references(() => documents.id, { onDelete: 'set null' }),
+    /** Set when a note job is done. */
+    noteId: uuid('note_id').references(() => notes.id, { onDelete: 'set null' }),
     error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

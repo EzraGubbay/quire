@@ -9,11 +9,19 @@ export async function createOrGetJob(
   ownerLogin: string,
   courseId: string,
   idempotencyKey: string,
-  bytes: Uint8Array,
+  upload: { bytes: Uint8Array; target: 'document' | 'note'; contentType: string; fileName: string },
 ): Promise<{ job: MobileUploadJob; created: boolean }> {
   const [inserted] = await db
     .insert(mobileUploadJobs)
-    .values({ ownerLogin, courseId, idempotencyKey, data: Buffer.from(bytes) })
+    .values({
+      ownerLogin,
+      courseId,
+      idempotencyKey,
+      data: Buffer.from(upload.bytes),
+      target: upload.target,
+      contentType: upload.contentType,
+      fileName: upload.fileName,
+    })
     .onConflictDoNothing()
     .returning();
   if (inserted) return { job: inserted, created: true };
@@ -51,6 +59,7 @@ const patch = (id: string, set: Partial<MobileUploadJob>) =>
 
 export const jobStore: Pick<RunDeps, 'setProcessing' | 'setDone' | 'setFailed'> = {
   setProcessing: (id) => patch(id, { status: 'processing' }),
-  setDone: (id, fileId) => patch(id, { status: 'done', fileId, data: null }),
+  setDone: (id, { fileId, noteId }) =>
+    patch(id, { status: 'done', fileId: fileId ?? null, noteId: noteId ?? null, data: null }),
   setFailed: (id, error) => patch(id, { status: 'failed', error, data: null }),
 };

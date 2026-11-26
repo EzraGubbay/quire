@@ -61,3 +61,32 @@ test('chat: ask a question, get a cited answer from indexed notes; ask-about-doc
   await expect(page.getByTestId('spend')).toContainText('answer');
   await expect(page.getByTestId('spend')).toContainText('embed');
 });
+
+test('chat: an unsent New chat is not listed and is reused', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Name').fill(`Empty chat ${Date.now()}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.waitForURL(/\/overview$/);
+
+  await page.getByRole('link', { name: 'Chat', exact: true }).click();
+  await expect(page.getByText('No chats yet.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'New chat' }).click();
+  await page.waitForURL(/\/chat\/[0-9a-f-]{36}$/);
+  const url = page.url();
+  // The open chat shows in the rail even while it is empty.
+  await expect(page.locator('[class*="itemTitle"]')).toHaveCount(1);
+  await expect(page.locator('[class*="itemTitle"]').first()).toContainText('New chat');
+
+  // New chat again reuses the same empty thread.
+  await page.getByRole('button', { name: 'New chat' }).click();
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(url);
+
+  // Leaving without a message leaves nothing in the list.
+  await page.goto(url.replace(/\/chat\/[0-9a-f-]{36}$/, '/chat'));
+  await expect(page.getByText('No chats yet.')).toBeVisible();
+  await expect(page.getByText('Chats · 0')).toBeVisible();
+});
