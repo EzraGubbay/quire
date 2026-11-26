@@ -164,6 +164,36 @@ jobs:
           fi
           chmod --reference=.env "$tmp"
           mv -f "$tmp" .env
+      - name: Sync research MCP key into .env
+        working-directory: /srv/quire
+        # Same discipline as the FCM and Drive steps. Upserts (or removes, when the secret is empty) the single
+        # QUIRE_RESEARCH_API_KEY line. The secret only ever travels through the environment and stdin (builtins
+        # only, no `set -x`), so it never appears in argv or the log; a malformed value fails the step without
+        # being echoed. The new file is built under umask 077, given .env's mode, then renamed over .env
+        # atomically. Rotating = update the Actions secret, then run this workflow by hand.
+        shell: bash
+        env:
+          RKEY: ${{ secrets.QUIRE_RESEARCH_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -f .env || { echo "/srv/quire/.env missing (see infra/.env.example)"; exit 1; }
+          value=$(printf '%s' "${RKEY:-}" | tr -d '\r\n ')
+          if [[ -n "$value" && ! "$value" =~ ^qk_r_[A-Za-z0-9_-]{40,}$ ]]; then
+            echo "::error::QUIRE_RESEARCH_API_KEY is not a qk_r_ key of 40+ URL-safe characters (value not shown)"
+            exit 1
+          fi
+          umask 077
+          tmp=$(mktemp .env.rkey.XXXXXX)
+          trap 'rm -f "$tmp"' EXIT
+          grep -v '^QUIRE_RESEARCH_API_KEY=' < .env > "$tmp" || [ $? -eq 1 ]
+          if [ -n "$value" ]; then
+            printf 'QUIRE_RESEARCH_API_KEY=%s\n' "$value" >> "$tmp"
+            echo "research MCP: key written to .env"
+          else
+            echo "research MCP disabled: no key"
+          fi
+          chmod --reference=.env "$tmp"
+          mv -f "$tmp" .env
       - name: Pull, migrate, restart
         working-directory: /srv/quire
         env:

@@ -13,6 +13,19 @@
       "env": {
         "QUIRE_API_KEY": "qk_replace_with_your_key"
       }
+    },
+    "quire-research": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://quire.ezragubbay.com/research/mcp",
+        "--header",
+        "Authorization: Bearer ${QUIRE_RESEARCH_API_KEY}"
+      ],
+      "env": {
+        "QUIRE_RESEARCH_API_KEY": "qk_r_replace_with_your_research_key"
+      }
     }
   }
 }

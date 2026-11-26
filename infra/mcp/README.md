@@ -186,3 +186,40 @@ to a private address fails. The response must be a 200 with `%PDF-` content, is 
 `MCP_UPLOAD_MAX_URL_BYTES` (aborted mid-stream) and the whole fetch has a 25 s budget. Errors never echo
 resolved addresses.
 - `MCP_UPLOAD_MAX_URL_BYTES` — max size of a fetched PDF (default `52428800`).
+
+## Research MCP server
+
+A separate connector for **research projects** (`kind='research'`), mirroring the Research/Courses split. The
+course server above never serves research projects, and this one never serves courses.
+
+- **URL:** `https://quire.ezragubbay.com/research/mcp` (Streamable HTTP, stateless;
+  `apps/web/src/app/research/mcp/route.ts`).
+- **Tools:** read: `list_projects`, `list_project_files` (documents with paper metadata, notes, sources),
+  `get_file`, `get_page_images`, `get_note`. Write (additive, idempotent): `upload_markdown` (notes or
+  documents, e.g. a Markdown document into `kairos`), `upload_pdf {url}` (SSRF-guarded fetch), `add_paper`
+  (arXiv id/URL or DOI, with metadata; dedupes by arXiv base id or DOI), `create_upload_link` +
+  `get_upload_status`. Resource template `quire://research/{slug}/file/{docId}`.
+- **Auth:** its own key, `QUIRE_RESEARCH_API_KEY` (`qk_r_...`), sent as `Authorization: Bearer`. It is accepted
+  **only** at exactly `/research/mcp` (never `/mcp`, `/api/**`, pages or Server Actions). The master
+  `QUIRE_API_KEY` is **rejected** here: one credential per connector. An unset key closes the endpoint (401).
+  `AUTH_MODE=none` (local) is open. Provisioning: Keychain -> GitHub Actions secret -> the `deploy.yml` step
+  "Sync research MCP key into .env" -> `/srv/quire/.env`. Never commit or paste the key.
+- **Write flag:** `MCP_RESEARCH_WRITE_ENABLED=false` hides the write tools and makes research upload links 404.
+  Independent of `MCP_WRITE_ENABLED`. Upload links and statuses are bound to the server that minted them.
+- **No Drive inbox:** the Drive inbox exists for clients that cannot run `curl` (claude.ai mobile/voice) and is
+  one shared folder, so sharing it would let one inbox file be imported into either side. Use `upload_markdown`,
+  `upload_pdf`, `add_paper`, or `create_upload_link` + curl.
+- **claude.ai web/mobile:** custom connectors there cannot send a static bearer header (OAuth or authless
+  only); the same limitation as the course connector. Use Claude Code or Claude Desktop.
+- **Claude Code:** the repo's `.mcp.json` has a `quire-research` entry reading `${QUIRE_RESEARCH_API_KEY}` from
+  your environment.
+- **Claude Desktop:** merge the `quire-research` block of `claude-desktop.example.json` (an `mcp-remote` bridge).
+- **Verify:**
+
+```sh
+R=https://quire.ezragubbay.com/research/mcp
+curl -s -o /dev/null -w '%{http_code}\n' -X POST $R   # 401 without a key
+curl -s -H "authorization: Bearer $QUIRE_RESEARCH_API_KEY" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' -X POST $R \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```

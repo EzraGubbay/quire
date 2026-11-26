@@ -39,6 +39,15 @@ describe('fetchArxivMeta', () => {
     expect(meta.year).toBe(2017);
     expect(meta.pdfUrl).toBe('https://arxiv.org/pdf/1706.03762');
   });
+
+  it('rejects the arXiv error entry (malformed id) instead of returning a junk paper', async () => {
+    const xml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <entry><id>http://arxiv.org/api/errors#incorrect_id_format_for_2401.1234x</id><title>Error</title>
+      <summary>incorrect id format</summary><author><name>arXiv api core</name></author></entry></feed>`;
+    await expect(
+      fetchArxivMeta('2401.1234x', (async () => new Response(xml, { status: 200 })) as typeof fetch),
+    ).rejects.toThrow('arXiv has no record');
+  });
 });
 
 describe('downloadPdf', () => {
