@@ -1,5 +1,6 @@
 // Registers the Quire MCP server's tools and resources on an SDK McpServer. Auth-agnostic: the route wraps
-// this (bearer today, OAuth later) without touching anything here. Read-only — it only reads courses/files.
+// this (bearer today, OAuth later) without touching anything here. Four read tools plus an additive write
+// tool (upload_markdown; off with MCP_WRITE_ENABLED=false) — nothing edits or deletes.
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
@@ -22,8 +23,10 @@ import {
   readFileBytes,
   resolveFile,
 } from './courses';
+import { kb, mcpWriteEnabled, uploadLimits, uploadMarkdown } from './upload';
 
 const FORMATS = ['pdf', 'original', 'markdown'] as const;
+const READ_ONLY = { readOnlyHint: true } as const;
 const asFormat = (v: string | null): FileFormat | undefined =>
   v && (FORMATS as readonly string[]).includes(v) ? (v as FileFormat) : undefined;
 
@@ -160,11 +163,40 @@ async function pagesAsText(course: string, fileId: string): Promise<string> {
   }).text;
 }
 
+function registerWriteTools(server: McpServer): void {
+  const limits = uploadLimits();
+  server.tool(
+    'upload_markdown',
+    'WRITES to Quire: creates a new Markdown note (section="notes", the default) or Markdown document ' +
+      '(section="documents") in a course, optionally inside an existing folder. Never edits or deletes. ' +
+      'Re-sending the same title and text returns the existing item instead of a copy; note titles are ' +
+      `unique per course. Max ${kb(limits.maxMarkdownBytes)}. For Markdown you write yourself.`,
+    {
+      course: z.string().describe('course slug or id, from list_courses'),
+      markdown: z
+        .string()
+        .describe('the Markdown text; a leading "# Title" line is used as the title if none is given'),
+      section: z.enum(['notes', 'documents']).optional().describe('notes (default) or documents'),
+      title: z
+        .string()
+        .optional()
+        .describe('1-200 characters; default: the first "# Heading" of the markdown'),
+      folder: z
+        .string()
+        .optional()
+        .describe('existing folder name or id in that section; default: top level'),
+    },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    async (args) => text(await uploadMarkdown(args)),
+  );
+}
+
 export function registerQuireMcp(server: McpServer): void {
   server.tool(
     'list_courses',
     'List all Quire courses. Each has a stable slug (use it as the course id elsewhere), name, code, semester, and file count.',
     {},
+    READ_ONLY,
     async () => text({ courses: await listCourses() }),
   );
 
@@ -172,6 +204,7 @@ export function registerQuireMcp(server: McpServer): void {
     'list_course_files',
     "List a course's files, each labeled lecture / recitation / homework / exam / book / paper / other, with a stable fileId and a resourceUri for retrieval.",
     { course: z.string().describe('course slug or id, from list_courses') },
+    READ_ONLY,
     async ({ course }) => text(await listCourseFiles(course)),
   );
 
@@ -196,6 +229,7 @@ export function registerQuireMcp(server: McpServer): void {
           'text (default) = extracted page text; pdf/original = raw binary file; markdown = note body',
         ),
     },
+    READ_ONLY,
     async ({ course, fileId, pages, format }) =>
       !format || format === 'text'
         ? textToolResult(course, fileId, pages)
@@ -211,8 +245,11 @@ export function registerQuireMcp(server: McpServer): void {
       fileId: z.string().describe('the fileId from list_course_files'),
       pages: z.string().describe('pages to render, e.g. "4", "2-5" or "1,3,8"'),
     },
+    READ_ONLY,
     async ({ course, fileId, pages }) => imagesToolResult(course, fileId, pages),
   );
+
+  if (mcpWriteEnabled()) registerWriteTools(server);
 
   server.resource(
     'course-file',

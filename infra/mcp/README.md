@@ -1,12 +1,21 @@
 # Quire MCP server
 
-A read-only [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire:
+An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire and add Markdown to it (reads are read-only; the one write tool is additive and can be switched off):
 
 - **`list_courses`** — every course (stable `slug`, name, code, semester, file count).
 - **`list_course_files`** (`course`) — the course's files, each labeled `lecture` / `recitation` /
   `homework` / `exam` / `book` / `paper` / `other`, with a stable `fileId` and a `resourceUri`.
 - **`get_file`** (`course`, `fileId`, `format?`) — the file's bytes. Small PDFs/markdown come back inline;
   files over `MCP_MAX_INLINE_BYTES` (default 10 MB) return a download URL instead.
+- **`upload_markdown`** (`course`, `markdown`, `section?`, `title?`, `folder?`) — **writes**: creates a Markdown
+  note (`section: "notes"`, default) or Markdown document (`"documents"`) in a course, optionally in an existing
+  folder (name or id; folders are never created). Never edits or deletes. Same title + text again returns
+  `status: "duplicate"` with the existing id; a *note* with an existing title but different text is an error
+  (note titles are unique per course because `[[wiki links]]` resolve by title). A leading `# Title` line
+  supplies the title when `title` is omitted and is stripped from the body. Max `MCP_UPLOAD_MAX_MARKDOWN_BYTES`
+  (512 KB). Results are one JSON text item: `{status, section, course, noteId|fileId, title, folder, openUrl, next}`.
+  Read tools carry `readOnlyHint: true`; the write tool is `readOnlyHint: false, destructiveHint: false,
+  idempotentHint: true`, so clients can auto-allow reads and confirm writes.
 - Files are also exposed as **MCP resources** (`quire://course/<slug>/file/<docId>`), the idiomatic way for
   Claude to fetch a document.
 
@@ -65,3 +74,20 @@ npx @modelcontextprotocol/inspector
 - `MCP_MAX_INLINE_BYTES` — max bytes returned inline before falling back to a download URL (default
   `10485760`). Large decks (~100 MB) always fall back.
 - `QUIRE_PUBLIC_URL` — base URL used in the fallback download links (default `https://quire.ezragubbay.com`).
+- `MCP_WRITE_ENABLED` — default on. `0`/`false`/`off`/`no` stops registering the write tools (they vanish from
+  `tools/list`). Kill switch: set `MCP_WRITE_ENABLED=false` in `/srv/quire/.env` and restart the app
+  (`infra/compose.yml` passes it through). The bearer key already allows writes through the web API, so the tools
+  add no privilege; the residual risk is prompt-injected course content steering a client into calling them. Writes
+  are additive, deduped and visible in the UI.
+- `MCP_UPLOAD_MAX_MARKDOWN_BYTES` — max UTF-8 size of `upload_markdown` text (default `524288`).
+
+## Verify the write tool locally
+
+```sh
+# tools/list shows upload_markdown (annotations included) and the read tools with readOnlyHint
+curl -s -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -X POST http://127.0.0.1:3000/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+# Create, then repeat (expect status "created", then "duplicate")
+curl -s -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -X POST http://127.0.0.1:3000/mcp -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"upload_markdown","arguments":{"course":"<slug>","title":"MCP smoke note","markdown":"Hello from MCP."}}}'
+```
