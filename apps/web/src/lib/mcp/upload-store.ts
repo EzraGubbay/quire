@@ -82,3 +82,26 @@ export async function findMarkdownDoc(
     .limit(1);
   return row;
 }
+
+/**
+ * A paper already in the project, by arXiv base id (any `vN`) or DOI (case-insensitive). Scoped to the project.
+ * `arxivId` is the id without a version suffix.
+ */
+export async function findPaperByRef(
+  projectId: string,
+  ref: { arxivId?: string | null; doi?: string | null },
+): Promise<Document | undefined> {
+  const conds = [];
+  if (ref.arxivId) {
+    const base = ref.arxivId.replace(/v\d+$/i, '');
+    conds.push(sql`regexp_replace(${documents.arxivId}, 'v[0-9]+$', '') = ${base}`);
+  }
+  if (ref.doi) conds.push(sql`lower(${documents.doi}) = lower(${ref.doi})`);
+  if (conds.length === 0) return undefined;
+  const [row] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.projectId, projectId), sql`(${sql.join(conds, sql` or `)})`))
+    .limit(1);
+  return row;
+}

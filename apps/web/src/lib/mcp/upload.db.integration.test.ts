@@ -116,4 +116,24 @@ describe.skipIf(!run)('MCP upload idempotency queries (integration)', () => {
     expect(second.status).toBe('duplicate');
     expect(second.fileId).toBe(first.fileId);
   });
+
+  it('findPaperByRef matches arXiv base id across versions and DOI case, project-scoped', async () => {
+    const { findPaperByRef } = await import('./upload-store');
+    const p = await newProject('research');
+    const other = await newProject('research');
+    const [a] = await db
+      .insert(documents)
+      .values({ projectId: p.id, kind: 'pdf', title: 'a', arxivId: '1706.03762v5' })
+      .returning();
+    const [b] = await db
+      .insert(documents)
+      .values({ projectId: p.id, kind: 'pdf', title: 'b', doi: '10.1000/ABC' })
+      .returning();
+    expect((await findPaperByRef(p.id, { arxivId: '1706.03762' }))?.id).toBe(a?.id);
+    expect((await findPaperByRef(p.id, { arxivId: '1706.03762v9' }))?.id).toBe(a?.id);
+    expect((await findPaperByRef(p.id, { doi: '10.1000/abc' }))?.id).toBe(b?.id);
+    expect(await findPaperByRef(p.id, { arxivId: '1706.0376' })).toBeUndefined();
+    expect(await findPaperByRef(other.id, { arxivId: '1706.03762' })).toBeUndefined();
+    expect(await findPaperByRef(p.id, {})).toBeUndefined();
+  });
 });

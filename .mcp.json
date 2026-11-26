@@ -6,6 +6,13 @@
       "headers": {
         "Authorization": "Bearer ${QUIRE_API_KEY}"
       }
+    },
+    "quire-research": {
+      "type": "http",
+      "url": "https://quire.ezragubbay.com/research/mcp",
+      "headers": {
+        "Authorization": "Bearer ${QUIRE_RESEARCH_API_KEY}"
+      }
     }
   }
 }

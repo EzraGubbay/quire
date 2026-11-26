@@ -1,5 +1,5 @@
 {
-  "//": "Quire MCP server for Claude Desktop. Merge this into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) and replace the key. Claude Desktop's remote-connector UI expects OAuth, so we bridge the remote Streamable-HTTP endpoint to stdio with mcp-remote and inject the bearer token. The token is YOUR QUIRE_API_KEY — never commit the real value.",
+  "//": "Quire MCP server for Claude Desktop. Merge this into ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) and replace the key. Claude Desktop's remote-connector UI expects OAuth, so we bridge the remote Streamable-HTTP endpoint to stdio with mcp-remote and inject the bearer token. The token is YOUR QUIRE_API_KEY \u2014 never commit the real value.",
   "mcpServers": {
     "quire": {
       "command": "npx",
@@ -12,6 +12,19 @@
       ],
       "env": {
         "QUIRE_API_KEY": "qk_replace_with_your_key"
+      }
+    },
+    "quire-research": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://quire.ezragubbay.com/research/mcp",
+        "--header",
+        "Authorization: Bearer ${QUIRE_RESEARCH_API_KEY}"
+      ],
+      "env": {
+        "QUIRE_RESEARCH_API_KEY": "qk_r_replace_with_your_research_key"
       }
     }
   }
