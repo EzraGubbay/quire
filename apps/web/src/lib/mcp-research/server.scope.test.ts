@@ -63,7 +63,10 @@ vi.mock('@/lib/mcp/safe-fetch', async (orig) => ({
 }));
 
 const { registerQuireResearchMcp } = await import('./server');
-const { createUploadLinkTool } = await import('@/lib/mcp/upload');
+const { createUploadLinkTool: createLinkIn } = await import('@/lib/mcp/upload');
+const { COURSE_SCOPE } = await import('@/lib/mcp/scope');
+const { registerQuireMcp } = await import('@/lib/mcp/server');
+const createUploadLinkTool = (a: Parameters<typeof createLinkIn>[0]) => createLinkIn(a, COURSE_SCOPE);
 const { __storeForTests } = await import('@/lib/mcp/upload-links');
 
 type Handler = (args: Record<string, unknown>) => Promise<unknown>;
@@ -139,6 +142,27 @@ describe('get_upload_status', () => {
     const { uploadId } = JSON.parse(r.content[0]?.text as string);
     expect(await call('get_upload_status', { uploadId })).toMatchObject({
       content: [{ text: expect.stringContaining('"state": "pending"') }],
+    });
+  });
+});
+
+describe('reverse: the course server never reveals a research-minted uploadId', () => {
+  it('get_upload_status on the course server says Unknown uploadId', async () => {
+    const courseTools = new Map<string, Handler>();
+    registerQuireMcp({
+      tool: (name: string, ...rest: unknown[]) => courseTools.set(name, rest.at(-1) as Handler),
+      resource: vi.fn(),
+    } as never);
+    const r = (await call('create_upload_link', {
+      project: 'kairos',
+      section: 'notes',
+      filename: 'a.md',
+    })) as {
+      content: { text: string }[];
+    };
+    const { uploadId } = JSON.parse(r.content[0]?.text as string);
+    expect(await (courseTools.get('get_upload_status') as Handler)({ uploadId })).toMatchObject({
+      content: [{ text: expect.stringContaining('Unknown uploadId') }],
     });
   });
 });
