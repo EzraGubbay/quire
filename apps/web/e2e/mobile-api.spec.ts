@@ -363,6 +363,112 @@ test.describe
       expect(['queued', 'processing', 'done', 'failed']).toContain(polled.status);
     });
 
+    test('QMOB-T1 · upload Markdown as a note and as a document, polling each to done', async ({
+      request,
+    }) => {
+      const stamp = Date.now();
+      const post = (query: string, key: string, body: string, type = 'text/markdown') =>
+        request.post(`${BASE}/courses/${seeded.slug}/uploads${query}`, {
+          headers: { ...bearer(), 'Idempotency-Key': key, 'Content-Type': type },
+          data: Buffer.from(body),
+        });
+      const waitDone = async (id: string) => {
+        let polled = { status: 'queued' } as {
+          status: string;
+          kind?: string;
+          fileId?: string;
+          noteId?: string;
+        };
+        await expect
+          .poll(
+            async () => {
+              polled = (await (await authedGet(request, `${BASE}/uploads/${id}`)).json()) as typeof polled;
+              return polled.status;
+            },
+            { timeout: 20_000 },
+          )
+          .toBe('done');
+        return polled;
+      };
+
+      const noteName = `T1 note ${stamp}`;
+      const n = await post(
+        `?kind=note&name=${encodeURIComponent(`${noteName}.md`)}`,
+        `e2e-note-${stamp}`,
+        '# Hello\n',
+      );
+      expect(n.status()).toBe(202);
+      const nJob = (await n.json()) as { uploadId: string; kind: string };
+      expect(nJob.kind).toBe('note');
+      const nDone = await waitDone(nJob.uploadId);
+      expect(nDone.kind).toBe('note');
+      expect(nDone.noteId).toBeTruthy();
+      const notes = (await (
+        await authedGet(request, `${BASE}/courses/${seeded.slug}/notes`)
+      ).json()) as Array<{
+        id: string;
+        title: string;
+      }>;
+      expect(notes.find((x) => x.id === nDone.noteId)?.title).toBe(noteName);
+
+      const docName = `T1 doc ${stamp}`;
+      const d = await post(`?name=${encodeURIComponent(`${docName}.md`)}`, `e2e-doc-${stamp}`, '# Doc\n');
+      expect(d.status()).toBe(202);
+      const dDone = await waitDone(((await d.json()) as { uploadId: string }).uploadId);
+      expect(dDone.kind).toBe('document');
+      expect(dDone.fileId).toBeTruthy();
+      const files = (await (
+        await authedGet(request, `${BASE}/courses/${seeded.slug}/files`)
+      ).json()) as Array<{
+        fileId: string;
+        title: string;
+        kind: string;
+      }>;
+      expect(files.find((x) => x.fileId === dDone.fileId)).toMatchObject({
+        title: docName,
+        kind: 'markdown',
+      });
+
+      // Same key => same job, no second note.
+      const again = await post(`?kind=note&name=x.md`, `e2e-note-${stamp}`, '# Other\n');
+      expect(((await again.json()) as { uploadId: string }).uploadId).toBe(nJob.uploadId);
+    });
+
+    test('QMOB-T1 · upload validation: PDF as note, bad kind, bad UTF-8, oversize Markdown', async ({
+      request,
+    }) => {
+      const send = (query: string, type: string, data: Buffer) =>
+        request.post(`${BASE}/courses/${seeded.slug}/uploads${query}`, {
+          headers: {
+            ...bearer(),
+            'Idempotency-Key': `e2e-bad-${Date.now()}-${Math.random()}`,
+            'Content-Type': type,
+          },
+          data,
+        });
+      await expectEnvelope(
+        await send('?kind=note', 'application/pdf', Buffer.from('%PDF-1.4\n')),
+        400,
+        'invalid_request',
+      );
+      await expectEnvelope(
+        await send('?kind=bogus', 'text/markdown', Buffer.from('x')),
+        400,
+        'invalid_request',
+      );
+      await expectEnvelope(await send('', 'text/plain', Buffer.from('x')), 400, 'invalid_request');
+      await expectEnvelope(
+        await send('', 'text/markdown', Buffer.from([0xff, 0xfe, 0x41])),
+        400,
+        'invalid_request',
+      );
+      await expectEnvelope(
+        await send('', 'text/markdown', Buffer.alloc(2 * 1024 * 1024 + 1, 97)),
+        413,
+        'invalid_request',
+      );
+    });
+
     // ── Push: register → get → test push (QMOB-E8-S2a / #41). CI runs with PUSH_TRANSPORT=fake ─────────
 
     test('QMOB-E8-S2a · register for push, read it back, and send a test push', async ({ request }) => {
