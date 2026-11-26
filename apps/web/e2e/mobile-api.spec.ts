@@ -422,11 +422,11 @@ test.describe
       ).json()) as Array<{
         fileId: string;
         title: string;
-        kind: string;
+        hasMarkdown: boolean;
       }>;
       expect(files.find((x) => x.fileId === dDone.fileId)).toMatchObject({
         title: docName,
-        kind: 'markdown',
+        hasMarkdown: true,
       });
 
       // Same key => same job, no second note.
