@@ -1,5 +1,5 @@
 // Runs once when the Next.js server boots: apply pending migrations before serving traffic, then mark background
-// jobs that died with the previous process as failed so their pages offer Retry instead of spinning forever. The
+// jobs that died with the previous process as failed so their pages offer Retry instead of spinning forever, and prune unsent (message-less) chats older than a day. The
 // push loop starts on every nodejs boot, after migrations when they run, including under SKIP_MIGRATIONS=1.
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
@@ -23,5 +23,12 @@ async function migrateAndCleanUp() {
     if (n || t) console.log(`[jobs] marked ${n} note(s) and ${t} test(s) as interrupted`);
   } catch (err) {
     console.warn('[jobs] stale cleanup failed', err);
+  }
+  try {
+    const { pruneEmptyThreads } = await import('./lib/chat');
+    const pruned = await pruneEmptyThreads();
+    if (pruned) console.log(`[chat] pruned ${pruned} empty chat(s)`);
+  } catch (err) {
+    console.warn('[chat] empty-chat cleanup failed', err);
   }
 }
