@@ -7,6 +7,21 @@ const threadMessagesAction = vi.fn(async () => []);
 const setThreadModeAction = vi.fn(async () => {});
 vi.mock('@/app/actions/chat', () => ({ newThreadAction, threadMessagesAction, setThreadModeAction }));
 vi.mock('@/components/project-context', () => ({ useProject: () => ({ base: '/p/x' }) }));
+// folio pulls in better-react-mathjax (CJS named exports break under vitest on Linux); plain stand-ins suffice.
+vi.mock('@ezragubbay/folio', () => ({
+  Button: ({
+    children,
+    icon: _icon,
+    variant: _v,
+    size: _s,
+    ...rest
+  }: Record<string, unknown> & { children?: React.ReactNode }) => (
+    <button type="button" {...(rest as object)}>
+      {children}
+    </button>
+  ),
+  Icon: () => null,
+}));
 vi.mock('./spend-banner', () => ({ SpendBanner: () => null }));
 vi.mock('./thread-view', () => ({
   ThreadView: ({
