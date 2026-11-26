@@ -14,7 +14,7 @@ vi.mock('@/auth', () => ({
     cb(Object.assign(req, { auth: null })),
 }));
 
-import { isPublic, proxy } from './proxy';
+import { config, isPublic, proxy } from './proxy';
 
 const ACTION = { 'next-action': '0000000000000000000000000000000000000000' };
 const ev = {} as never;
@@ -173,4 +173,21 @@ describe('proxy', () => {
     h.mode = 'none';
     expect(passes('POST', '/icons/x/documents/y', ACTION)).toBe(true);
   });
+});
+
+describe('config.matcher', () => {
+  // Next compiles the matcher with path-to-regexp; the plain regex reading is equivalent for this lookahead.
+  const re = new RegExp(`^${config.matcher[0]}$`);
+  it.each([
+    '/favicon.ico/x/documents/y',
+    '/faviconXico/x/documents/y',
+    '/_next/staticx/x/documents/y',
+    '/_next/imagex/x/documents/y',
+    '/_next/image/x',
+    '/c/algo/documents',
+    '/icons/icon-192.png',
+  ])('runs the proxy for %s', (p) => expect(re.test(p)).toBe(true));
+  it.each(['/favicon.ico', '/_next/image', '/_next/static/chunks/a.js'])('skips the proxy for %s', (p) =>
+    expect(re.test(p)).toBe(false),
+  );
 });
