@@ -1,4 +1,4 @@
-// GET /api/mobile/v1/uploads/{uploadId} — poll an upload job (QMOB-E1-S8). Owner-scoped.
+// GET /api/mobile/v1/uploads/{uploadId} — poll an upload job (QMOB-E1-S8; `kind`/`noteId` since 1.2.0). Owner-scoped.
 import { requireDevice } from '@/lib/mobile/device-auth';
 import { fail, ok } from '@/lib/mobile/respond';
 import type { UploadJob } from '@/lib/mobile/schema';

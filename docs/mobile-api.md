@@ -34,7 +34,7 @@ short-lived, single-use pairing code, and is shown exactly once (only its hash i
 
    ```sh
    curl "$BASE/api/mobile/v1/me" -H "Authorization: Bearer $TOKEN"
-   # {"login":"local","apiVersion":"1.1.0","device":{...}}
+   # {"login":"local","apiVersion":"1.2.0","device":{...}}
    ```
 
 4. Revoke the device (also possible from the web Settings page). Afterwards the token answers 401:
@@ -69,8 +69,8 @@ Paths are relative to `/api/mobile/v1`. `{course}` is a course slug or UUID.
 | DELETE | `/courses/{course}/threads/{threadId}` | Delete a thread | 204 |
 | GET | `/courses/{course}/threads/{threadId}/messages` | Thread history | 200 |
 | POST | `/courses/{course}/threads/{threadId}/messages` | Ask a question; answer streams as NDJSON | 200 |
-| POST | `/courses/{course}/uploads` | Upload for background processing (provisional, E1-S8, not yet shipped) | 202 |
-| GET | `/uploads/{uploadId}` | Poll an upload job (provisional, E1-S8, not yet shipped) | 200 |
+| POST | `/courses/{course}/uploads` | Upload a PDF or Markdown file for background processing (`?kind=document\|note`, `?name=`) | 202 |
+| GET | `/uploads/{uploadId}` | Poll an upload job | 200 |
 | PUT | `/push/registration` | Create or refresh this device's push registration (idempotent) | 200 |
 | GET | `/push/registration` | This device's push registration, or `null` | 200 |
 | DELETE | `/push/registration` | Delete this device's push registration | 204 |
@@ -89,6 +89,35 @@ curl -i "$BASE/api/mobile/v1/courses/$COURSE/files/$FILE/content?format=pdf" -H 
 
 An unsatisfiable range answers 416. Responses carry `Accept-Ranges: bytes`, a strong `ETag` and a
 `Content-Disposition` filename.
+
+### Uploads
+
+`POST /courses/{course}/uploads` takes the raw file as the request body (no multipart) and answers `202` with a
+job; the server ingests it in the background. `{course}` is the slug or the course UUID.
+
+```sh
+# PDF -> course Documents (no params: the original behaviour)
+curl -X POST "$BASE/api/mobile/v1/courses/$COURSE/uploads?name=Lecture%203.pdf" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: application/pdf' --data-binary @lecture3.pdf
+# Markdown -> Documents (a Markdown document)
+curl -X POST "$BASE/api/mobile/v1/courses/$COURSE/uploads?name=week1.md" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: text/markdown' --data-binary @week1.md
+# Markdown -> Notes
+curl -X POST "$BASE/api/mobile/v1/courses/$COURSE/uploads?kind=note&name=week1.md" -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" -H 'Content-Type: text/markdown' --data-binary @week1.md
+# Poll until status is done or failed
+curl "$BASE/api/mobile/v1/uploads/$UPLOAD_ID" -H "Authorization: Bearer $TOKEN"
+```
+
+- `Content-Type` is `application/pdf` or `text/markdown` (`text/x-markdown` is accepted too). `kind` is `document`
+  (default) or `note`; notes are Markdown only (a PDF with `kind=note` is a `400`; clients that want a PDF picked on
+  the Notes tab should send it as `kind=document`). `name` is the original file name, percent-encoded; the title
+  comes from it.
+- Limits: PDF 100 MB, Markdown 2 MB of UTF-8 text (larger is `413`, invalid UTF-8 is `400`).
+- The job returns `kind` (`document` or `note`) and, once `done`, `fileId` (a document) or `noteId` (a note).
+- `Idempotency-Key` is required. The same key from the same account and course returns the original job, whatever
+  the new body says. A `failed` job is final for its key: retry with a new key.
+- Uploads land in the course root (no folder targeting).
 
 ## Chat stream (NDJSON)
 
