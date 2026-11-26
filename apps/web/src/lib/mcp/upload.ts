@@ -93,7 +93,8 @@ function checkTitle(title: string): string {
 }
 
 const normalizeMd = (s: string) => s.replace(/\r\n?/g, '\n').trimEnd();
-const H1_RE = /^\s*#[ \t]+(.+?)[ \t]*#*[ \t]*(?:\n|$)/;
+// Closing #s only count after whitespace ("# C#" is the title C#); 4+ spaces of indent is a code block.
+const H1_RE = /^(?:[ \t]*\n)*[ \t]{0,3}#[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*(?:\n|$)/;
 
 /** Title and body: an explicit title wins; otherwise the leading `# H1`. A matching leading H1 is stripped
  *  from the body, because get_file prepends `# title` itself. */
@@ -139,6 +140,25 @@ const noteUrl = (p: Project, slug: string) => `${PUBLIC_BASE()}${projectBase(p)}
 const readBack = (p: Project, id: string) =>
   `Read it back with get_file {course:"${p.slug}", fileId:"${id}"}.`;
 
+/** Where an existing item really lives (the requested folder is ignored by the duplicate lookups). */
+async function placeOf(
+  project: Project,
+  scope: 'notes' | 'documents',
+  folderId: string | null,
+  requested: ResolvedFolder,
+): Promise<{ folder: string | null; note: string }> {
+  const name = folderId
+    ? ((await listFolders(project.id, scope)).find((f) => f.id === folderId)?.name ?? null)
+    : null;
+  const differs = (folderId ?? null) !== (requested.id ?? null);
+  return {
+    folder: name,
+    note: differs
+      ? ` It already exists in ${name ? `folder "${name}"` : 'the top level'}; nothing was moved.`
+      : '',
+  };
+}
+
 /** Create a note or Markdown document, deduped. `body` and `title` are already split and normalized. */
 export function ingestMarkdown(
   project: Project,
@@ -146,19 +166,23 @@ export function ingestMarkdown(
 ): Promise<UploadResult> {
   const { section, title, body, folder } = a;
   const base = { section, course: courseOf(project), title, folder: folder.name } as const;
-  const key = `md:${project.id}:${section}:${title.toLowerCase()}:${sha256(new TextEncoder().encode(body))}`;
+  // Note titles are case-insensitive-unique; document titles are not.
+  const keyTitle = section === 'notes' ? title.toLowerCase() : title;
+  const key = `md:${project.id}:${section}:${keyTitle}:${sha256(new TextEncoder().encode(body))}`;
   return once(key, async () => {
     if (section === 'notes') {
       const existing = await findNoteByTitle(project.id, title);
       if (existing) {
         if (normalizeMd(existing.body) === body) {
+          const place = await placeOf(project, 'notes', existing.folderId, folder);
           return {
             status: 'duplicate',
             ...base,
             title: existing.title,
+            folder: place.folder,
             noteId: existing.id,
             openUrl: noteUrl(project, existing.slug),
-            next: 'This exact note already exists; nothing was written.',
+            next: `This exact note already exists; nothing was written.${place.note}`,
           };
         }
         throw new Error(
@@ -178,12 +202,14 @@ export function ingestMarkdown(
     }
     const existing = await findMarkdownDoc(project.id, title, body);
     if (existing) {
+      const place = await placeOf(project, 'documents', existing.folderId, folder);
       return {
         status: 'duplicate',
         ...base,
+        folder: place.folder,
         fileId: existing.id,
         openUrl: docUrl(project, existing.id),
-        next: `This exact document already exists; ${readBack(project, existing.id)}`,
+        next: `This exact document already exists.${place.note} ${readBack(project, existing.id)}`,
       };
     }
     const doc = await createMarkdownDocument(project.id, title, body, folder.id);
@@ -214,6 +240,7 @@ export async function uploadMarkdown(args: {
     );
   }
   const { title, body } = splitTitle(args.markdown, args.title);
+  if (!body.trim()) throw new Error('markdown has no text besides its title heading.');
   const project = await resolveUploadCourse(args.course);
   const folder = await resolveFolder(project, section, args.folder);
   return ingestMarkdown(project, { section, title, body, folder });

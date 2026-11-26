@@ -53,6 +53,18 @@ describe('splitTitle', () => {
   });
 });
 
+describe('splitTitle edge cases', () => {
+  it('keeps a trailing # that belongs to the title', () => {
+    expect(splitTitle('# C#\nbody').title).toBe('C#');
+  });
+  it('drops closing #s that follow whitespace', () => {
+    expect(splitTitle('# Title ##\nbody').title).toBe('Title');
+  });
+  it('treats a 4-space-indented heading as code, not a title', () => {
+    expect(() => splitTitle('    # code\nbody')).toThrow(/No title/);
+  });
+});
+
 describe('uploadMarkdown validation', () => {
   it('rejects empty, over-long titles and over-cap bodies (UTF-8 bytes)', async () => {
     await expect(uploadMarkdown({ course: 'algo', markdown: '  \n', title: 'x' })).rejects.toThrow(/empty/);
@@ -158,5 +170,67 @@ describe('markdown result and side effects', () => {
     expect(indexOwner).toHaveBeenCalledWith('p1', 'document', 'm1');
     expect(r.next).toContain('get_file');
     expect(r.openUrl).toBe('https://quire.ezragubbay.com/c/algo/documents/m1');
+  });
+});
+
+describe('duplicates and concurrency', () => {
+  const folders = [
+    { id: '11111111-1111-4111-8111-111111111111', name: 'Week 1' },
+    { id: '22222222-2222-4222-8222-222222222222', name: 'Week 2' },
+  ];
+  it("reports the existing note's real folder and says nothing was moved", async () => {
+    listFolders.mockResolvedValue(folders);
+    findNoteByTitle.mockResolvedValue({
+      id: 'n9',
+      slug: 's',
+      title: 'T',
+      body: 'b',
+      folderId: folders[1]?.id,
+    });
+    const r = await uploadMarkdown({ course: 'algo', markdown: 'b', title: 'T', folder: 'Week 1' });
+    expect(r).toMatchObject({ status: 'duplicate', folder: 'Week 2' });
+    expect(r.next).toMatch(/Week 2.*nothing was moved/);
+  });
+  it('same for a markdown document at the top level', async () => {
+    listFolders.mockResolvedValue(folders);
+    findMarkdownDoc.mockResolvedValue({ id: 'm9', folderId: null });
+    const r = await uploadMarkdown({
+      course: 'algo',
+      markdown: 'b',
+      title: 'T',
+      section: 'documents',
+      folder: 'Week 1',
+    });
+    expect(r).toMatchObject({ status: 'duplicate', folder: null });
+    expect(r.next).toMatch(/top level.*nothing was moved/);
+  });
+  it('adds no move note when the folder matches', async () => {
+    findNoteByTitle.mockResolvedValue({ id: 'n9', slug: 's', title: 'T', body: 'b', folderId: null });
+    const r = await uploadMarkdown({ course: 'algo', markdown: 'b', title: 'T' });
+    expect(r.next).not.toMatch(/moved/);
+  });
+  it('two concurrent identical calls create one note', async () => {
+    let release!: () => void;
+    createNote.mockImplementation(
+      () =>
+        new Promise((res) => {
+          release = () => res({ id: 'n1', slug: 's', title: 'T' });
+        }),
+    );
+    const a = uploadMarkdown({ course: 'algo', markdown: 'b', title: 'T' });
+    const b = uploadMarkdown({ course: 'algo', markdown: 'b', title: 'T' });
+    await vi.waitFor(() => expect(createNote).toHaveBeenCalled());
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(createNote).toHaveBeenCalledTimes(1);
+    expect([ra.noteId, rb.noteId]).toEqual(['n1', 'n1']);
+  });
+  it('document titles differing only by case are not joined', async () => {
+    await uploadMarkdown({ course: 'algo', markdown: 'b', title: 'T', section: 'documents' });
+    await uploadMarkdown({ course: 'algo', markdown: 'b', title: 't', section: 'documents' });
+    expect(createMarkdownDocument).toHaveBeenCalledTimes(2);
+  });
+  it('rejects markdown that is empty once the H1 is stripped', async () => {
+    await expect(uploadMarkdown({ course: 'algo', markdown: '# Only title\n' })).rejects.toThrow(/no text/);
   });
 });

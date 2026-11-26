@@ -1,6 +1,6 @@
 # Quire MCP server
 
-An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire and add Markdown to it (reads are read-only; the one write tool is additive and can be switched off):
+An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire and add Markdown to it (the read tools are read-only; the write tool is additive, never edits or deletes, and can be switched off):
 
 - **`list_courses`** — every course (stable `slug`, name, code, semester, file count).
 - **`list_course_files`** (`course`) — the course's files, each labeled `lecture` / `recitation` /
@@ -11,7 +11,7 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   note (`section: "notes"`, default) or Markdown document (`"documents"`) in a course, optionally in an existing
   folder (name or id; folders are never created). Never edits or deletes. Same title + text again returns
   `status: "duplicate"` with the existing id; a *note* with an existing title but different text is an error
-  (note titles are unique per course because `[[wiki links]]` resolve by title). A leading `# Title` line
+  (note titles are unique per course because `[[wiki links]]` resolve by title; the tool enforces this, the database does not, so two concurrent calls with the same title and different text could both succeed). A leading `# Title` line
   supplies the title when `title` is omitted and is stripped from the body. Max `MCP_UPLOAD_MAX_MARKDOWN_BYTES`
   (512 KB). Results are one JSON text item: `{status, section, course, noteId|fileId, title, folder, openUrl, next}`.
   Read tools carry `readOnlyHint: true`; the write tool is `readOnlyHint: false, destructiveHint: false,

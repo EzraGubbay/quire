@@ -45,7 +45,12 @@ describe('write tool registration', () => {
     for (const name of ['upload_markdown']) {
       const t = byName.get(name);
       expect(t?.description).toMatch(/^WRITES to Quire:/);
-      expect(t?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+      expect(t?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      });
     }
     for (const name of ['list_courses', 'list_course_files', 'get_file', 'get_page_images']) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBe(true);
@@ -63,6 +68,15 @@ describe('write tool registration', () => {
 });
 
 describe('error semantics through the SDK', () => {
+  it('errors when the write flag is off', async () => {
+    process.env.MCP_WRITE_ENABLED = 'false';
+    const res = await (await connect()).callTool({
+      name: 'upload_markdown',
+      arguments: { course: 'c1', markdown: '# T\nb' },
+    });
+    expect(res.isError).toBe(true);
+  });
+
   it('returns a missing required argument as an isError text result', async () => {
     const res = await (await connect()).callTool({ name: 'upload_markdown', arguments: { course: 'c1' } });
     expect(res.isError).toBe(true);
