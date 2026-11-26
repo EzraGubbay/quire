@@ -218,8 +218,8 @@ export interface ResolvedFile {
 export async function resolveFile(
   course: string,
   fileId: string,
-  format?: FileFormat,
-  scope: McpScope = COURSE_SCOPE,
+  format: FileFormat | undefined,
+  scope: McpScope,
 ): Promise<ResolvedFile> {
   const project = await resolveProjectIn(scope, course);
   if (!project) throw new Error(`No ${scope.noun} found for "${course}"`);

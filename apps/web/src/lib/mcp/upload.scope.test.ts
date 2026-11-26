@@ -21,8 +21,15 @@ vi.mock('@/lib/projects', () => ({
   projectBase: (p: { kind: string; slug: string }) => `/${p.kind === 'course' ? 'c' : 'p'}/${p.slug}`,
 }));
 
-const { uploadMarkdown, createUploadLinkTool, uploadStatusTool, UploadError } = await import('./upload');
+const upload = await import('./upload');
+const { UploadError } = upload;
 const { COURSE_SCOPE, RESEARCH_SCOPE } = await import('./scope');
+const uploadMarkdown = (a: Parameters<typeof upload.uploadMarkdown>[0], s = COURSE_SCOPE) =>
+  upload.uploadMarkdown(a, s);
+const createUploadLinkTool = (a: Parameters<typeof upload.createUploadLinkTool>[0], s = COURSE_SCOPE) =>
+  upload.createUploadLinkTool(a, s);
+const uploadStatusTool = (a: Parameters<typeof upload.uploadStatusTool>[0], s = COURSE_SCOPE) =>
+  upload.uploadStatusTool(a, s);
 const { __storeForTests } = await import('./upload-links');
 
 const research = { id: 'r1', slug: 'kairos', name: 'KAIROS', kind: 'research' };

@@ -168,6 +168,7 @@ describe('visibility, trashed, type, section', () => {
     expect(hoisted.ingestMarkdown).toHaveBeenCalledWith(
       project,
       expect.objectContaining({ section: 'notes', title: 'From gdoc', body: 'Body' }),
+      expect.objectContaining({ kind: 'course' }), // COURSE_SCOPE, now passed explicitly
     );
   });
 });

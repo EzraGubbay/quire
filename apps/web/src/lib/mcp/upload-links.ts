@@ -27,8 +27,8 @@ const MAX_STATUSES = 500;
 
 export interface LinkBinding {
   projectId: string;
-  /** The MCP scope that minted the link (default 'course'; the tools always pass it): the PUT only ingests into a project of this kind. */
-  scope?: ProjectKind;
+  /** The MCP scope that minted the link: the PUT only ingests into a project of this kind. */
+  scope: ProjectKind;
   section: 'notes' | 'documents';
   kind: 'pdf' | 'markdown';
   filename: string;
@@ -38,8 +38,7 @@ export interface LinkBinding {
   contentType: string;
   maxBytes: number;
 }
-export interface Link extends Omit<LinkBinding, 'scope'> {
-  scope: ProjectKind;
+export interface Link extends LinkBinding {
   uploadId: string;
   expiresAt: number;
 }
@@ -47,7 +46,7 @@ export type UploadState = 'pending' | 'processing' | 'created' | 'duplicate' | '
 export interface UploadStatus {
   uploadId: string;
   /** The scope that minted the link; get_upload_status only reveals statuses of its own scope. */
-  scope?: ProjectKind;
+  scope: ProjectKind;
   state: UploadState;
   updatedAt: number;
   expiresAt?: number;
@@ -91,8 +90,7 @@ function sweep(): void {
   }
 }
 
-export function createLink(input: LinkBinding): { token: string; uploadId: string; expiresAt: Date } {
-  const binding = { ...input, scope: input.scope ?? ('course' as const) };
+export function createLink(binding: LinkBinding): { token: string; uploadId: string; expiresAt: Date } {
   sweep();
   const cfg = linkConfig();
   const { links, statuses } = store();
@@ -125,11 +123,12 @@ export function claimLink(token: string): Link | null {
 
 export function setStatus(uploadId: string, patch: Partial<Omit<UploadStatus, 'uploadId'>>): void {
   const { statuses } = store();
-  const cur = statuses.get(uploadId) ?? { uploadId, state: 'pending' as const, updatedAt: now() };
-  statuses.set(uploadId, { ...cur, ...patch, updatedAt: now() });
+  const cur = statuses.get(uploadId);
+  // A status is only ever created by createLink (which knows the scope); an unknown id is a no-op.
+  if (cur) statuses.set(uploadId, { ...cur, ...patch, updatedAt: now() });
 }
 
-export function getStatus(uploadId: string, scope: ProjectKind = 'course'): UploadStatus | undefined {
+export function getStatus(uploadId: string, scope: ProjectKind): UploadStatus | undefined {
   sweep();
   const s = store().statuses.get(uploadId);
   return s && s.scope === scope ? s : undefined;

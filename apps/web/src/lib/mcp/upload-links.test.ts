@@ -3,7 +3,7 @@ import {
   __storeForTests,
   claimLink,
   createLink,
-  getStatus,
+  getStatus as getStatusIn,
   type LinkBinding,
   peekLink,
   setClock,
@@ -13,6 +13,7 @@ import {
 
 const binding: LinkBinding = {
   projectId: 'p1',
+  scope: 'course',
   section: 'documents',
   kind: 'pdf',
   filename: 'a.pdf',
@@ -21,6 +22,8 @@ const binding: LinkBinding = {
   contentType: 'application/pdf',
   maxBytes: 100,
 };
+// The scope is an explicit, required argument; these tests exercise the course scope.
+const getStatus = (id: string) => getStatusIn(id, 'course');
 let t = 1_000_000;
 beforeEach(() => {
   t = 1_000_000;
