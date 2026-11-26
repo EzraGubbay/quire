@@ -16,6 +16,10 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   (512 KB). Results are one JSON text item: `{status, section, course, noteId|fileId, title, folder, openUrl, next}`.
   Read tools carry `readOnlyHint: true`; the write tool is `readOnlyHint: false, destructiveHint: false,
   idempotentHint: true`, so clients can auto-allow reads and confirm writes.
+- **`upload_pdf`** (`course`, `url`, `title?`, `folder?`) — **writes**: the *server* downloads a public https PDF
+  into the course's Documents (the model passes only a URL). Use the direct PDF link (`https://arxiv.org/pdf/<id>`);
+  landing pages are not scraped. Same PDF again returns `duplicate`; very slow extractions return `processing`
+  after 40 s and finish in the background (calling again is safe). Max `MCP_UPLOAD_MAX_URL_BYTES` (50 MB).
 - **`create_upload_link`** (`course`, `section`: `documents`|`notes`, `filename` `.pdf`/`.md`/`.markdown`,
   `contentType?`, `title?`, `folder?`) — **writes (via the link)**. For an *existing local file* (no tool ever
   takes file bytes): mints a single-use `PUT` URL bound to that course, section, folder, filename and type. It
@@ -168,3 +172,15 @@ the Quire Android app (its upload feature) for files generated on the phone.
 `create_file`, call `import_from_drive` (expect `created`, then `duplicate`), and trash the Drive file with the id the
 result names. Also check: a file outside the Inbox -> "Quire can't see that Drive file"; a `.docx` -> unsupported;
 a PDF with `section:"notes"` -> refused. On the phone, check the text chat and the voice chat separately.
+
+## SSRF policy for `upload_pdf{url}`
+
+The fetch (`lib/mcp/safe-fetch.ts`) accepts only `https://` URLs without credentials on port 443. DNS is resolved
+once by the guard and the socket connects only to a vetted address (no rebinding window); a hostname is refused
+if *any* of its addresses is loopback, private (10/8, 172.16/12, 192.168/16), link-local/metadata (169.254/16),
+CGNAT/tailnet (100.64/10), multicast/reserved, or the IPv6 equivalents (including IPv4-mapped, NAT64 and 6to4).
+Redirects are followed by hand (max 3) and every hop is re-checked, so an https-to-http downgrade or a redirect
+to a private address fails. The response must be a 200 with `%PDF-` content, is capped at
+`MCP_UPLOAD_MAX_URL_BYTES` (aborted mid-stream) and the whole fetch has a 25 s budget. Errors never echo
+resolved addresses.
+- `MCP_UPLOAD_MAX_URL_BYTES` — max size of a fetched PDF (default `52428800`).
