@@ -13,6 +13,10 @@ import { createNote } from '@/lib/notes';
 import { projectBase } from '@/lib/projects';
 import { resolveCourse } from './courses';
 import { fetchPublicPdf, hasPdfMagic } from './safe-fetch';
+
+// Re-exported for existing importers (drive/import.ts).
+export { hasPdfMagic };
+
 import { createLink, getStatus, type LinkBinding, linkConfig, type UploadStatus } from './upload-links';
 import { findDuplicatePdf, findMarkdownDoc, findNoteByTitle, setContentHash } from './upload-store';
 
