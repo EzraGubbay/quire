@@ -14,7 +14,8 @@ const num = (v: string | undefined, d: number) => {
 export const linkConfig = () => ({
   ttlMs: num(process.env.MCP_UPLOAD_LINK_TTL_MS, 10 * 60 * 1000),
   maxOpen: num(process.env.MCP_UPLOAD_LINK_MAX_OPEN, 50),
-  maxPdfBytes: num(process.env.MCP_UPLOAD_LINK_MAX_PDF_BYTES, 100 * 1024 * 1024),
+  // 95 MB: Cloudflare's edge limit is 100 MB per request and the body carries a little overhead.
+  maxPdfBytes: num(process.env.MCP_UPLOAD_LINK_MAX_PDF_BYTES, 95 * 1024 * 1024),
   maxMarkdownBytes: num(process.env.MCP_UPLOAD_LINK_MAX_MD_BYTES, 2 * 1024 * 1024),
   deadlineMs: num(process.env.MCP_UPLOAD_LINK_DEADLINE_MS, 90_000),
 });

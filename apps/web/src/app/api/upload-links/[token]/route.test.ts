@@ -167,7 +167,7 @@ describe('PUT /api/upload-links/<token>', () => {
   it('a body that disagrees with Content-Length is 400 and spends the link', async () => {
     const { token, uploadId } = mint();
     const res = await put(token, pdf, {}, String(pdf.length - 5));
-    expect([400, 413]).toContain(res.status);
+    expect(res.status).toBe(400);
     expect(links.getStatus(uploadId)?.state).toBe('failed');
     expect((await put(token, pdf)).status).toBe(410);
   });
@@ -215,5 +215,57 @@ describe('PUT /api/upload-links/<token>', () => {
     expect(res.status).toBe(202);
     expect(await res.json()).toMatchObject({ status: 'processing', uploadId });
     await vi.waitFor(() => expect(links.getStatus(uploadId)?.state).toBe('created'));
+  });
+
+  it('answers 400 and marks failed when the body stream errors mid-upload', async () => {
+    const { token, uploadId } = mint();
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(pdf.subarray(0, 5));
+        c.error(new Error('aborted'));
+      },
+    });
+    const res = await route.PUT(
+      new Request(`http://x/api/upload-links/${token}`, {
+        method: 'PUT',
+        body: stream,
+        // @ts-expect-error node needs duplex for streamed bodies
+        duplex: 'half',
+        headers: { 'content-type': 'application/pdf', 'content-length': String(pdf.length) },
+      }),
+      { params: Promise.resolve({ token }) },
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ uploadId });
+    expect(links.getStatus(uploadId)?.state).toBe('failed');
+  });
+
+  it('answers a generic 500 (no raw error text) and marks failed on a database error', async () => {
+    getProjectById.mockRejectedValue(new Error('connect ECONNREFUSED 10.0.0.5:5432'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { token, uploadId } = mint();
+    const res = await put(token, pdf);
+    expect(res.status).toBe(500);
+    const text = JSON.stringify(await res.json());
+    expect(text).not.toMatch(/ECONNREFUSED|10\.0\.0\.5/);
+    expect(links.getStatus(uploadId)?.state).toBe('failed');
+    err.mockRestore();
+  });
+
+  it('500 (not 422) when ingestion itself hits a database error', async () => {
+    findDuplicatePdf.mockRejectedValue(new Error('relation "documents" does not exist'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { token } = mint();
+    const res = await put(token, pdf);
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toMatch(/relation/);
+    err.mockRestore();
+  });
+
+  it('parallel PUTs on one token: exactly one wins, one document is created', async () => {
+    const { token } = mint();
+    const results = await Promise.all([put(token, pdf), put(token, pdf), put(token, pdf)]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 410, 410]);
+    expect(createPdfDocument).toHaveBeenCalledTimes(1);
   });
 });

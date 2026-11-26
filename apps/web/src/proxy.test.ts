@@ -26,12 +26,21 @@ describe('proxy public prefixes', () => {
   it('lets /api/upload-links/<token> through without a bearer or session', () => {
     expect(passes(run(`/api/upload-links/${token}`) as Response)).toBe(true);
   });
-  it.each(['/api/upload-links', '/api/upload-linksX/abc', '/api/upload-links-evil/x'])(
-    'keeps %s session-gated',
-    (p) => {
-      expect((run(p) as Response).status).toBe(401);
-    },
-  );
+  it.each([
+    '/api/upload-links',
+    '/api/upload-links/',
+    '/api/upload-linksX/abc',
+    '/api/upload-links-evil/x',
+    '/api/upload-links/documents/x',
+    '/api/upload-links/a/b',
+    `/api/upload-links/${token}/extra`,
+    '/api/upload-links/short',
+  ])('keeps %s session-gated', (p) => {
+    expect((run(p) as Response).status).toBe(401);
+  });
+  it.each(['GET', 'POST', 'DELETE'])('keeps %s on a valid-looking token path gated', (method) => {
+    expect((run(`/api/upload-links/${token}`, {}, method) as Response).status).toBe(401);
+  });
   it('keeps other write routes gated and accepts the bearer on /mcp', () => {
     expect((run('/api/projects/x/documents/upload') as Response).status).toBe(401);
     expect((run('/mcp', {}, 'POST') as Response).status).toBe(401);

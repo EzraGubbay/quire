@@ -255,13 +255,43 @@ describe('duplicates and concurrency', () => {
   });
 });
 
+describe('create_upload_link filename validation', () => {
+  it('rejects path separators and over-long stems', async () => {
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'documents', filename: '../x.pdf' }),
+    ).rejects.toThrow(/bare file name/);
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'documents', filename: 'a\\b.pdf' }),
+    ).rejects.toThrow(/bare file name/);
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'documents', filename: `${'a'.repeat(201)}.pdf` }),
+    ).rejects.toThrow(/too long/);
+  });
+});
+
+describe('ingestPdf duplicate folder', () => {
+  it('reports where the existing PDF really lives', async () => {
+    listFolders.mockResolvedValue([{ id: '22222222-2222-4222-8222-222222222222', name: 'Week 2' }]);
+    findDuplicatePdf.mockResolvedValue(
+      pdfDoc({ id: 'old', folderId: '22222222-2222-4222-8222-222222222222' }),
+    );
+    const r = await ingestPdf(project as never, {
+      data: pdfBytes,
+      fileName: 'a.pdf',
+      folder: { id: null, name: null },
+    });
+    expect(r).toMatchObject({ status: 'duplicate', folder: 'Week 2' });
+    expect(r.next).toMatch(/Week 2.*nothing was moved/);
+  });
+});
+
 describe('create_upload_link', () => {
   const folders = [{ id: '11111111-1111-4111-8111-111111111111', name: 'Week 1' }];
   it('returns a bound link with a ready curl', async () => {
     const r = await createUploadLinkTool({ course: 'algo', section: 'documents', filename: "O'Brien.pdf" });
     expect(r.uploadUrl).toMatch(/^https:\/\/quire\.ezragubbay\.com\/api\/upload-links\/[A-Za-z0-9_-]{43}$/);
     expect(Math.abs(new Date(r.expiresAt).getTime() - (Date.now() + 600_000))).toBeLessThan(2000);
-    expect(r.maxBytes).toBe(100 * 1024 * 1024);
+    expect(r.maxBytes).toBe(95 * 1024 * 1024);
     expect(r.curl).toContain("-T './O'\\''Brien.pdf'");
     expect(r.curl).toContain("-H 'content-type: application/pdf'");
     expect(r.curl).toContain(`'${r.uploadUrl}'`);
