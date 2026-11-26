@@ -44,6 +44,12 @@ services:
       GOTENBERG_URL: http://gotenberg:3000
       # Firebase service-account JSON, base64 on one line; written into .env by deploy.yml. Empty = push disabled.
       FCM_SERVICE_ACCOUNT_JSON_BASE64: ${FCM_SERVICE_ACCOUNT_JSON_BASE64:-}
+      # Drive inbox for the MCP import_from_drive tool: read-only service-account JSON (base64, one line) and the
+      # "Quire Inbox" folder id; both written into .env by deploy.yml. Either empty = the Drive tools are not registered.
+      DRIVE_SERVICE_ACCOUNT_JSON_BASE64: ${DRIVE_SERVICE_ACCOUNT_JSON_BASE64:-}
+      QUIRE_DRIVE_INBOX_FOLDER_ID: ${QUIRE_DRIVE_INBOX_FOLDER_ID:-}
+      DRIVE_IMPORT_MAX_PDF_BYTES: ${DRIVE_IMPORT_MAX_PDF_BYTES:-83886080}
+      DRIVE_IMPORT_MAX_MD_BYTES: ${DRIVE_IMPORT_MAX_MD_BYTES:-2097152}
     volumes:
       - files:/data/files
     ports:
