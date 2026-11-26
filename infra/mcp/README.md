@@ -39,6 +39,8 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
 - **Auth:** the endpoint sits behind `apps/web/src/proxy.ts`. In production (`AUTH_MODE=github`) a client
   authenticates with `Authorization: Bearer $QUIRE_API_KEY` (the key already in `/srv/quire/.env`). Locally
   (`AUTH_MODE=none`) it is open.
+- **Scope:** the course server only serves `kind='course'` projects; a research project's slug or id answers
+  "No course found".
 - **Never commit or paste the key.** Supply it from your own environment.
 
 ## Connect Claude Desktop

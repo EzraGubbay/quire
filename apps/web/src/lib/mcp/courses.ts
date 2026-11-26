@@ -86,9 +86,13 @@ export function labelDocument(
   return { type: 'other', folder: folderName };
 }
 
-/** Resolve a course by slug or UUID. */
+/**
+ * Resolve a course by slug or UUID. Only `kind='course'` projects resolve: a research project answers exactly
+ * like a missing slug, so the course server neither serves nor confirms the existence of research projects.
+ */
 export async function resolveCourse(course: string) {
-  return UUID_RE.test(course) ? getProjectById(course) : getProjectBySlug(course);
+  const project = UUID_RE.test(course) ? await getProjectById(course) : await getProjectBySlug(course);
+  return project?.kind === 'course' ? project : undefined;
 }
 
 /** All courses with cheap per-course file counts. */
