@@ -6,12 +6,8 @@ import { type ChatMessage, type ChatThread, chatMessages, chatThreads, projects 
 export const EMPTY_THREAD_GRACE_MS = 24 * 60 * 60 * 1000;
 
 /** SQL: the thread has at least one message (a question was sent). */
-const hasMessages = exists(
-  db
-    .select({ x: sql`1` })
-    .from(chatMessages)
-    .where(eq(chatMessages.threadId, chatThreads.id)),
-);
+const hasMessages = () =>
+  exists(db.select({ x: sql`1` }).from(chatMessages).where(eq(chatMessages.threadId, chatThreads.id)));
 
 /**
  * Newest first. With `documentId`, only the chats scoped to that document. Only chats with at
@@ -22,7 +18,7 @@ export async function listThreads(
   documentId?: string | null,
   opts: { includeId?: string } = {},
 ): Promise<ChatThread[]> {
-  const visible = or(hasMessages, opts.includeId ? eq(chatThreads.id, opts.includeId) : undefined);
+  const visible = or(hasMessages(), opts.includeId ? eq(chatThreads.id, opts.includeId) : undefined);
   return db
     .select()
     .from(chatThreads)
@@ -46,7 +42,7 @@ export async function listRecentCourseThreads(
     .select({ thread: chatThreads, courseSlug: projects.slug })
     .from(chatThreads)
     .innerJoin(projects, eq(chatThreads.projectId, projects.id))
-    .where(and(eq(projects.kind, 'course'), hasMessages))
+    .where(and(eq(projects.kind, 'course'), hasMessages()))
     .orderBy(desc(chatThreads.updatedAt))
     .limit(limit);
   return rows;
@@ -113,7 +109,7 @@ export async function createThread(
             ? isNull(chatThreads.assignmentQuestionId)
             : eq(chatThreads.assignmentQuestionId, questionId),
           eq(chatThreads.mode, opts.mode ?? 'default'),
-          not(hasMessages),
+          not(hasMessages()),
         ),
       )
       .orderBy(desc(chatThreads.updatedAt))
@@ -145,7 +141,7 @@ export async function createThread(
 export async function pruneEmptyThreads(olderThanMs: number = EMPTY_THREAD_GRACE_MS): Promise<number> {
   const rows = await db
     .delete(chatThreads)
-    .where(and(lt(chatThreads.updatedAt, new Date(Date.now() - olderThanMs)), not(hasMessages)))
+    .where(and(lt(chatThreads.updatedAt, new Date(Date.now() - olderThanMs)), not(hasMessages())))
     .returning({ id: chatThreads.id });
   return rows.length;
 }

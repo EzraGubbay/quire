@@ -342,6 +342,7 @@ paths:
   /threads:
     get:
       summary: Recent chat threads across courses
+      description: Only threads with at least one message; an unsent (empty) thread is not listed.
       operationId: listRecentThreads
       tags: [chat]
       parameters:
@@ -373,6 +374,7 @@ paths:
       - $ref: '#/components/parameters/Course'
     get:
       summary: List a course's chat threads
+      description: Only threads with at least one message; an unsent (empty) thread is not listed.
       operationId: listThreads
       tags: [chat]
       parameters:
@@ -401,6 +403,9 @@ paths:
         '500': { $ref: '#/components/responses/Internal' }
     post:
       summary: Create a chat thread
+      description: >-
+        Reuses the newest empty thread in the same scope (course, document, mode) when no title is given,
+        so repeated creates return the same thread. Empty threads untouched for 24 hours are pruned on server boot.
       operationId: createThread
       tags: [chat]
       requestBody:
@@ -411,7 +416,7 @@ paths:
             example: {}
       responses:
         '201':
-          description: Thread created.
+          description: Thread created, or the existing empty thread in the same scope.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Thread' }

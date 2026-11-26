@@ -9,7 +9,13 @@ vi.mock('@/app/actions/chat', () => ({ newThreadAction, threadMessagesAction, se
 vi.mock('@/components/project-context', () => ({ useProject: () => ({ base: '/p/x' }) }));
 vi.mock('./spend-banner', () => ({ SpendBanner: () => null }));
 vi.mock('./thread-view', () => ({
-  ThreadView: ({ threadId, onEnsureThread }: { threadId: string | null; onEnsureThread?: () => Promise<string> }) => (
+  ThreadView: ({
+    threadId,
+    onEnsureThread,
+  }: {
+    threadId: string | null;
+    onEnsureThread?: () => Promise<string>;
+  }) => (
     <div>
       <span data-testid="tv-id">{threadId ?? 'none'}</span>
       <button type="button" onClick={() => void onEnsureThread?.()}>
