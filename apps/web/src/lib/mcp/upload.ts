@@ -38,6 +38,9 @@ export const mb = (n: number) => `${Math.round(n / (1024 * 1024))} MB`;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TITLE = 200;
 
+/** A failure whose message is written for the user/model. Anything else is an internal error: log it, show a generic text. */
+export class UploadError extends Error {}
+
 export type UploadResult = {
   status: 'created' | 'duplicate' | 'processing';
   section: 'notes' | 'documents';
@@ -55,7 +58,7 @@ export type UploadResult = {
 export async function resolveUploadCourse(course: string): Promise<Project> {
   const project = await resolveCourse(course);
   if (!project || project.kind !== 'course') {
-    throw new Error(`No course found for "${course}". Call list_courses for the valid slugs.`);
+    throw new UploadError(`No course found for "${course}". Call list_courses for the valid slugs.`);
   }
   return project;
 }
@@ -80,13 +83,13 @@ export async function resolveFolder(
   const matches = folders.filter((f) => f.name.trim().toLowerCase() === wanted.toLowerCase());
   if (matches.length === 1 && matches[0]) return { id: matches[0].id, name: matches[0].name };
   if (matches.length > 1) {
-    throw new Error(
+    throw new UploadError(
       `Several ${scope} folders in "${project.name}" are named "${wanted}": pass one of these ids instead: ` +
         matches.map((f) => f.id).join(', '),
     );
   }
   const names = folders.map((f) => `"${f.name}"`).join(', ');
-  throw new Error(
+  throw new UploadError(
     `No ${scope} folder "${wanted}" in "${project.name}". ` +
       (names ? `Existing folders: ${names}. ` : 'It has no folders. ') +
       'Omit folder to put it at the top level.',
@@ -95,8 +98,8 @@ export async function resolveFolder(
 
 function checkTitle(title: string): string {
   const t = title.trim();
-  if (!t) throw new Error('title is empty.');
-  if (t.length > MAX_TITLE) throw new Error(`title is longer than ${MAX_TITLE} characters.`);
+  if (!t) throw new UploadError('title is empty.');
+  if (t.length > MAX_TITLE) throw new UploadError(`title is longer than ${MAX_TITLE} characters.`);
   return t;
 }
 
@@ -116,7 +119,7 @@ export function splitTitle(markdown: string, title?: string): { title: string; b
     return { title: t, body: strip ? text.slice(m[0].length).replace(/^\n+/, '') : text };
   }
   if (!m || !h1) {
-    throw new Error('No title: pass `title`, or start the markdown with a "# Heading" line.');
+    throw new UploadError('No title: pass `title`, or start the markdown with a "# Heading" line.');
   }
   return { title: checkTitle(h1), body: text.slice(m[0].length).replace(/^\n+/, '') };
 }
@@ -219,7 +222,7 @@ export function ingestMarkdown(
             next: `This exact note already exists; nothing was written.${place.note}`,
           };
         }
-        throw new Error(
+        throw new UploadError(
           `A note titled "${existing.title}" already exists in "${project.name}" (noteId ${existing.id}) with ` +
             'different text. Note titles are unique per course (wiki links resolve by title); choose another title.',
         );
@@ -267,14 +270,14 @@ export async function uploadMarkdown(args: {
 }): Promise<UploadResult> {
   const section = args.section ?? 'notes';
   const limits = uploadLimits();
-  if (!args.markdown.trim()) throw new Error('markdown is empty.');
+  if (!args.markdown.trim()) throw new UploadError('markdown is empty.');
   if (Buffer.byteLength(args.markdown, 'utf8') > limits.maxMarkdownBytes) {
-    throw new Error(
+    throw new UploadError(
       `markdown is over the ${kb(limits.maxMarkdownBytes)} limit; split it, or use create_upload_link for a file.`,
     );
   }
   const { title, body } = splitTitle(args.markdown, args.title);
-  if (!body.trim()) throw new Error('markdown has no text besides its title heading.');
+  if (!body.trim()) throw new UploadError('markdown has no text besides its title heading.');
   const project = await resolveUploadCourse(args.course);
   const folder = await resolveFolder(project, section, args.folder);
   return ingestMarkdown(project, { section, title, body, folder });
@@ -296,24 +299,25 @@ export function ingestPdf(
     sourceUrl?: string | null;
   },
 ): Promise<UploadResult> {
-  if (!hasPdfMagic(a.data)) return Promise.reject(new Error('That is not a PDF (no %PDF header).'));
+  if (!hasPdfMagic(a.data)) return Promise.reject(new UploadError('That is not a PDF (no %PDF header).'));
   const title = a.title?.trim() ? checkTitle(a.title) : undefined;
   const hash = sha256(a.data);
   const fileName = /\.pdf$/i.test(a.fileName) ? a.fileName : `${a.fileName}.pdf`;
   return once(`pdf:${project.id}:${hash}`, async () => {
     const existing = await findDuplicatePdf(project.id, hash, a.data.byteLength);
     if (existing) {
+      const place = await placeOf(project, 'documents', existing.folderId, a.folder);
       return {
         status: 'duplicate',
         section: 'documents',
         course: courseOf(project),
         fileId: existing.id,
         title: existing.title,
-        folder: a.folder.name,
+        folder: place.folder,
         pageCount: existing.pageCount,
         sizeBytes: existing.fileSize ?? a.data.byteLength,
         openUrl: docUrl(project, existing.id),
-        next: `This PDF is already in the course; nothing was written. ${readBack(project, existing.id)}`,
+        next: `This PDF is already in the course; nothing was written.${place.note} ${readBack(project, existing.id)}`,
       };
     }
     let doc: Awaited<ReturnType<typeof createPdfDocument>>;
@@ -326,7 +330,7 @@ export function ingestPdf(
         meta: title ? { title } : undefined,
       });
     } catch (err) {
-      throw new Error(`Could not read that PDF: ${(err as Error).message}`);
+      throw new UploadError(`Could not read that PDF: ${(err as Error).message}`);
     }
     await setContentHash(doc.id, hash);
     afterCreate(project, 'document', doc.id);
@@ -378,19 +382,24 @@ export async function createUploadLinkTool(args: {
   folder?: string;
 }) {
   const filename = args.filename.trim();
+  if (/[\\/\0]/.test(filename)) throw new UploadError('filename must be a bare file name, without / or \\.');
+  if (filename.replace(/\.[^.]*$/, '').length > 200)
+    throw new UploadError('filename is too long (max 200 characters before the extension).');
   const ext = /\.(pdf|md|markdown)$/i.exec(filename)?.[1]?.toLowerCase();
   if (!ext)
-    throw new Error('filename must end in .pdf, .md or .markdown (other file types are not supported).');
+    throw new UploadError(
+      'filename must end in .pdf, .md or .markdown (other file types are not supported).',
+    );
   const kind = ext === 'pdf' ? 'pdf' : 'markdown';
   if (kind === 'pdf' && args.section === 'notes') {
-    throw new Error('Notes hold Markdown only; use section "documents" for PDFs.');
+    throw new UploadError('Notes hold Markdown only; use section "documents" for PDFs.');
   }
   let contentType = kind === 'pdf' ? 'application/pdf' : 'text/markdown';
   if (args.contentType?.trim()) {
     const given = mediaType(args.contentType);
     const ok = kind === 'pdf' ? given === 'application/pdf' : MD_TYPES.includes(given);
     if (!ok) {
-      throw new Error(
+      throw new UploadError(
         `contentType "${given}" does not match a .${ext} file; use ${kind === 'pdf' ? 'application/pdf' : 'text/markdown'}.`,
       );
     }

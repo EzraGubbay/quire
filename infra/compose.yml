@@ -40,6 +40,12 @@ services:
       # MCP upload tools (upload_markdown / upload_pdf). Set MCP_WRITE_ENABLED=false in .env to hide them.
       MCP_WRITE_ENABLED: ${MCP_WRITE_ENABLED:-true}
       MCP_UPLOAD_LINK_TTL_MS: ${MCP_UPLOAD_LINK_TTL_MS:-600000}
+      MCP_UPLOAD_LINK_MAX_OPEN: ${MCP_UPLOAD_LINK_MAX_OPEN:-50}
+      MCP_UPLOAD_LINK_MAX_PDF_BYTES: ${MCP_UPLOAD_LINK_MAX_PDF_BYTES:-99614720}
+      MCP_UPLOAD_LINK_MAX_MD_BYTES: ${MCP_UPLOAD_LINK_MAX_MD_BYTES:-2097152}
+      MCP_UPLOAD_LINK_DEADLINE_MS: ${MCP_UPLOAD_LINK_DEADLINE_MS:-90000}
+      MCP_UPLOAD_DEADLINE_MS: ${MCP_UPLOAD_DEADLINE_MS:-40000}
+      MCP_UPLOAD_MAX_MARKDOWN_BYTES: ${MCP_UPLOAD_MAX_MARKDOWN_BYTES:-524288}
       DISABLE_AUTOUPDATER: '1'
       GOTENBERG_URL: http://gotenberg:3000
       # Firebase service-account JSON, base64 on one line; written into .env by deploy.yml. Empty = push disabled.

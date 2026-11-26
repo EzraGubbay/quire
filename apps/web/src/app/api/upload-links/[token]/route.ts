@@ -9,9 +9,10 @@ import {
   markdownFromFile,
   mcpWriteEnabled,
   raceDeadline,
+  UploadError,
   type UploadResult,
 } from '@/lib/mcp/upload';
-import { claimLink, linkConfig, peekLink, setStatus, TOKEN_RE } from '@/lib/mcp/upload-links';
+import { claimLink, type Link, linkConfig, peekLink, setStatus, TOKEN_RE } from '@/lib/mcp/upload-links';
 import { getProjectById } from '@/lib/projects';
 
 export const runtime = 'nodejs';
@@ -21,29 +22,31 @@ const json = (body: unknown, status: number) => Response.json(body, { status });
 const GONE =
   'This upload link is invalid, already used or expired. Ask Claude for a new one (create_upload_link).';
 
-/** Reads the body, counting bytes; null once it exceeds `max` (the stream is cancelled). */
-async function readBody(body: ReadableStream<Uint8Array> | null, max: number): Promise<Uint8Array | null> {
-  if (!body) return new Uint8Array(0);
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
+type BodyResult = { ok: true; bytes: Uint8Array } | { ok: false; reason: 'too-large' | 'mismatch' };
+
+/** Reads the body into a buffer sized to the declared length. Stops early (cancelling the stream) when the body
+ *  passes the cap or the declared length. */
+async function readBody(
+  body: ReadableStream<Uint8Array> | null,
+  declared: number,
+  max: number,
+): Promise<BodyResult> {
+  const out = new Uint8Array(declared);
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel().catch(() => {});
-      return null;
+  if (body) {
+    const reader = body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (total + value.byteLength > declared) {
+        await reader.cancel().catch(() => {});
+        return { ok: false, reason: total + value.byteLength > max ? 'too-large' : 'mismatch' };
+      }
+      out.set(value, total);
+      total += value.byteLength;
     }
-    chunks.push(value);
   }
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    out.set(c, off);
-    off += c.byteLength;
-  }
-  return out;
+  return total === declared ? { ok: true, bytes: out } : { ok: false, reason: 'mismatch' };
 }
 
 export async function PUT(req: Request, ctx: { params: Promise<{ token: string }> }): Promise<Response> {
@@ -84,15 +87,37 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
     return json({ error, uploadId }, status);
   };
 
-  const bytes = await readBody(req.body, link.maxBytes);
-  if (!bytes)
-    return fail(`The file is over this link's ${Math.round(link.maxBytes / 1048576)} MB limit.`, 413);
-  if (bytes.byteLength !== declared) {
-    return fail(
-      `Incomplete upload: received ${bytes.byteLength} of ${declared} bytes. Ask Claude for a new link and retry.`,
-      400,
-    );
+  try {
+    return await ingestUpload(link, declared, req, fail);
+  } catch (err) {
+    // Not a message written for the user (a DB or filesystem error): log the id only, show a generic text.
+    console.error(`[mcp upload-link ${uploadId}] failed:`, (err as Error).name);
+    return fail('The upload failed on the server. Ask Claude for a new link and retry.', 500);
   }
+}
+
+async function ingestUpload(
+  link: Link,
+  declared: number,
+  req: Request,
+  fail: (error: string, status: number) => Response,
+): Promise<Response> {
+  const { uploadId } = link;
+  let read: BodyResult;
+  try {
+    read = await readBody(req.body, declared, link.maxBytes);
+  } catch {
+    return fail('Upload interrupted; ask Claude for a new link.', 400);
+  }
+  if (!read.ok) {
+    return read.reason === 'too-large'
+      ? fail(`The file is over this link's ${Math.round(link.maxBytes / 1048576)} MB limit.`, 413)
+      : fail(
+          'Incomplete upload (the body did not match Content-Length). Ask Claude for a new link and retry.',
+          400,
+        );
+  }
+  const bytes = read.bytes;
 
   const project = await getProjectById(link.projectId);
   if (!project || project.kind !== 'course') return fail('The course for this link no longer exists.', 422);
@@ -113,7 +138,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
       work = ingestMarkdown(project, { section: link.section, title, body, folder });
     }
   } catch (err) {
-    return fail((err as Error).message, 422);
+    if (err instanceof UploadError) return fail(err.message, 422);
+    throw err;
   }
 
   const record = work.then(
@@ -122,7 +148,10 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
       return r;
     },
     (err: Error) => {
-      setStatus(uploadId, { state: 'failed', error: err.message });
+      setStatus(uploadId, {
+        state: 'failed',
+        error: err instanceof UploadError ? err.message : 'The upload failed on the server.',
+      });
       throw err;
     },
   );
@@ -130,7 +159,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ token: string }
   try {
     result = await raceDeadline(record, linkConfig().deadlineMs);
   } catch (err) {
-    return json({ error: (err as Error).message, uploadId }, 422);
+    if (err instanceof UploadError) return json({ error: err.message, uploadId }, 422);
+    throw err;
   }
   if (!result) {
     return json(
