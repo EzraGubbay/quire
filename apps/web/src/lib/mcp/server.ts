@@ -31,6 +31,7 @@ import {
   mcpWriteEnabled,
   uploadLimits,
   uploadMarkdown,
+  uploadPdfFromUrl,
   uploadStatusTool,
 } from './upload';
 
@@ -198,6 +199,23 @@ function registerWriteTools(server: McpServer): void {
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (args) => text(await uploadMarkdown(args)),
+  );
+
+  server.tool(
+    'upload_pdf',
+    'WRITES to Quire: downloads a PDF from a public https URL (the server fetches it, max 50 MB) into a ' +
+      "course's Documents. Public https URL only (no logins, no private or local addresses; pass the direct " +
+      'PDF link, e.g. https://arxiv.org/pdf/<id>); for a local file use create_upload_link. The same PDF ' +
+      'already in the course is returned instead of a copy. Large PDFs may return status "processing"; ' +
+      'calling again is safe. Never edits or deletes.',
+    {
+      course: z.string().describe('course slug or id, from list_courses'),
+      url: z.string().describe('public https link to the PDF'),
+      title: z.string().optional().describe('1-200 characters; default: taken from the PDF'),
+      folder: z.string().optional().describe('existing Documents folder name or id; default: top level'),
+    },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    async (args) => text(await uploadPdfFromUrl(args)),
   );
 
   server.tool(

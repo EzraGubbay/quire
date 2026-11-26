@@ -12,6 +12,7 @@ import { sha256 } from '@/lib/files';
 import { createNote } from '@/lib/notes';
 import { projectBase } from '@/lib/projects';
 import { resolveCourse } from './courses';
+import { fetchPublicPdf } from './safe-fetch';
 import { createLink, getStatus, type LinkBinding, linkConfig, type UploadStatus } from './upload-links';
 import { findDuplicatePdf, findMarkdownDoc, findNoteByTitle, setContentHash } from './upload-store';
 
@@ -447,4 +448,22 @@ export function uploadStatusTool(args: { uploadId: string }): UploadStatus | str
   }
   const iso = (t?: number) => (t === undefined ? undefined : new Date(t).toISOString());
   return { ...s, expiresAt: iso(s.expiresAt) as never, updatedAt: iso(s.updatedAt) as never };
+}
+
+/** upload_pdf{url}: the server fetches a public https PDF (SSRF-guarded) and ingests it. */
+export async function uploadPdfFromUrl(args: {
+  course: string;
+  url?: string;
+  title?: string;
+  folder?: string;
+}): Promise<UploadResult> {
+  if (!args.url?.trim())
+    throw new Error('Pass `url`: a public https link to a PDF. For a local file use create_upload_link.');
+  const title = args.title?.trim() ? checkTitle(args.title) : undefined;
+  const project = await resolveUploadCourse(args.course);
+  const folder = await resolveFolder(project, 'documents', args.folder);
+  const { data, fileName } = await fetchPublicPdf(args.url.trim());
+  const work = ingestPdf(project, { data, fileName, title, folder, sourceUrl: args.url.trim() });
+  const result = await raceDeadline(work, uploadLimits().deadlineMs);
+  return result ?? processingResult(project, 'documents', title ?? fileName, folder, data.byteLength);
 }

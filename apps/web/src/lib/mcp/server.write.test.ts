@@ -48,16 +48,17 @@ describe('write tool registration', () => {
   it('lists the write tool by default, with WRITES descriptions and non-destructive annotations', async () => {
     const { tools } = await (await connect()).listTools();
     const byName = new Map(tools.map((t) => [t.name, t]));
-    for (const name of ['upload_markdown', 'create_upload_link']) {
+    for (const name of ['upload_markdown', 'upload_pdf', 'create_upload_link']) {
       const t = byName.get(name);
       expect(t?.description).toMatch(/^WRITES to Quire/);
       expect(t?.annotations).toMatchObject({
         readOnlyHint: false,
         destructiveHint: false,
-        openWorldHint: false,
       });
     }
     expect(byName.get('upload_markdown')?.annotations?.idempotentHint).toBe(true);
+    expect(byName.get('upload_pdf')?.annotations?.openWorldHint).toBe(true);
+    expect(byName.get('upload_markdown')?.annotations?.openWorldHint).toBe(false);
     for (const name of [
       'list_courses',
       'list_course_files',
@@ -72,7 +73,7 @@ describe('write tool registration', () => {
   it.each(['false', '0', 'off', 'No'])('hides the write tools when MCP_WRITE_ENABLED=%s', async (v) => {
     process.env.MCP_WRITE_ENABLED = v;
     const names = (await (await connect()).listTools()).tools.map((t) => t.name);
-    for (const n of ['upload_markdown', 'create_upload_link', 'get_upload_status'])
+    for (const n of ['upload_markdown', 'upload_pdf', 'create_upload_link', 'get_upload_status'])
       expect(names).not.toContain(n);
     expect(names).toEqual(
       expect.arrayContaining(['list_courses', 'list_course_files', 'get_file', 'get_page_images']),
@@ -105,6 +106,22 @@ describe('error semantics through the SDK', () => {
     const content = res.content as { type: string; text: string }[];
     expect(content).toHaveLength(1);
     expect(content[0]?.text).toMatch(/No title/);
+  });
+});
+
+describe('upload_pdf through the SDK', () => {
+  it('errors without a url, and refuses a private address, as isError text', async () => {
+    const client = await connect();
+    const noUrl = await client.callTool({ name: 'upload_pdf', arguments: { course: 'c1' } });
+    expect(noUrl.isError).toBe(true);
+    const priv = await client.callTool({
+      name: 'upload_pdf',
+      arguments: { course: 'c1', url: 'https://127.0.0.1/x.pdf' },
+    });
+    expect(priv.isError).toBe(true);
+    const content = priv.content as { type: string; text: string }[];
+    expect(content).toHaveLength(1);
+    expect(content[0]?.text).not.toContain('127.0.0.1');
   });
 });
 

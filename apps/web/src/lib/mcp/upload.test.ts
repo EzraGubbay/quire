@@ -20,9 +20,18 @@ const setContentHash = vi.fn();
 vi.mock('./upload-store', () => ({ findNoteByTitle, findMarkdownDoc, findDuplicatePdf, setContentHash }));
 const resolveCourse = vi.fn();
 vi.mock('./courses', () => ({ resolveCourse }));
+const fetchPublicPdf = vi.fn();
+vi.mock('./safe-fetch', () => ({ fetchPublicPdf }));
 
-const { createUploadLinkTool, ingestPdf, raceDeadline, splitTitle, uploadMarkdown, uploadStatusTool } =
-  await import('./upload');
+const {
+  createUploadLinkTool,
+  ingestPdf,
+  raceDeadline,
+  splitTitle,
+  uploadMarkdown,
+  uploadPdfFromUrl,
+  uploadStatusTool,
+} = await import('./upload');
 const { __storeForTests, setStatus } = await import('./upload-links');
 
 const project = { id: 'p1', slug: 'algo', name: 'Algorithms', kind: 'course' };
@@ -428,5 +437,51 @@ describe('raceDeadline', () => {
     err.mockRestore();
     const ok = { status: 'created' } as never;
     expect(await raceDeadline(Promise.resolve(ok), 1000)).toBe(ok);
+  });
+});
+
+describe('uploadPdfFromUrl', () => {
+  beforeEach(() => {
+    fetchPublicPdf.mockResolvedValue({
+      data: pdfBytes,
+      fileName: 'paper.pdf',
+      finalUrl: 'https://arxiv.org/pdf/1',
+    });
+  });
+  it('requires a url', async () => {
+    await expect(uploadPdfFromUrl({ course: 'algo' })).rejects.toThrow(/url/);
+    expect(fetchPublicPdf).not.toHaveBeenCalled();
+  });
+  it('fetches, passes sourceUrl through and creates', async () => {
+    const r = await uploadPdfFromUrl({ course: 'algo', url: 'https://arxiv.org/pdf/1', title: 'Paper' });
+    expect(fetchPublicPdf).toHaveBeenCalledWith('https://arxiv.org/pdf/1');
+    expect(createPdfDocument).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({
+        fileName: 'paper.pdf',
+        sourceUrl: 'https://arxiv.org/pdf/1',
+        meta: { title: 'Paper' },
+      }),
+    );
+    expect(r.status).toBe('created');
+  });
+  it('propagates fetch refusals without creating anything', async () => {
+    fetchPublicPdf.mockRejectedValue(new Error('That URL points to a private or local network address'));
+    await expect(uploadPdfFromUrl({ course: 'algo', url: 'https://10.0.0.1/x.pdf' })).rejects.toThrow(
+      /private/,
+    );
+    expect(createPdfDocument).not.toHaveBeenCalled();
+  });
+  it('returns processing at the deadline without an unhandled rejection', async () => {
+    process.env.MCP_UPLOAD_DEADLINE_MS = '10';
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    createPdfDocument.mockImplementation(
+      () => new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 40)),
+    );
+    const r = await uploadPdfFromUrl({ course: 'algo', url: 'https://arxiv.org/pdf/1' });
+    expect(r.status).toBe('processing');
+    await vi.waitFor(() => expect(err).toHaveBeenCalled());
+    err.mockRestore();
+    delete process.env.MCP_UPLOAD_DEADLINE_MS;
   });
 });
