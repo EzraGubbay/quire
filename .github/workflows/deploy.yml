@@ -127,6 +127,43 @@ jobs:
           fi
           chmod --reference=.env "$tmp"
           mv -f "$tmp" .env
+      - name: Sync Drive inbox credential into .env
+        working-directory: /srv/quire
+        # Same discipline as the FCM step above. Upserts (or removes, when empty) DRIVE_SERVICE_ACCOUNT_JSON_BASE64
+        # (a secret: only ever in the environment and stdin, never argv or the log) and QUIRE_DRIVE_INBOX_FOLDER_ID
+        # (a Drive id, not secret). A malformed value fails the step without being echoed. The new file is built
+        # under umask 077, given .env's mode, then renamed over .env atomically. Rotating the key = update the
+        # Actions secret, then run this workflow by hand (workflow_dispatch).
+        shell: bash
+        env:
+          DRIVE_B64: ${{ secrets.DRIVE_SERVICE_ACCOUNT_JSON_BASE64 }}
+          DRIVE_FOLDER: ${{ vars.QUIRE_DRIVE_INBOX_FOLDER_ID }}
+        run: |
+          set -euo pipefail
+          test -f .env || { echo "/srv/quire/.env missing (see infra/.env.example)"; exit 1; }
+          value=$(printf '%s' "${DRIVE_B64:-}" | tr -d '\r\n ')
+          folder=$(printf '%s' "${DRIVE_FOLDER:-}" | tr -d '\r\n ')
+          if [[ -n "$value" && ! "$value" =~ ^[A-Za-z0-9+/_=-]+$ ]]; then
+            echo "::error::DRIVE_SERVICE_ACCOUNT_JSON_BASE64 is not one-line base64 after stripping whitespace (value not shown)"
+            exit 1
+          fi
+          if [[ -n "$folder" && ! "$folder" =~ ^[A-Za-z0-9_-]{10,200}$ ]]; then
+            echo "::error::QUIRE_DRIVE_INBOX_FOLDER_ID is not a Drive folder id (value not shown)"
+            exit 1
+          fi
+          umask 077
+          tmp=$(mktemp .env.drive.XXXXXX)
+          trap 'rm -f "$tmp"' EXIT
+          grep -v -e '^DRIVE_SERVICE_ACCOUNT_JSON_BASE64=' -e '^QUIRE_DRIVE_INBOX_FOLDER_ID=' < .env > "$tmp" || [ $? -eq 1 ]
+          if [[ -n "$value" && -n "$folder" ]]; then
+            printf 'DRIVE_SERVICE_ACCOUNT_JSON_BASE64=%s\n' "$value" >> "$tmp"
+            printf 'QUIRE_DRIVE_INBOX_FOLDER_ID=%s\n' "$folder" >> "$tmp"
+            echo "drive inbox: credential and folder id written to .env"
+          else
+            echo "drive inbox disabled: credential or folder id not set"
+          fi
+          chmod --reference=.env "$tmp"
+          mv -f "$tmp" .env
       - name: Pull, migrate, restart
         working-directory: /srv/quire
         env:

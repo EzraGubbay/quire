@@ -23,12 +23,15 @@ import {
   readFileBytes,
   resolveFile,
 } from './courses';
+import { driveConfig } from './drive/config';
+import { registerDriveTools } from './drive/tools';
 import {
   createUploadLinkTool,
   kb,
   mcpWriteEnabled,
   uploadLimits,
   uploadMarkdown,
+  uploadPdfFromUrl,
   uploadStatusTool,
 } from './upload';
 
@@ -199,6 +202,23 @@ function registerWriteTools(server: McpServer): void {
   );
 
   server.tool(
+    'upload_pdf',
+    'WRITES to Quire: downloads a PDF from a public https URL (the server fetches it, max 50 MB) into a ' +
+      "course's Documents. Public https URL only (no logins, no private or local addresses; pass the direct " +
+      'PDF link, e.g. https://arxiv.org/pdf/<id>); for a local file use create_upload_link. The same PDF ' +
+      'already in the course is returned instead of a copy. Large PDFs may return status "processing"; ' +
+      'calling again is safe. Never edits or deletes.',
+    {
+      course: z.string().describe('course slug or id, from list_courses'),
+      url: z.string().max(2048).describe('public https link to the PDF'),
+      title: z.string().optional().describe('1-200 characters; default: taken from the PDF'),
+      folder: z.string().optional().describe('existing Documents folder name or id; default: top level'),
+    },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    async (args) => text(await uploadPdfFromUrl(args)),
+  );
+
+  server.tool(
     'create_upload_link',
     'WRITES to Quire (via the link): creates a one-time upload URL (valid 10 minutes, single use) for an ' +
       "EXISTING local file, .pdf into a course's Documents or .md into its Notes or Documents. The file bytes " +
@@ -229,6 +249,9 @@ function registerWriteTools(server: McpServer): void {
     READ_ONLY,
     async ({ uploadId }) => text(uploadStatusTool({ uploadId })),
   );
+
+  const drive = driveConfig();
+  if (drive.enabled) registerDriveTools(server, drive);
 }
 
 export function registerQuireMcp(server: McpServer): void {

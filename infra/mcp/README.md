@@ -16,6 +16,10 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   (512 KB). Results are one JSON text item: `{status, section, course, noteId|fileId, title, folder, openUrl, next}`.
   Read tools carry `readOnlyHint: true`; the write tool is `readOnlyHint: false, destructiveHint: false,
   idempotentHint: true`, so clients can auto-allow reads and confirm writes.
+- **`upload_pdf`** (`course`, `url`, `title?`, `folder?`) — **writes**: the *server* downloads a public https PDF
+  into the course's Documents (the model passes only a URL). Use the direct PDF link (`https://arxiv.org/pdf/<id>`);
+  landing pages are not scraped. Same PDF again returns `duplicate`; very slow extractions return `processing`
+  after 40 s and finish in the background (calling again is safe). Max `MCP_UPLOAD_MAX_URL_BYTES` (50 MB).
 - **`create_upload_link`** (`course`, `section`: `documents`|`notes`, `filename` `.pdf`/`.md`/`.markdown`,
   `contentType?`, `title?`, `folder?`) — **writes (via the link)**. For an *existing local file* (no tool ever
   takes file bytes): mints a single-use `PUT` URL bound to that course, section, folder, filename and type. It
@@ -124,3 +128,59 @@ Verify locally (replace `$SLUG`; add the bearer header to the MCP calls if auth 
 # call create_upload_link via tools/call, then run the curl it returns; run it again: 410
 curl -s -o /dev/null -w '%{http_code}\n' -X PUT http://127.0.0.1:3000/api/upload-links/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA   # 410
 ```
+
+## Drive inbox (mobile/voice)
+
+For files Claude can save to Google Drive (PDFs, larger files, `.md`) when it cannot run curl, e.g. the Claude
+mobile app or voice mode. Claude never re-types the bytes into a Quire tool call.
+
+Flow: Claude saves the file into the Drive folder **"Quire Inbox"** (Drive connector `create_file`, `parentId` = the
+folder id; for `.md` set `contentMimeType: text/markdown` and `disableConversionToGoogleType: true`) -> calls
+`import_from_drive {fileId, course, section, folder?, title?}` -> Quire downloads it with its own read-only service
+account, checks it and ingests it (the same path and dedupe as `upload_markdown` / PDF uploads) -> the result names
+the exact `trash_file {fileId}` for Claude to call with the Drive connector (set `trash_file` to *Needs approval* in
+claude.ai). `drive_inbox_status {}` lists what is in the Inbox and which files are already imported.
+
+- Accepted: PDF (Documents only), Markdown (Notes or Documents), Google Docs (exported as Markdown). Caps: 80 MB PDF,
+  2 MB Markdown (`DRIVE_IMPORT_MAX_PDF_BYTES` / `DRIVE_IMPORT_MAX_MD_BYTES`), checked from Drive metadata before any
+  download and again while streaming. Imported PDFs carry no `sourceUrl` (a source URL would label them papers).
+- Idempotent: a PDF whose Drive `sha256Checksum` is already in the course returns `duplicate` without downloading.
+- A call still running after `MCP_UPLOAD_DEADLINE_MS` returns `status:"processing"`; retrying is safe. Do not trash
+  after `processing`, only after `created` / `duplicate`.
+
+**Setup** (one-off; the step-by-step list is `zz-your-steps-drive-inbox-upload.md`, kept by the maintainer): create the
+Drive folder, create a service account with no project roles and a JSON key, share the folder with the service account
+as **Viewer**, then set the GitHub Actions **secret** `DRIVE_SERVICE_ACCOUNT_JSON_BASE64` (base64 of the key JSON, one
+line) and **variable** `QUIRE_DRIVE_INBOX_FOLDER_ID`. `deploy.yml` writes both into `/srv/quire/.env`. If either is
+missing or invalid, the Drive tools are not registered and the log shows one line `[drive] disabled: <reason>`
+(`missing`, `bad_base64`, `bad_json`, `wrong_type`, `missing_field:*`, `bad_private_key`, `missing_folder`,
+`bad_folder`). They are also off when `MCP_WRITE_ENABLED=false`.
+
+**Security model**
+- The service account is dedicated (separate from the FCM one), has the `drive.readonly` scope and is a Viewer of the
+  Inbox only: Quire cannot write or delete anything in Drive. JWT signing uses `node:crypto`; no `googleapis` package.
+- Quire refuses any file that is not a direct child of the Inbox, even if the account could see it elsewhere.
+- Only `oauth2.googleapis.com` and `www.googleapis.com` are called, with a fixed base and the encoded file id.
+- The key, JWT, token, Drive response bodies and file names are never logged or returned; tool errors are fixed text.
+- Residual risk: prompt-injected content could make Claude import an Inbox file into a course (additive, deduped,
+  visible) or ask to trash a file; with `trash_file` on *Needs approval* each trash needs the user's tap.
+
+**Fallbacks.** Without the Drive route: `create_upload_link` (PUT with curl) where a shell exists, or share the file to
+the Quire Android app (its upload feature) for files generated on the phone.
+
+**Verify.** `drive_inbox_status {}` proves auth and the folder share. Then save a small PDF into the Inbox with
+`create_file`, call `import_from_drive` (expect `created`, then `duplicate`), and trash the Drive file with the id the
+result names. Also check: a file outside the Inbox -> "Quire can't see that Drive file"; a `.docx` -> unsupported;
+a PDF with `section:"notes"` -> refused. On the phone, check the text chat and the voice chat separately.
+
+## SSRF policy for `upload_pdf{url}`
+
+The fetch (`lib/mcp/safe-fetch.ts`) accepts only `https://` URLs without credentials on port 443. DNS is resolved
+once by the guard and the socket connects only to a vetted address (no rebinding window); a hostname is refused
+if *any* of its addresses is loopback, private (10/8, 172.16/12, 192.168/16), link-local/metadata (169.254/16),
+CGNAT/tailnet (100.64/10), multicast/reserved, or the IPv6 equivalents (including IPv4-mapped, NAT64 and 6to4).
+Redirects are followed by hand (max 3) and every hop is re-checked, so an https-to-http downgrade or a redirect
+to a private address fails. The response must be a 200 with `%PDF-` content, is capped at
+`MCP_UPLOAD_MAX_URL_BYTES` (aborted mid-stream) and the whole fetch has a 25 s budget. Errors never echo
+resolved addresses.
+- `MCP_UPLOAD_MAX_URL_BYTES` — max size of a fetched PDF (default `52428800`).
