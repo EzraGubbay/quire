@@ -32,12 +32,6 @@ function startsWithGuard(body: ts.Block): boolean {
 const hasExport = (n: ts.Node) =>
   ts.canHaveModifiers(n) && !!ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
 
-function actionFiles() {
-  return readdirSync(ACTIONS)
-    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-    .map((f) => path.join(ACTIONS, f));
-}
-
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
     const p = path.join(dir, e);
@@ -45,6 +39,11 @@ function walk(dir: string, out: string[] = []): string[] {
     else if (/\.(ts|tsx)$/.test(e)) out.push(p);
   }
   return out;
+}
+
+// Every non-test module under app/actions, nested ones included.
+function actionFiles() {
+  return walk(ACTIONS).filter((f) => !/\.test\.tsx?$/.test(f));
 }
 
 describe('Server Action session guard', () => {

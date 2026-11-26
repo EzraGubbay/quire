@@ -69,4 +69,4 @@ export function proxy(req: NextRequest, event: NextFetchEvent) {
   return withSession(req as never, event as never);
 }
 
-export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] };
+export const config = { matcher: ['/((?!_next/static/|_next/image$|favicon\\.ico$).*)'] };
