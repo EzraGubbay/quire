@@ -25,7 +25,7 @@ export default async function ThreadPage({
   const thread = await getThread(project.id, threadId);
   if (!thread) notFound();
   const [threads, messages, summary, scopeDoc, chat, docs] = await Promise.all([
-    listThreads(project.id, thread.documentId),
+    listThreads(project.id, thread.documentId, { includeId: threadId }),
     listMessages(threadId),
     spendSummary(),
     thread.documentId ? getDocument(project.id, thread.documentId) : Promise.resolve(undefined),
