@@ -5,6 +5,7 @@
 // client mints a new link). It lives on globalThis because Next can bundle the /mcp route and the PUT route
 // as separate module instances that must share it.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { ProjectKind } from '@quire/shared';
 
 const num = (v: string | undefined, d: number) => {
   const n = Number(v);
@@ -26,6 +27,8 @@ const MAX_STATUSES = 500;
 
 export interface LinkBinding {
   projectId: string;
+  /** The MCP scope that minted the link: the PUT only ingests into a project of this kind. */
+  scope: ProjectKind;
   section: 'notes' | 'documents';
   kind: 'pdf' | 'markdown';
   filename: string;
@@ -42,6 +45,8 @@ export interface Link extends LinkBinding {
 export type UploadState = 'pending' | 'processing' | 'created' | 'duplicate' | 'failed' | 'expired';
 export interface UploadStatus {
   uploadId: string;
+  /** The scope that minted the link; get_upload_status only reveals statuses of its own scope. */
+  scope: ProjectKind;
   state: UploadState;
   updatedAt: number;
   expiresAt?: number;
@@ -96,7 +101,7 @@ export function createLink(binding: LinkBinding): { token: string; uploadId: str
   const uploadId = randomUUID();
   const expiresAt = now() + cfg.ttlMs;
   links.set(hashToken(token), { ...binding, uploadId, expiresAt });
-  statuses.set(uploadId, { uploadId, state: 'pending', updatedAt: now(), expiresAt });
+  statuses.set(uploadId, { uploadId, scope: binding.scope, state: 'pending', updatedAt: now(), expiresAt });
   return { token, uploadId, expiresAt: new Date(expiresAt) };
 }
 
@@ -118,13 +123,15 @@ export function claimLink(token: string): Link | null {
 
 export function setStatus(uploadId: string, patch: Partial<Omit<UploadStatus, 'uploadId'>>): void {
   const { statuses } = store();
-  const cur = statuses.get(uploadId) ?? { uploadId, state: 'pending' as const, updatedAt: now() };
-  statuses.set(uploadId, { ...cur, ...patch, updatedAt: now() });
+  const cur = statuses.get(uploadId);
+  // A status is only ever created by createLink (which knows the scope); an unknown id is a no-op.
+  if (cur) statuses.set(uploadId, { ...cur, ...patch, updatedAt: now() });
 }
 
-export function getStatus(uploadId: string): UploadStatus | undefined {
+export function getStatus(uploadId: string, scope: ProjectKind): UploadStatus | undefined {
   sweep();
-  return store().statuses.get(uploadId);
+  const s = store().statuses.get(uploadId);
+  return s && s.scope === scope ? s : undefined;
 }
 
 /** Test hook: the raw store, to assert the token is never kept. */

@@ -4,6 +4,7 @@
 // set on imports: lib/mcp/courses.ts would classify such a document as a paper.
 import type { Project } from '@/db/schema';
 import { sha256 } from '@/lib/files';
+import { COURSE_SCOPE } from '../scope';
 import {
   hasPdfMagic,
   ingestMarkdown,
@@ -174,7 +175,11 @@ export async function importFromDrive(
       if (meta.sha256Checksum && sha256(data) !== meta.sha256Checksum) {
         throw new Error("The downloaded bytes did not match Drive's checksum; nothing was imported. Retry.");
       }
-      const r = await ingestPdf(project, { data, fileName: meta.name, title: args.title, folder });
+      const r = await ingestPdf(
+        project,
+        { data, fileName: meta.name, title: args.title, folder },
+        COURSE_SCOPE,
+      );
       return decorate(project, meta, r, now());
     }
     const bytes = await downloadOrExplain(
@@ -190,7 +195,7 @@ export async function importFromDrive(
     if (!md.trim()) throw new Error('That Drive file is empty.');
     const { title, body } = markdownFromFile(md, args.title, meta.name);
     if (!body.trim()) throw new Error('The Markdown has no text besides its title heading.');
-    const r = await ingestMarkdown(project, { section, title, body, folder });
+    const r = await ingestMarkdown(project, { section, title, body, folder }, COURSE_SCOPE);
     return decorate(project, meta, r, now());
   }
 

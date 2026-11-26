@@ -3,7 +3,7 @@ import {
   __storeForTests,
   claimLink,
   createLink,
-  getStatus,
+  getStatus as getStatusIn,
   type LinkBinding,
   peekLink,
   setClock,
@@ -13,6 +13,7 @@ import {
 
 const binding: LinkBinding = {
   projectId: 'p1',
+  scope: 'course',
   section: 'documents',
   kind: 'pdf',
   filename: 'a.pdf',
@@ -21,6 +22,8 @@ const binding: LinkBinding = {
   contentType: 'application/pdf',
   maxBytes: 100,
 };
+// The scope is an explicit, required argument; these tests exercise the course scope.
+const getStatus = (id: string) => getStatusIn(id, 'course');
 let t = 1_000_000;
 beforeEach(() => {
   t = 1_000_000;
@@ -89,7 +92,12 @@ describe('upload link store', () => {
     expect(getStatus(uploadId)).toMatchObject({ state: 'created', result: { fileId: 'f' } });
     t += 24 * 3600 * 1000 + 1;
     expect(getStatus(uploadId)).toBeUndefined();
-    for (let i = 0; i < 520; i++) setStatus(`u${i}`, { state: 'created' });
+    // setStatus never creates statuses (only createLink does), so seed real rows to exercise the count cap.
+    const { statuses } = __storeForTests();
+    for (let i = 0; i < 520; i++) {
+      statuses.set(`u${i}`, { uploadId: `u${i}`, scope: 'course', state: 'created', updatedAt: t + i });
+    }
+    expect(statuses.size).toBeGreaterThan(500);
     getStatus('x');
     expect(__storeForTests().statuses.size).toBeLessThanOrEqual(500);
     expect(getStatus('u0')).toBeUndefined();

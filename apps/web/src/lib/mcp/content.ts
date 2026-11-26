@@ -12,7 +12,8 @@ import { getDocument, getDocumentPages } from '@/lib/documents';
 import { filePath, readStoredFile } from '@/lib/files';
 import { openPdfAnalyzer, type PageAnalysis, type PdfAnalyzer } from '@/lib/pdf';
 import { renderPages } from '@/lib/slides';
-import { resolveCourse } from './courses';
+import { resolveInScope } from './resolve';
+import { COURSE_SCOPE, type McpScope } from './scope';
 
 /**
  * Characters of page text per get_file call. Hebrew and math cost more tokens per character than English,
@@ -170,11 +171,11 @@ export interface LoadedDoc {
   slug: string;
 }
 
-export async function loadDoc(course: string, fileId: string): Promise<LoadedDoc> {
-  const project = await resolveCourse(course);
-  if (!project) throw new Error(`No course found for "${course}"`);
+export async function loadDoc(course: string, fileId: string, scope: McpScope): Promise<LoadedDoc> {
+  const project = await resolveInScope(scope, course);
+  if (!project) throw new Error(`No ${scope.noun} found for "${course}"`);
   const doc = await getDocument(project.id, fileId);
-  if (!doc) throw new Error(`No file "${fileId}" in course "${project.slug}"`);
+  if (!doc) throw new Error(`No file "${fileId}" in ${scope.noun} "${project.slug}"`);
   return { doc, courseName: project.name, slug: project.slug };
 }
 

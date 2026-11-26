@@ -18,10 +18,10 @@ const projectIds: string[] = [];
 let tmp = '';
 const sha = async (b: Uint8Array) => (await import('@/lib/files')).sha256(b);
 
-async function newProject(): Promise<Project> {
+async function newProject(kind: 'course' | 'research' = 'course'): Promise<Project> {
   const [p] = await db
     .insert(projects)
-    .values({ slug: `mcp-upload-${RUN}-${projectIds.length}`, name: 'it', kind: 'course' })
+    .values({ slug: `mcp-upload-${RUN}-${projectIds.length}`, name: 'it', kind })
     .returning();
   if (!p) throw new Error('no project');
   projectIds.push(p.id);
@@ -102,5 +102,33 @@ describe.skipIf(!run)('MCP upload idempotency queries (integration)', () => {
     expect((await findMarkdownDoc(p.id, 'T', 'body'))?.id).toBe(d?.id);
     expect(await findMarkdownDoc(p.id, 'T', 'body2')).toBeUndefined();
     expect(await findMarkdownDoc(p.id, 't', 'body')).toBeUndefined();
+  });
+
+  it('research-scope markdown ingest creates a row and dedupes like a course', async () => {
+    const { ingestMarkdown } = await import('./upload');
+    const { RESEARCH_SCOPE } = await import('./scope');
+    const p = await newProject('research');
+    const a = { section: 'documents', title: 'RT', body: 'body', folder: { id: null, name: null } } as const;
+    const first = await ingestMarkdown(p, a, RESEARCH_SCOPE);
+    expect(first.status).toBe('created');
+    expect(first.project?.slug).toBe(p.slug);
+    const second = await ingestMarkdown(p, a, RESEARCH_SCOPE);
+    expect(second.status).toBe('duplicate');
+    expect(second.fileId).toBe(first.fileId);
+  });
+
+  it('research-scope ingestPdf creates a row and dedupes', async () => {
+    const { ingestPdf } = await import('./upload');
+    const { RESEARCH_SCOPE } = await import('./scope');
+    const { samplePdf } = await import('@/lib/testing/sample-pdf');
+    const p = await newProject('research');
+    const data = samplePdf();
+    const a = { data, fileName: 'r.pdf', folder: { id: null, name: null } };
+    const first = await ingestPdf(p, a, RESEARCH_SCOPE);
+    expect(first.status).toBe('created');
+    expect(first.project?.slug).toBe(p.slug);
+    const second = await ingestPdf(p, a, RESEARCH_SCOPE);
+    expect(second.status).toBe('duplicate');
+    expect(second.fileId).toBe(first.fileId);
   });
 });
