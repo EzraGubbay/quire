@@ -6,6 +6,7 @@ import {
   readRawPdf,
   readUpload,
   runUploadJob,
+  sanitizeUploadName,
   titleFromUpload,
   toUploadJob,
 } from './uploads';
@@ -145,6 +146,39 @@ describe('readUpload', () => {
   });
 });
 
+describe('PDF names always end in .pdf', () => {
+  const q = (n: string) => `?name=${encodeURIComponent(n)}`;
+  it('appends .pdf to extensionless or foreign names', async () => {
+    expect(await readUpload(pdf('x', {}, q('Lecture 3')))).toMatchObject({ fileName: 'Lecture 3.pdf' });
+    expect(await readUpload(pdf('x', {}, q('x.pptx')))).toMatchObject({ fileName: 'x.pptx.pdf' });
+    expect(await readUpload(pdf('x', {}, q('A.PDF')))).toMatchObject({ fileName: 'A.PDF' });
+  });
+  it('keeps the extension when a 300-char name is truncated', async () => {
+    const r = await readUpload(pdf('x', {}, q('a'.repeat(300))));
+    expect(r.ok && r.fileName.endsWith('.pdf') && [...r.fileName].length === 255).toBe(true);
+    const r2 = await readUpload(pdf('x', {}, q(`${'b'.repeat(300)}.pdf`)));
+    expect(r2.ok && r2.fileName.endsWith('.pdf')).toBe(true);
+  });
+  it('does not touch Markdown names', async () => {
+    expect(await readUpload(md('x', q('week1')))).toMatchObject({ fileName: 'week1' });
+  });
+});
+
+describe('sanitizeUploadName', () => {
+  it('strips control, C1, zero-width and bidi characters', () => {
+    expect(sanitizeUploadName('a\u0000b\u0085c\u202ed\u200be\ufefff.md', 'f')).toBe('abcdef.md');
+  });
+  it('falls back when nothing is left', () => {
+    expect(sanitizeUploadName('\u202e\u0001', 'fb.md')).toBe('fb.md');
+    expect(sanitizeUploadName(null, 'fb.md')).toBe('fb.md');
+  });
+  it('caps at 255 code points without splitting surrogate pairs', () => {
+    const out = sanitizeUploadName('😀'.repeat(300), 'f');
+    expect([...out]).toHaveLength(255);
+    expect(out).toBe('😀'.repeat(255));
+  });
+});
+
 describe('decodeMarkdown', () => {
   it('decodes UTF-8 and strips a BOM', () => {
     expect(decodeMarkdown(new TextEncoder().encode('שלום'))).toBe('שלום');
@@ -158,6 +192,7 @@ describe('decodeMarkdown', () => {
 describe('titleFromUpload', () => {
   it('derives the title from the file name', () => {
     expect(titleFromUpload('Lecture_03-notes.md')).toBe('Lecture 03 notes');
+    expect(titleFromUpload('todo.txt')).toBe('todo');
   });
   it('falls back to the first heading, then Untitled', () => {
     expect(titleFromUpload(null, 'intro\n# Heading\n')).toBe('Heading');

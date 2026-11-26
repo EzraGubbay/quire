@@ -78,7 +78,7 @@ paths:
               schema: { $ref: '#/components/schemas/Me' }
               example:
                 login: local
-                apiVersion: 1.1.0
+                apiVersion: 1.2.0
                 device: { id: 9e8d7c6b-5a49-4382-b1a0-0f1e2d3c4b5a, name: Pixel 9, createdAt: '2026-11-01T08:00:00Z' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/Internal' }
@@ -547,6 +547,8 @@ paths:
           application/pdf:
             schema: { type: string, format: binary }
           text/markdown:
+            schema: { type: string, format: binary }
+          text/x-markdown:
             schema: { type: string, format: binary }
       responses:
         '202':

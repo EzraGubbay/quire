@@ -1,7 +1,7 @@
 /** Shared by the background-upload route handlers; stays under next.config's 100 MB body ceilings. */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 /** Markdown (note / document) uploads from the mobile API. */
-export const MAX_NOTE_UPLOAD_BYTES = 2 * 1024 * 1024;
+export const MAX_MARKDOWN_UPLOAD_BYTES = 2 * 1024 * 1024;
 export const DECK_EXT = /\.(pdf|pptx?|key|odp)$/i;
 
 export const json = (body: Record<string, unknown>, status = 200) => Response.json(body, { status });

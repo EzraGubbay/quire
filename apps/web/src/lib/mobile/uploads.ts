@@ -1,7 +1,7 @@
 // Pure parts of the mobile upload endpoint (QMOB-E1-S8): header/raw-body readers, job mapping and the job runner.
 // The DB job store lives in uploads-store.ts. The runner takes the SAME ingestion functions the web upload route
 // uses (createDeckDocument + indexOwner) as injected deps; nothing is re-implemented here.
-import { MAX_NOTE_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from '@/lib/upload-limits';
+import { MAX_MARKDOWN_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from '@/lib/upload-limits';
 import type { UploadJob } from './schema';
 
 const MAX_KEY_LEN = 255;
@@ -68,14 +68,31 @@ export type ReadUpload =
 
 const MARKDOWN_TYPES = new Set(['text/markdown', 'text/x-markdown']);
 
-/** Basename only, control characters stripped, at most 255 chars; `fallback` when nothing usable is left. */
+const MAX_NAME_CODEPOINTS = 255;
+/** Invisible characters: C0/C1 controls, zero-width, bidi marks and overrides, BOM. */
+const isInvisible = (c: number) =>
+  c <= 0x1f ||
+  (c >= 0x7f && c <= 0x9f) ||
+  (c >= 0x200b && c <= 0x200f) ||
+  (c >= 0x202a && c <= 0x202e) ||
+  (c >= 0x2060 && c <= 0x2064) ||
+  (c >= 0x2066 && c <= 0x2069) ||
+  c === 0xfeff;
+
+/** Basename only, invisible/control characters stripped, at most 255 code points; `fallback` if nothing is left. */
 export function sanitizeUploadName(raw: string | null, fallback: string): string {
-  const printable = [...(raw ?? '')].filter((ch) => {
-    const c = ch.charCodeAt(0);
-    return c > 0x1f && c !== 0x7f;
-  });
-  const base = printable.join('').split(/[\\/]/).pop()?.trim() ?? '';
-  return base ? base.slice(0, 255) : fallback;
+  const visible = [...(raw ?? '')].filter((ch) => !isInvisible(ch.codePointAt(0) ?? 0)).join('');
+  const base = visible.split(/[\\/]/).pop()?.trim() ?? '';
+  return base ? [...base].slice(0, MAX_NAME_CODEPOINTS).join('') : fallback;
+}
+
+/**
+ * createDeckDocument picks PDF vs Office handling from the name, so a PDF body must carry a `.pdf` name whatever the
+ * client sent ("Lecture 3", "x.pptx"). The base is truncated so the extension survives the 255 cap.
+ */
+export function ensurePdfName(name: string): string {
+  if (/\.pdf$/i.test(name)) return name;
+  return `${[...name].slice(0, MAX_NAME_CODEPOINTS - 4).join('')}.pdf`;
 }
 
 /**
@@ -85,7 +102,7 @@ export function sanitizeUploadName(raw: string | null, fallback: string): string
  */
 export async function readUpload(
   req: Request,
-  limits: { pdf: number; markdown: number } = { pdf: MAX_UPLOAD_BYTES, markdown: MAX_NOTE_UPLOAD_BYTES },
+  limits: { pdf: number; markdown: number } = { pdf: MAX_UPLOAD_BYTES, markdown: MAX_MARKDOWN_UPLOAD_BYTES },
 ): Promise<ReadUpload> {
   const bad = (message: string) => ({ ok: false, code: 'invalid_request', message }) as const;
   const type = (req.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
@@ -96,10 +113,11 @@ export async function readUpload(
   const kind = params.get('kind') ?? 'document';
   if (kind !== 'document' && kind !== 'note') return bad('kind must be document or note');
   if (kind === 'note' && format === 'pdf') return bad('Notes accept Markdown only');
-  const fileName = sanitizeUploadName(
+  const cleaned = sanitizeUploadName(
     params.get('name'),
     format === 'pdf' ? 'mobile-upload.pdf' : 'mobile-upload.md',
   );
+  const fileName = format === 'pdf' ? ensurePdfName(cleaned) : cleaned;
   const max = format === 'pdf' ? limits.pdf : limits.markdown;
   const r = await readCapped(req, max);
   if (!r.ok)
@@ -125,7 +143,7 @@ export function decodeMarkdown(bytes: Uint8Array): string | null {
 /** Title from the file name (extension dropped, `_`/`-` runs to spaces), else the first `# ` heading, else Untitled. */
 export function titleFromUpload(fileName: string | null, markdown?: string): string {
   const fromName = (fileName ?? '')
-    .replace(/\.(md|markdown|pdf)$/i, '')
+    .replace(/\.(md|markdown|txt|text|pdf)$/i, '')
     .replace(/[_-]+/g, ' ')
     .trim();
   if (fromName) return fromName.slice(0, 200);

@@ -34,7 +34,7 @@ short-lived, single-use pairing code, and is shown exactly once (only its hash i
 
    ```sh
    curl "$BASE/api/mobile/v1/me" -H "Authorization: Bearer $TOKEN"
-   # {"login":"local","apiVersion":"1.1.0","device":{...}}
+   # {"login":"local","apiVersion":"1.2.0","device":{...}}
    ```
 
 4. Revoke the device (also possible from the web Settings page). Afterwards the token answers 401:
@@ -115,7 +115,7 @@ curl "$BASE/api/mobile/v1/uploads/$UPLOAD_ID" -H "Authorization: Bearer $TOKEN"
   comes from it.
 - Limits: PDF 100 MB, Markdown 2 MB of UTF-8 text (larger is `413`, invalid UTF-8 is `400`).
 - The job returns `kind` (`document` or `note`) and, once `done`, `fileId` (a document) or `noteId` (a note).
-- `Idempotency-Key` is required. The same key from the same device and course returns the original job, whatever
+- `Idempotency-Key` is required. The same key from the same account and course returns the original job, whatever
   the new body says. A `failed` job is final for its key: retry with a new key.
 - Uploads land in the course root (no folder targeting).
 

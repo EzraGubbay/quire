@@ -429,6 +429,16 @@ test.describe
         hasMarkdown: true,
       });
 
+      // The route also resolves the course by UUID.
+      const courseId = (
+        (await (await authedGet(request, `${BASE}/courses/${seeded.slug}`)).json()) as { id: string }
+      ).id;
+      const byId = await request.post(`${BASE}/courses/${courseId}/uploads?kind=note&name=byid.md`, {
+        headers: { ...bearer(), 'Idempotency-Key': `e2e-uuid-${stamp}`, 'Content-Type': 'text/markdown' },
+        data: Buffer.from('# by id\n'),
+      });
+      expect(byId.status()).toBe(202);
+
       // Same key => same job, no second note.
       const again = await post(`?kind=note&name=x.md`, `e2e-note-${stamp}`, '# Other\n');
       expect(((await again.json()) as { uploadId: string }).uploadId).toBe(nJob.uploadId);
