@@ -3,11 +3,11 @@
 // Only PUT is exported, so every other verb is a 405, and there is no CORS handling, so a cross-origin
 // browser PUT fails its preflight. Logs mention only the uploadId, never the token.
 
+import { scopeOf } from '@/lib/mcp/scope';
 import {
   ingestMarkdown,
   ingestPdf,
   markdownFromFile,
-  mcpWriteEnabled,
   raceDeadline,
   UploadError,
   type UploadResult,
@@ -50,11 +50,12 @@ async function readBody(
 }
 
 export async function PUT(req: Request, ctx: { params: Promise<{ token: string }> }): Promise<Response> {
-  if (!mcpWriteEnabled()) return json({ error: 'Not found.' }, 404);
   const { token } = await ctx.params;
   if (!TOKEN_RE.test(token)) return json({ error: GONE }, 410);
   const peeked = peekLink(token);
   if (!peeked) return json({ error: GONE }, 410);
+  // The link's own scope decides whether writes are on: the course and research flags are independent.
+  if (!scopeOf(peeked.scope).writeEnabled()) return json({ error: 'Not found.' }, 404);
 
   // Header problems do not consume the token: the user can fix the curl and retry.
   const lengthHeader = req.headers.get('content-length');
@@ -120,12 +121,15 @@ async function ingestUpload(
   const bytes = read.bytes;
 
   const project = await getProjectById(link.projectId);
-  if (!project || project.kind !== 'course') return fail('The course for this link no longer exists.', 422);
+  const scope = scopeOf(link.scope);
+  if (!project || project.kind !== link.scope) {
+    return fail(`The ${scope.noun} for this link no longer exists.`, 422);
+  }
   const folder = { id: link.folderId, name: link.folderName };
   let work: Promise<UploadResult>;
   try {
     if (link.kind === 'pdf') {
-      work = ingestPdf(project, { data: bytes, fileName: link.filename, title: link.title, folder });
+      work = ingestPdf(project, { data: bytes, fileName: link.filename, title: link.title, folder }, scope);
     } else {
       let text: string;
       try {
@@ -135,7 +139,7 @@ async function ingestUpload(
       }
       if (!text.trim()) return fail('The Markdown file is empty.', 422);
       const { title, body } = markdownFromFile(text, link.title, link.filename);
-      work = ingestMarkdown(project, { section: link.section, title, body, folder });
+      work = ingestMarkdown(project, { section: link.section, title, body, folder }, scope);
     }
   } catch (err) {
     if (err instanceof UploadError) return fail(err.message, 422);

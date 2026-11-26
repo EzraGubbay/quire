@@ -9,8 +9,9 @@ import { countDocuments, getDocument, listDocuments, listFolders, listPracticeEx
 import { filePath, readStoredFile } from '@/lib/files';
 import { listAssignments } from '@/lib/homework';
 import { lemidaFilesByProject } from '@/lib/lemida/files';
-import { getProjectById, getProjectBySlug, listProjects, projectMeta } from '@/lib/projects';
+import { listProjects, projectMeta } from '@/lib/projects';
 import { listSessions, sessionTitle } from '@/lib/sessions';
+import { COURSE_SCOPE, type McpScope, resolveProjectIn } from './scope';
 
 export type FileType = 'lecture' | 'recitation' | 'homework' | 'exam' | 'book' | 'paper' | 'other';
 export type FileFormat = 'pdf' | 'original' | 'markdown';
@@ -51,8 +52,6 @@ export interface LabelContext {
   lemidaByDocId: Map<string, LemidaKind>;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Label one document by its placement. First match wins. Pure — unit-tested against hand-built fixtures.
  * Current structural placement (a session, the practice-exam folder, a homework link) wins over the stored
@@ -90,10 +89,7 @@ export function labelDocument(
  * Resolve a course by slug or UUID. Only `kind='course'` projects resolve: a research project answers exactly
  * like a missing slug, so the course server neither serves nor confirms the existence of research projects.
  */
-export async function resolveCourse(course: string) {
-  const project = UUID_RE.test(course) ? await getProjectById(course) : await getProjectBySlug(course);
-  return project?.kind === 'course' ? project : undefined;
-}
+export const resolveCourse = (course: string) => resolveProjectIn(COURSE_SCOPE, course);
 
 /** All courses with cheap per-course file counts. */
 export async function listCourses(): Promise<CourseSummary[]> {
@@ -223,11 +219,12 @@ export async function resolveFile(
   course: string,
   fileId: string,
   format?: FileFormat,
+  scope: McpScope = COURSE_SCOPE,
 ): Promise<ResolvedFile> {
-  const project = await resolveCourse(course);
-  if (!project) throw new Error(`No course found for "${course}"`);
+  const project = await resolveProjectIn(scope, course);
+  if (!project) throw new Error(`No ${scope.noun} found for "${course}"`);
   const doc = await getDocument(project.id, fileId);
-  if (!doc) throw new Error(`No file "${fileId}" in course "${project.slug}"`);
+  if (!doc) throw new Error(`No file "${fileId}" in ${scope.noun} "${project.slug}"`);
   const chosen: FileFormat =
     format ?? (doc.filePath ? 'pdf' : doc.kind === 'markdown' ? 'markdown' : 'original');
   const base = { slug: project.slug, docId: doc.id, format: chosen };

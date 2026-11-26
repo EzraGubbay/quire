@@ -5,6 +5,7 @@
 // client mints a new link). It lives on globalThis because Next can bundle the /mcp route and the PUT route
 // as separate module instances that must share it.
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { ProjectKind } from '@quire/shared';
 
 const num = (v: string | undefined, d: number) => {
   const n = Number(v);
@@ -26,6 +27,8 @@ const MAX_STATUSES = 500;
 
 export interface LinkBinding {
   projectId: string;
+  /** The MCP scope that minted the link (default 'course'; the tools always pass it): the PUT only ingests into a project of this kind. */
+  scope?: ProjectKind;
   section: 'notes' | 'documents';
   kind: 'pdf' | 'markdown';
   filename: string;
@@ -35,13 +38,16 @@ export interface LinkBinding {
   contentType: string;
   maxBytes: number;
 }
-export interface Link extends LinkBinding {
+export interface Link extends Omit<LinkBinding, 'scope'> {
+  scope: ProjectKind;
   uploadId: string;
   expiresAt: number;
 }
 export type UploadState = 'pending' | 'processing' | 'created' | 'duplicate' | 'failed' | 'expired';
 export interface UploadStatus {
   uploadId: string;
+  /** The scope that minted the link; get_upload_status only reveals statuses of its own scope. */
+  scope?: ProjectKind;
   state: UploadState;
   updatedAt: number;
   expiresAt?: number;
@@ -85,7 +91,8 @@ function sweep(): void {
   }
 }
 
-export function createLink(binding: LinkBinding): { token: string; uploadId: string; expiresAt: Date } {
+export function createLink(input: LinkBinding): { token: string; uploadId: string; expiresAt: Date } {
+  const binding = { ...input, scope: input.scope ?? ('course' as const) };
   sweep();
   const cfg = linkConfig();
   const { links, statuses } = store();
@@ -96,7 +103,7 @@ export function createLink(binding: LinkBinding): { token: string; uploadId: str
   const uploadId = randomUUID();
   const expiresAt = now() + cfg.ttlMs;
   links.set(hashToken(token), { ...binding, uploadId, expiresAt });
-  statuses.set(uploadId, { uploadId, state: 'pending', updatedAt: now(), expiresAt });
+  statuses.set(uploadId, { uploadId, scope: binding.scope, state: 'pending', updatedAt: now(), expiresAt });
   return { token, uploadId, expiresAt: new Date(expiresAt) };
 }
 
@@ -122,9 +129,10 @@ export function setStatus(uploadId: string, patch: Partial<Omit<UploadStatus, 'u
   statuses.set(uploadId, { ...cur, ...patch, updatedAt: now() });
 }
 
-export function getStatus(uploadId: string): UploadStatus | undefined {
+export function getStatus(uploadId: string, scope: ProjectKind = 'course'): UploadStatus | undefined {
   sweep();
-  return store().statuses.get(uploadId);
+  const s = store().statuses.get(uploadId);
+  return s && s.scope === scope ? s : undefined;
 }
 
 /** Test hook: the raw store, to assert the token is never kept. */

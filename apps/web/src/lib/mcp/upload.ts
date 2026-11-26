@@ -7,12 +7,13 @@ import type { FolderScope } from '@quire/shared';
 import { revalidatePath } from 'next/cache';
 import type { Project } from '@/db/schema';
 import { indexOwner } from '@/lib/ai/index';
-import { createMarkdownDocument, createPdfDocument, listFolders } from '@/lib/documents';
+import { createMarkdownDocument, createPdfDocument, listFolders, type PdfUpload } from '@/lib/documents';
 import { sha256 } from '@/lib/files';
 import { createNote } from '@/lib/notes';
 import { projectBase } from '@/lib/projects';
-import { resolveCourse } from './courses';
+import { resolveInScope } from './resolve';
 import { fetchPublicPdf, hasPdfMagic } from './safe-fetch';
+import { COURSE_SCOPE, type McpScope, mcpWriteEnabled } from './scope';
 
 // Re-exported for existing importers (drive/import.ts).
 export { hasPdfMagic };
@@ -34,9 +35,8 @@ export const uploadLimits = () => ({
   deadlineMs: num(process.env.MCP_UPLOAD_DEADLINE_MS, 40_000),
 });
 
-/** Write tools are on unless MCP_WRITE_ENABLED is 0/false/off/no. Read per registration and per PUT. */
-export const mcpWriteEnabled = (): boolean =>
-  !['0', 'false', 'off', 'no'].includes((process.env.MCP_WRITE_ENABLED ?? '').trim().toLowerCase());
+// Re-exported for existing importers; the flag now lives with the scopes (scope.ts).
+export { mcpWriteEnabled };
 
 export const kb = (n: number) => `${Math.round(n / 1024)} KB`;
 export const mb = (n: number) => `${Math.round(n / (1024 * 1024))} MB`;
@@ -46,10 +46,10 @@ const MAX_TITLE = 200;
 /** A failure whose message is written for the user/model. Anything else is an internal error: log it, show a generic text. */
 export class UploadError extends Error {}
 
-export type UploadResult = {
+type Owner = { slug: string; name: string };
+type UploadResultBase = {
   status: 'created' | 'duplicate' | 'processing';
   section: 'notes' | 'documents';
-  course: { slug: string; name: string };
   fileId?: string;
   noteId?: string;
   title: string;
@@ -59,14 +59,20 @@ export type UploadResult = {
   openUrl?: string;
   next: string;
 };
+/** The owning project is keyed `course` on the course server (unchanged) and `project` on the research server. */
+// (Not a union, so Omit<UploadResult, …> in drive/import.ts keeps working: exactly one owner key is ever set.)
+export type UploadResult = UploadResultBase & { course?: Owner; project?: Owner };
 
-export async function resolveUploadCourse(course: string): Promise<Project> {
-  const project = await resolveCourse(course);
-  if (!project || project.kind !== 'course') {
-    throw new UploadError(`No course found for "${course}". Call list_courses for the valid slugs.`);
+export async function resolveUploadProject(ref: string, scope: McpScope = COURSE_SCOPE): Promise<Project> {
+  const project = await resolveInScope(scope, ref);
+  if (!project || project.kind !== scope.kind) {
+    throw new UploadError(`No ${scope.noun} found for "${ref}". Call ${scope.listTool} for the valid slugs.`);
   }
   return project;
 }
+
+/** Course-scope alias kept for drive/import.ts. */
+export const resolveUploadCourse = (course: string): Promise<Project> => resolveUploadProject(course);
 
 export interface ResolvedFolder {
   id: string | null;
@@ -176,11 +182,14 @@ function afterCreate(project: Project, kind: 'document' | 'note', id: string): v
   }
 }
 
-const courseOf = (p: Project) => ({ slug: p.slug, name: p.name });
+const ownerOf = (p: Project, scope: McpScope) => {
+  const owner = { slug: p.slug, name: p.name };
+  return scope.kind === 'course' ? { course: owner } : { project: owner };
+};
 const docUrl = (p: Project, id: string) => `${PUBLIC_BASE()}${projectBase(p)}/documents/${id}`;
 const noteUrl = (p: Project, slug: string) => `${PUBLIC_BASE()}${projectBase(p)}/notes/${slug}`;
-const readBack = (p: Project, id: string) =>
-  `Read it back with get_file {course:"${p.slug}", fileId:"${id}"}.`;
+const readBack = (p: Project, id: string, scope: McpScope) =>
+  `Read it back with get_file {${scope.arg}:"${p.slug}", fileId:"${id}"}.`;
 
 /** Where an existing item really lives (the requested folder is ignored by the duplicate lookups). */
 async function placeOf(
@@ -205,9 +214,10 @@ async function placeOf(
 export function ingestMarkdown(
   project: Project,
   a: { section: 'notes' | 'documents'; title: string; body: string; folder: ResolvedFolder },
+  scope: McpScope = COURSE_SCOPE,
 ): Promise<UploadResult> {
   const { section, title, body, folder } = a;
-  const base = { section, course: courseOf(project), title, folder: folder.name } as const;
+  const base = { section, ...ownerOf(project, scope), title, folder: folder.name } as const;
   // Note titles are case-insensitive-unique; document titles are not.
   const keyTitle = section === 'notes' ? title.toLowerCase() : title;
   const key = `md:${project.id}:${section}:${keyTitle}:${sha256(new TextEncoder().encode(body))}`;
@@ -229,7 +239,7 @@ export function ingestMarkdown(
         }
         throw new UploadError(
           `A note titled "${existing.title}" already exists in "${project.name}" (noteId ${existing.id}) with ` +
-            'different text. Note titles are unique per course (wiki links resolve by title); choose another title.',
+            `different text. Note titles are unique per ${scope.noun} (wiki links resolve by title); choose another title.`,
         );
       }
       const note = await createNote(project.id, title, body, { folderId: folder.id });
@@ -251,7 +261,7 @@ export function ingestMarkdown(
         folder: place.folder,
         fileId: existing.id,
         openUrl: docUrl(project, existing.id),
-        next: `This exact document already exists.${place.note} ${readBack(project, existing.id)}`,
+        next: `This exact document already exists.${place.note} ${readBack(project, existing.id, scope)}`,
       };
     }
     const doc = await createMarkdownDocument(project.id, title, body, folder.id);
@@ -261,18 +271,22 @@ export function ingestMarkdown(
       ...base,
       fileId: doc.id,
       openUrl: docUrl(project, doc.id),
-      next: readBack(project, doc.id),
+      next: readBack(project, doc.id, scope),
     };
   });
 }
 
-export async function uploadMarkdown(args: {
-  course: string;
-  section?: 'notes' | 'documents';
-  markdown: string;
-  title?: string;
-  folder?: string;
-}): Promise<UploadResult> {
+export async function uploadMarkdown(
+  args: {
+    /** The project reference: the `course` argument on the course server, `project` on the research server. */
+    course: string;
+    section?: 'notes' | 'documents';
+    markdown: string;
+    title?: string;
+    folder?: string;
+  },
+  scope: McpScope = COURSE_SCOPE,
+): Promise<UploadResult> {
   const section = args.section ?? 'notes';
   const limits = uploadLimits();
   if (!args.markdown.trim()) throw new UploadError('markdown is empty.');
@@ -283,9 +297,9 @@ export async function uploadMarkdown(args: {
   }
   const { title, body } = splitTitle(args.markdown, args.title);
   if (!body.trim()) throw new UploadError('markdown has no text besides its title heading.');
-  const project = await resolveUploadCourse(args.course);
+  const project = await resolveUploadProject(args.course, scope);
   const folder = await resolveFolder(project, section, args.folder);
-  return ingestMarkdown(project, { section, title, body, folder });
+  return ingestMarkdown(project, { section, title, body, folder }, scope);
 }
 
 /** Validate, dedupe, create, hash and index a PDF. The shared tail of every PDF source. */
@@ -297,7 +311,12 @@ export function ingestPdf(
     title?: string;
     folder: ResolvedFolder;
     sourceUrl?: string | null;
+    /** Paper identity and metadata (add_paper); passed through to createPdfDocument. */
+    arxivId?: string | null;
+    doi?: string | null;
+    meta?: PdfUpload['meta'];
   },
+  scope: McpScope = COURSE_SCOPE,
 ): Promise<UploadResult> {
   if (!hasPdfMagic(a.data)) return Promise.reject(new UploadError('That is not a PDF (no %PDF header).'));
   const title = a.title?.trim() ? checkTitle(a.title) : undefined;
@@ -310,14 +329,14 @@ export function ingestPdf(
       return {
         status: 'duplicate',
         section: 'documents',
-        course: courseOf(project),
+        ...ownerOf(project, scope),
         fileId: existing.id,
         title: existing.title,
         folder: place.folder,
         pageCount: existing.pageCount,
         sizeBytes: existing.fileSize ?? a.data.byteLength,
         openUrl: docUrl(project, existing.id),
-        next: `This PDF is already in the course; nothing was written.${place.note} ${readBack(project, existing.id)}`,
+        next: `This PDF is already in the ${scope.noun}; nothing was written.${place.note} ${readBack(project, existing.id, scope)}`,
       };
     }
     let doc: Awaited<ReturnType<typeof createPdfDocument>>;
@@ -327,7 +346,9 @@ export function ingestPdf(
         data: a.data,
         folderId: a.folder.id,
         sourceUrl: a.sourceUrl ?? null,
-        meta: title ? { title } : undefined,
+        ...(a.arxivId ? { arxivId: a.arxivId } : {}),
+        ...(a.doi ? { doi: a.doi } : {}),
+        meta: a.meta ? { ...a.meta, ...(title ? { title } : {}) } : title ? { title } : undefined,
       });
     } catch (err) {
       throw new UploadError(`Could not read that PDF: ${(err as Error).message}`);
@@ -337,14 +358,14 @@ export function ingestPdf(
     return {
       status: 'created',
       section: 'documents',
-      course: courseOf(project),
+      ...ownerOf(project, scope),
       fileId: doc.id,
       title: doc.title,
       folder: a.folder.name,
       pageCount: doc.pageCount,
       sizeBytes: a.data.byteLength,
       openUrl: docUrl(project, doc.id),
-      next: readBack(project, doc.id),
+      next: readBack(project, doc.id, scope),
     };
   });
 }
@@ -356,15 +377,16 @@ export const processingResult = (
   title: string,
   folder: ResolvedFolder,
   sizeBytes?: number,
+  scope: McpScope = COURSE_SCOPE,
 ): UploadResult => ({
   status: 'processing',
   section,
-  course: courseOf(project),
+  ...ownerOf(project, scope),
   title,
   folder: folder.name,
   sizeBytes,
   next:
-    'Still extracting; it will appear in list_course_files shortly. Calling this tool again with the same ' +
+    `Still extracting; it will appear in ${scope.filesTool} shortly. Calling this tool again with the same ` +
     'input is safe and will not duplicate it.',
 });
 
@@ -373,14 +395,17 @@ const mediaType = (ct: string) => ct.split(';')[0]?.trim().toLowerCase() ?? '';
 /** Single-quote a string for a POSIX shell. */
 const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
-export async function createUploadLinkTool(args: {
-  course: string;
-  section: 'documents' | 'notes';
-  filename: string;
-  contentType?: string;
-  title?: string;
-  folder?: string;
-}) {
+export async function createUploadLinkTool(
+  args: {
+    course: string;
+    section: 'documents' | 'notes';
+    filename: string;
+    contentType?: string;
+    title?: string;
+    folder?: string;
+  },
+  scope: McpScope = COURSE_SCOPE,
+) {
   const filename = args.filename.trim();
   if (/[\\/\0]/.test(filename)) throw new UploadError('filename must be a bare file name, without / or \\.');
   if (filename.replace(/\.[^.]*$/, '').length > 200)
@@ -406,11 +431,12 @@ export async function createUploadLinkTool(args: {
     contentType = given;
   }
   const title = args.title?.trim() ? checkTitle(args.title) : undefined;
-  const project = await resolveUploadCourse(args.course);
+  const project = await resolveUploadProject(args.course, scope);
   const folder = await resolveFolder(project, args.section, args.folder);
   const cfg = linkConfig();
   const binding: LinkBinding = {
     projectId: project.id,
+    scope: scope.kind,
     section: args.section,
     kind,
     filename: filename.slice(0, 255),
@@ -429,7 +455,7 @@ export async function createUploadLinkTool(args: {
     expiresAt: expiresAt.toISOString(),
     maxBytes: binding.maxBytes,
     contentType,
-    course: courseOf(project),
+    ...ownerOf(project, scope),
     section: args.section,
     folder: folder.name,
     curl: `curl --fail-with-body -sS -T ${shq(`./${filename}`)} -H ${shq(`content-type: ${contentType}`)} ${shq(uploadUrl)}`,
@@ -440,8 +466,11 @@ export async function createUploadLinkTool(args: {
   };
 }
 
-export function uploadStatusTool(args: { uploadId: string }): UploadStatus | string {
-  const s = getStatus(args.uploadId.trim());
+export function uploadStatusTool(
+  args: { uploadId: string },
+  scope: McpScope = COURSE_SCOPE,
+): UploadStatus | string {
+  const s = getStatus(args.uploadId.trim(), scope.kind);
   if (!s) {
     return 'Unknown uploadId: the link may be older than 24 h or the server restarted; create a new link with create_upload_link.';
   }
@@ -450,22 +479,25 @@ export function uploadStatusTool(args: { uploadId: string }): UploadStatus | str
 }
 
 /** upload_pdf{url}: the server fetches a public https PDF (SSRF-guarded) and ingests it. */
-export async function uploadPdfFromUrl(args: {
-  course: string;
-  url?: string;
-  title?: string;
-  folder?: string;
-}): Promise<UploadResult> {
+export async function uploadPdfFromUrl(
+  args: {
+    course: string;
+    url?: string;
+    title?: string;
+    folder?: string;
+  },
+  scope: McpScope = COURSE_SCOPE,
+): Promise<UploadResult> {
   if (!args.url?.trim())
     throw new Error('Pass `url`: a public https link to a PDF. For a local file use create_upload_link.');
   const title = args.title?.trim() ? checkTitle(args.title) : undefined;
-  const project = await resolveUploadCourse(args.course);
+  const project = await resolveUploadProject(args.course, scope);
   const folder = await resolveFolder(project, 'documents', args.folder);
   const started = Date.now();
   const { data, fileName } = await fetchPublicPdf(args.url.trim());
-  const work = ingestPdf(project, { data, fileName, title, folder, sourceUrl: args.url.trim() });
+  const work = ingestPdf(project, { data, fileName, title, folder, sourceUrl: args.url.trim() }, scope);
   // Fetch + ingest must answer inside the client's 60 s: give ingest what is left of ~50 s (at least 5 s).
   const budget = Math.min(uploadLimits().deadlineMs, Math.max(5_000, 50_000 - (Date.now() - started)));
   const result = await raceDeadline(work, budget);
-  return result ?? processingResult(project, 'documents', title ?? fileName, folder, data.byteLength);
+  return result ?? processingResult(project, 'documents', title ?? fileName, folder, data.byteLength, scope);
 }
