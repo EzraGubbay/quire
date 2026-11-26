@@ -20,6 +20,10 @@ const PUBLIC_PREFIXES = [
   '/api/mobile/v1/',
 ];
 
+// Single-use MCP upload links: PUT to exactly one 43-char token segment, authorized solely by that token
+// (see lib/mcp/upload-links.ts). Deliberately not a prefix: deeper paths must stay session-gated.
+const UPLOAD_LINK_PUT = /^\/api\/upload-links\/[A-Za-z0-9_-]{43}$/;
+
 function bearerOk(req: NextRequest): boolean {
   const key = process.env.QUIRE_API_KEY;
   if (!key) return false;
@@ -42,6 +46,7 @@ const withSession = auth((req) => {
 export function proxy(req: NextRequest, event: NextFetchEvent) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (req.method === 'PUT' && UPLOAD_LINK_PUT.test(pathname)) return NextResponse.next();
   if (AUTH_MODE === 'none') return NextResponse.next();
   if (bearerOk(req)) return NextResponse.next();
   if (!githubConfigured) {
