@@ -53,6 +53,7 @@ describe('assertFetchableUrl', () => {
     'https://2130706433/',
     'https://0x7f.1/',
     'https://[::ffff:127.0.0.1]/',
+    'https://[::127.0.0.1]/',
     'https://100.102.3.115/x.pdf',
     'not a url',
   ])('rejects %s', (u) => expect(() => assertFetchableUrl(u)).toThrow(FetchRefused));
@@ -139,6 +140,16 @@ const go = (steps: Step[], opts = {}) => {
     p: fetchPublicPdf('https://example.com/dir/Lecture%203', { request: f.request, lookup, ...opts }),
   };
 };
+
+describe('default request wiring', () => {
+  it('routes the real https.request through the guarded lookup (no network)', async () => {
+    const err = await fetchPublicPdf('https://evil.test/x', {
+      lookup: makeGuardedLookup(async () => [{ address: '127.0.0.1', family: 4 }]),
+    }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(FetchRefused);
+    expect((err as Error).message).toMatch(/private or local/);
+  });
+});
 
 describe('fetchPublicPdf', () => {
   it('returns bytes with the filename from content-disposition, then from the path', async () => {

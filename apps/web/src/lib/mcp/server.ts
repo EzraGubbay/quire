@@ -210,7 +210,7 @@ function registerWriteTools(server: McpServer): void {
       'calling again is safe. Never edits or deletes.',
     {
       course: z.string().describe('course slug or id, from list_courses'),
-      url: z.string().describe('public https link to the PDF'),
+      url: z.string().max(2048).describe('public https link to the PDF'),
       title: z.string().optional().describe('1-200 characters; default: taken from the PDF'),
       folder: z.string().optional().describe('existing Documents folder name or id; default: top level'),
     },

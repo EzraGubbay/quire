@@ -12,7 +12,7 @@ import { sha256 } from '@/lib/files';
 import { createNote } from '@/lib/notes';
 import { projectBase } from '@/lib/projects';
 import { resolveCourse } from './courses';
-import { fetchPublicPdf } from './safe-fetch';
+import { fetchPublicPdf, hasPdfMagic } from './safe-fetch';
 import { createLink, getStatus, type LinkBinding, linkConfig, type UploadStatus } from './upload-links';
 import { findDuplicatePdf, findMarkdownDoc, findNoteByTitle, setContentHash } from './upload-store';
 
@@ -284,11 +284,6 @@ export async function uploadMarkdown(args: {
   return ingestMarkdown(project, { section, title, body, folder });
 }
 
-/** `%PDF-` within the first KB, as the PDF spec allows. */
-export function hasPdfMagic(data: Uint8Array): boolean {
-  return Buffer.from(data.subarray(0, 1024)).includes('%PDF-');
-}
-
 /** Validate, dedupe, create, hash and index a PDF. The shared tail of every PDF source. */
 export function ingestPdf(
   project: Project,
@@ -462,8 +457,11 @@ export async function uploadPdfFromUrl(args: {
   const title = args.title?.trim() ? checkTitle(args.title) : undefined;
   const project = await resolveUploadCourse(args.course);
   const folder = await resolveFolder(project, 'documents', args.folder);
+  const started = Date.now();
   const { data, fileName } = await fetchPublicPdf(args.url.trim());
   const work = ingestPdf(project, { data, fileName, title, folder, sourceUrl: args.url.trim() });
-  const result = await raceDeadline(work, uploadLimits().deadlineMs);
+  // Fetch + ingest must answer inside the client's 60 s: give ingest what is left of ~50 s (at least 5 s).
+  const budget = Math.min(uploadLimits().deadlineMs, Math.max(5_000, 50_000 - (Date.now() - started)));
+  const result = await raceDeadline(work, budget);
   return result ?? processingResult(project, 'documents', title ?? fileName, folder, data.byteLength);
 }

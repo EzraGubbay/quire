@@ -6,6 +6,11 @@ import dns from 'node:dns';
 import https from 'node:https';
 import net from 'node:net';
 
+const envNum = (v: string | undefined, d: number) => {
+  const n = Number(v);
+  return v !== undefined && v !== '' && Number.isFinite(n) && n > 0 ? n : d;
+};
+
 export class FetchRefused extends Error {}
 
 const PRIVATE_MSG =
@@ -30,9 +35,13 @@ for (const [a, p] of [
 ] as const) {
   blocked.addSubnet(a, p, 'ipv4');
 }
-blocked.addAddress('::', 'ipv6');
-blocked.addAddress('::1', 'ipv6');
 for (const [a, p] of [
+  ['::', 96], // unspecified, loopback and IPv4-compatible (::127.0.0.1)
+  ['::ffff:0:0:0', 96], // IPv4-translated
+  ['100::', 64], // discard-only
+  ['2001::', 32], // Teredo
+  ['fec0::', 10], // deprecated site-local
+  ['64:ff9b:1::', 48], // local-use NAT64
   ['fc00::', 7],
   ['fe80::', 10],
   ['ff00::', 8],
@@ -48,15 +57,22 @@ export function isBlockedAddress(ip: string): boolean {
   const addr = ip.replace(/^\[|\]$/g, '');
   if (net.isIPv4(addr)) return blocked.check(addr, 'ipv4');
   if (!net.isIPv6(addr)) return true; // not an address at all: refuse
-  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(addr);
+  // Canonicalize (0:0:0:0:0:ffff:7f00:1 -> ::ffff:7f00:1) so the mapped-address checks see one spelling.
+  let v6 = addr;
+  try {
+    v6 = new URL(`https://[${addr}]/`).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return true;
+  }
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(v6);
   if (dotted?.[1]) return blocked.check(dotted[1], 'ipv4');
-  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(addr);
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(v6);
   if (hex?.[1] && hex[2]) {
     const hi = Number.parseInt(hex[1], 16);
     const lo = Number.parseInt(hex[2], 16);
     return blocked.check(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`, 'ipv4');
   }
-  return blocked.check(addr, 'ipv6');
+  return blocked.check(v6, 'ipv6');
 }
 
 /** Parses and vets a URL before any network use. WHATWG parsing canonicalizes decimal/hex IPv4 hosts. */
@@ -128,7 +144,8 @@ export type RequestFn = (
 ) => FetchRequest;
 
 const defaultRequest: RequestFn = (url, options, onResponse) =>
-  https.request(url, { ...options, method: 'GET', lookup: options.lookup as never }, (res) =>
+  // agent:false = a fresh, unpooled socket per request, so a pooled unguarded connection is never reused.
+  https.request(url, { ...options, method: 'GET', agent: false, lookup: options.lookup as never }, (res) =>
     onResponse(res as unknown as FetchResponse),
   ) as unknown as FetchRequest;
 
@@ -170,13 +187,14 @@ function fileNameFrom(disposition: string | undefined, finalUrl: URL): string {
   return name || 'document.pdf';
 }
 
-const hasPdfMagic = (d: Uint8Array) => Buffer.from(d.subarray(0, 1024)).includes('%PDF-');
+/** `%PDF-` within the first KB, as the PDF spec allows. */
+export const hasPdfMagic = (d: Uint8Array) => Buffer.from(d.subarray(0, 1024)).includes('%PDF-');
 
 export async function fetchPublicPdf(
   rawUrl: string,
   opts: FetchOptions = {},
 ): Promise<{ data: Uint8Array; fileName: string; finalUrl: string }> {
-  const maxBytes = opts.maxBytes ?? Number(process.env.MCP_UPLOAD_MAX_URL_BYTES ?? 50 * 1024 * 1024);
+  const maxBytes = opts.maxBytes ?? envNum(process.env.MCP_UPLOAD_MAX_URL_BYTES, 50 * 1024 * 1024);
   const timeoutMs = opts.timeoutMs ?? 25_000;
   const headersTimeoutMs = opts.headersTimeoutMs ?? 10_000;
   const maxRedirects = opts.maxRedirects ?? 3;
@@ -188,6 +206,7 @@ export async function fetchPublicPdf(
   let url = assertFetchableUrl(rawUrl);
   for (let hop = 0; ; hop++) {
     const current = url;
+    const sniHost = current.hostname.replace(/^\[|\]$/g, '');
     const outcome = await new Promise<
       { kind: 'redirect'; location: string } | { kind: 'body'; data: Uint8Array; res: FetchResponse }
     >((resolve, reject) => {
@@ -217,7 +236,7 @@ export async function fetchPublicPdf(
           current,
           {
             lookup,
-            servername: net.isIP(current.hostname) ? undefined : current.hostname,
+            servername: net.isIP(sniHost) ? undefined : sniHost,
             headers: {
               'accept-encoding': 'identity',
               'user-agent': 'QuireMCP/1',

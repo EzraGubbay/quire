@@ -21,7 +21,10 @@ vi.mock('./upload-store', () => ({ findNoteByTitle, findMarkdownDoc, findDuplica
 const resolveCourse = vi.fn();
 vi.mock('./courses', () => ({ resolveCourse }));
 const fetchPublicPdf = vi.fn();
-vi.mock('./safe-fetch', () => ({ fetchPublicPdf }));
+vi.mock('./safe-fetch', async (orig) => ({
+  ...(await orig<typeof import('./safe-fetch')>()),
+  fetchPublicPdf,
+}));
 
 const {
   createUploadLinkTool,
