@@ -103,7 +103,7 @@ describe('importLemidaFile push trigger', () => {
   });
 
   it('a twin of a hand-uploaded document is recorded as duplicate and notifies nothing', async () => {
-    h.state.selects = [[], [], [{ id: 'doc-1' }]];
+    h.state.selects = [[], [], [{ id: 'doc-1' }], [{ id: 'doc-1' }]];
     const r = await run();
     expect(r).toMatchObject({ status: 'duplicate', duplicate: true });
     expect(notify).not.toHaveBeenCalled();
