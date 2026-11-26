@@ -265,44 +265,51 @@ describe.skipIf(!run)('importLemidaFile retry (integration)', () => {
     const lockGate = new Promise<void>((r) => {
       releaseLock = r;
     });
+    let markLocked!: () => void;
+    const locked = new Promise<void>((r) => {
+      markLocked = r;
+    });
     let lockerPid = 0;
     const locker = db.transaction(async (tx) => {
       const pidRows = await tx.execute(sql`select pg_backend_pid() as pid`);
       lockerPid = Number((pidRows[0] as { pid: number }).pid);
       await tx.execute(sql`select 1 from lemida_files where id = ${seeded.id} for update`);
+      markLocked();
       await lockGate;
     });
+    locker.catch(() => markLocked()); // a failed lock attempt must not hang the test
 
-    // Wait for the lock to be taken before starting B.
-    for (let i = 0; i < 100 && !lockerPid; i++) await new Promise((r) => setTimeout(r, 50));
-    expect(lockerPid).toBeGreaterThan(0);
-    await new Promise((r) => setTimeout(r, 100));
+    try {
+      await locked;
+      const bPromise = importLemidaFile(p, meta, data);
+      let blocked = false;
+      for (let i = 0; i < 100 && !blocked; i++) {
+        const res = await db.execute(
+          sql`select count(*)::int as n from pg_stat_activity where ${lockerPid}::int = any(pg_blocking_pids(pid))`,
+        );
+        blocked = Number((res[0] as { n: number }).n) >= 1;
+        if (!blocked) await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(blocked).toBe(true);
 
-    const bPromise = importLemidaFile(p, meta, data);
-    let blocked = false;
-    for (let i = 0; i < 100 && !blocked; i++) {
-      const res = await db.execute(
-        sql`select count(*)::int as n from pg_stat_activity where ${lockerPid}::int = any(pg_blocking_pids(pid))`,
-      );
-      blocked = Number((res[0] as { n: number }).n) >= 1;
-      if (!blocked) await new Promise((r) => setTimeout(r, 50));
+      // A's delete lands while B is blocked (A's release would have been a no-op: the row has no documentId yet).
+      const realDelete = (await vi.importActual<typeof import('@/lib/documents')>('@/lib/documents'))
+        .deleteDocument;
+      await realDelete(p.id, d.id);
+      releaseLock();
+      await locker;
+      const b = await bPromise;
+
+      expect(b).toMatchObject({ status: 'error', duplicate: false, error: TWIN_GONE });
+      const rows = await rowsFor(p.id, hash);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe('error');
+      expect(rows[0]?.placement.documentId).toBeUndefined();
+      expect(await docsFor(p.id)).toHaveLength(0);
+    } finally {
+      releaseLock();
+      await locker.catch(() => {});
     }
-    expect(blocked).toBe(true);
-
-    // A's delete lands while B is blocked (A's release would have been a no-op: the row has no documentId yet).
-    const realDelete = (await vi.importActual<typeof import('@/lib/documents')>('@/lib/documents'))
-      .deleteDocument;
-    await realDelete(p.id, d.id);
-    releaseLock();
-    await locker;
-    const b = await bPromise;
-
-    expect(b).toMatchObject({ status: 'error', duplicate: false, error: TWIN_GONE });
-    const rows = await rowsFor(p.id, hash);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe('error');
-    expect(rows[0]?.placement.documentId).toBeUndefined();
-    expect(await docsFor(p.id)).toHaveLength(0);
 
     await expectHealsOnRetry(p, data);
   });

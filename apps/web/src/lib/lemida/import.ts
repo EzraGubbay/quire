@@ -247,7 +247,7 @@ export async function importLemidaFile(
     if (createdDocId) {
       await deleteDocument(project.id, createdDocId).catch(() => {});
       // Even if the delete failed: a surviving document is just matched as a twin on the next retry.
-      await releaseDeletedPlacement(project.id, hash, createdDocId, (err as Error).message);
+      await releaseDeletedPlacement(project.id, hash, createdDocId, (err as Error)?.message ?? String(err));
     }
     return asResult(row, false);
   }
