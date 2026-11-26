@@ -37,6 +37,8 @@ services:
       # Claude generation routes (OpenAI still does embeddings + is the failover). Pick the route in Settings → AI.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # MCP upload tools (upload_markdown / upload_pdf). Set MCP_WRITE_ENABLED=false in .env to hide them.
+      MCP_WRITE_ENABLED: ${MCP_WRITE_ENABLED:-true}
       DISABLE_AUTOUPDATER: '1'
       GOTENBERG_URL: http://gotenberg:3000
       # Firebase service-account JSON, base64 on one line; written into .env by deploy.yml. Empty = push disabled.

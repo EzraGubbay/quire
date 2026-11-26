@@ -36,7 +36,8 @@ type ResourceHandler = (
 const tools = new Map<string, Handler>();
 let readResource: ResourceHandler;
 registerQuireMcp({
-  tool: (name: string, _d: string, _s: unknown, h: Handler) => tools.set(name, h),
+  // tool(name, description, shape, [annotations,] handler): the handler is always last.
+  tool: (name: string, ...rest: unknown[]) => tools.set(name, rest.at(-1) as Handler),
   resource: (_n: string, _t: unknown, h: ResourceHandler) => {
     readResource = h;
   },
