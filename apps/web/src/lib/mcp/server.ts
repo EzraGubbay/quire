@@ -1,6 +1,6 @@
 // Registers the Quire MCP server's tools and resources on an SDK McpServer. Auth-agnostic: the route wraps
-// this (bearer today, OAuth later) without touching anything here. Four read tools plus an additive write
-// tool (upload_markdown; off with MCP_WRITE_ENABLED=false) — nothing edits or deletes.
+// this (bearer today, OAuth later) without touching anything here. Four read tools plus additive write
+// tools (upload_markdown, create_upload_link, get_upload_status; off with MCP_WRITE_ENABLED=false) — nothing edits or deletes.
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import {
@@ -23,7 +23,14 @@ import {
   readFileBytes,
   resolveFile,
 } from './courses';
-import { kb, mcpWriteEnabled, uploadLimits, uploadMarkdown } from './upload';
+import {
+  createUploadLinkTool,
+  kb,
+  mcpWriteEnabled,
+  uploadLimits,
+  uploadMarkdown,
+  uploadStatusTool,
+} from './upload';
 
 const FORMATS = ['pdf', 'original', 'markdown'] as const;
 const READ_ONLY = { readOnlyHint: true } as const;
@@ -170,7 +177,8 @@ function registerWriteTools(server: McpServer): void {
     'WRITES to Quire: creates a new Markdown note (section="notes", the default) or Markdown document ' +
       '(section="documents") in a course, optionally inside an existing folder. Never edits or deletes. ' +
       'Re-sending the same title and text returns the existing item instead of a copy; note titles are ' +
-      `unique per course. Max ${kb(limits.maxMarkdownBytes)}. For Markdown you write yourself.`,
+      `unique per course. Max ${kb(limits.maxMarkdownBytes)}. For Markdown you write yourself; to upload an ` +
+      'existing .md file use create_upload_link.',
     {
       course: z.string().describe('course slug or id, from list_courses'),
       markdown: z
@@ -188,6 +196,38 @@ function registerWriteTools(server: McpServer): void {
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (args) => text(await uploadMarkdown(args)),
+  );
+
+  server.tool(
+    'create_upload_link',
+    'WRITES to Quire (via the link): creates a one-time upload URL (valid 10 minutes, single use) for an ' +
+      "EXISTING local file, .pdf into a course's Documents or .md into its Notes or Documents. The file bytes " +
+      'never pass through this tool: run the returned curl (PUT) on the machine that has the file, then check ' +
+      'get_upload_status. The same file uploaded again returns the existing item. Never edits or deletes.',
+    {
+      course: z.string().describe('course slug or id, from list_courses'),
+      section: z
+        .enum(['documents', 'notes'])
+        .describe('documents (PDF or Markdown) or notes (Markdown only)'),
+      filename: z.string().describe('name of the local file, ending in .pdf, .md or .markdown'),
+      contentType: z.string().optional().describe('default application/pdf or text/markdown'),
+      title: z.string().optional().describe('1-200 characters; default: from the file'),
+      folder: z
+        .string()
+        .optional()
+        .describe('existing folder name or id in that section; default: top level'),
+    },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    async (args) => text(await createUploadLinkTool(args)),
+  );
+
+  server.tool(
+    'get_upload_status',
+    'Report what an upload link produced: pending (not used yet), processing, created, duplicate, failed ' +
+      'or expired, with the new file or note id once done.',
+    { uploadId: z.string().describe('the uploadId returned by create_upload_link') },
+    READ_ONLY,
+    async ({ uploadId }) => text(uploadStatusTool({ uploadId })),
   );
 }
 

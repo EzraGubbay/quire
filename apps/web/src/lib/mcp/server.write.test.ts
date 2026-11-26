@@ -6,13 +6,19 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/documents', () => ({ createMarkdownDocument: vi.fn(), listFolders: vi.fn() }));
+vi.mock('@/lib/documents', () => ({
+  createMarkdownDocument: vi.fn(),
+  createPdfDocument: vi.fn(),
+  listFolders: vi.fn(),
+}));
 vi.mock('@/lib/notes', () => ({ createNote: vi.fn() }));
 vi.mock('@/lib/ai/index', () => ({ indexOwner: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('./upload-store', () => ({
   findNoteByTitle: vi.fn(),
   findMarkdownDoc: vi.fn(),
+  findDuplicatePdf: vi.fn(),
+  setContentHash: vi.fn(),
 }));
 vi.mock('./courses', () => ({
   resolveCourse: vi.fn(async () => ({ id: 'p1', slug: 'c1', name: 'C1', kind: 'course' })),
@@ -42,17 +48,23 @@ describe('write tool registration', () => {
   it('lists the write tool by default, with WRITES descriptions and non-destructive annotations', async () => {
     const { tools } = await (await connect()).listTools();
     const byName = new Map(tools.map((t) => [t.name, t]));
-    for (const name of ['upload_markdown']) {
+    for (const name of ['upload_markdown', 'create_upload_link']) {
       const t = byName.get(name);
-      expect(t?.description).toMatch(/^WRITES to Quire:/);
+      expect(t?.description).toMatch(/^WRITES to Quire/);
       expect(t?.annotations).toMatchObject({
         readOnlyHint: false,
         destructiveHint: false,
-        idempotentHint: true,
         openWorldHint: false,
       });
     }
-    for (const name of ['list_courses', 'list_course_files', 'get_file', 'get_page_images']) {
+    expect(byName.get('upload_markdown')?.annotations?.idempotentHint).toBe(true);
+    for (const name of [
+      'list_courses',
+      'list_course_files',
+      'get_file',
+      'get_page_images',
+      'get_upload_status',
+    ]) {
       expect(byName.get(name)?.annotations?.readOnlyHint).toBe(true);
     }
   });
@@ -60,7 +72,8 @@ describe('write tool registration', () => {
   it.each(['false', '0', 'off', 'No'])('hides the write tools when MCP_WRITE_ENABLED=%s', async (v) => {
     process.env.MCP_WRITE_ENABLED = v;
     const names = (await (await connect()).listTools()).tools.map((t) => t.name);
-    expect(names).not.toContain('upload_markdown');
+    for (const n of ['upload_markdown', 'create_upload_link', 'get_upload_status'])
+      expect(names).not.toContain(n);
     expect(names).toEqual(
       expect.arrayContaining(['list_courses', 'list_course_files', 'get_file', 'get_page_images']),
     );
@@ -92,6 +105,19 @@ describe('error semantics through the SDK', () => {
     const content = res.content as { type: string; text: string }[];
     expect(content).toHaveLength(1);
     expect(content[0]?.text).toMatch(/No title/);
+  });
+});
+
+describe('create_upload_link through the SDK', () => {
+  it('rejects a .docx with a single isError text item', async () => {
+    const res = await (await connect()).callTool({
+      name: 'create_upload_link',
+      arguments: { course: 'c1', section: 'documents', filename: 'x.docx' },
+    });
+    expect(res.isError).toBe(true);
+    const content = res.content as { type: string; text: string }[];
+    expect(content).toHaveLength(1);
+    expect(content[0]?.type).toBe('text');
   });
 });
 
