@@ -18,6 +18,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 FROM deps AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# CI's "Image build (deploy parity)" job builds this stage on every PR (.github/workflows/ci.yml).
 RUN pnpm --filter web build
 # pdf.js loads @napi-rs/canvas at runtime by name; Next's file tracer cannot follow that, so bundle the
 # package (and its platform binary) with pnpm's symlink layout intact for the runtime stage.
