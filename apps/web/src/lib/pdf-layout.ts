@@ -462,9 +462,7 @@ export function visualToLogical(tokens: Seq[], base: Dir): Piece[] {
   if (base === 'L') {
     // A right-to-left phrase with left-to-right words inside it (TeX \text{…} in a display) is one embedding.
     const first = seq.findIndex((t) => t.cls === 'R');
-    // (Not findLastIndex: the project's TypeScript lib is ES2022.)
-    let last = seq.length - 1;
-    while (last > first && (seq[last] as Seq).cls !== 'R') last--;
+    const last = seq.findLastIndex((t) => t.cls === 'R');
     if (last > first) {
       const span = seq.slice(first, last + 1);
       const count = (cls: Cls) => span.reduce((n, t) => n + (t.cls === cls ? (t.letters ?? 0) : 0), 0);
