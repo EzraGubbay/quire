@@ -21,6 +21,7 @@ import {
 import { downloadPdf, type PaperMeta, parseReference, resolveReference } from '@/lib/ingest';
 import { syncLinks } from '@/lib/notes';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 export interface ActionState {
   error?: string;
@@ -42,6 +43,7 @@ const optionalUuid = z
   .transform((v) => (v === '' ? null : v));
 
 export async function uploadPdfAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const slug = String(formData.get('slug') ?? '');
   const folderId = optionalUuid.safeParse(formData.get('folderId') ?? '');
   const file = formData.get('file');
@@ -73,6 +75,7 @@ const markdownSchema = z.object({
 });
 
 export async function createMarkdownAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = markdownSchema.safeParse({
     slug: formData.get('slug'),
     title: formData.get('title'),
@@ -98,6 +101,7 @@ const folderSchema = z.object({
 });
 
 export async function createFolderAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = folderSchema.safeParse({
     slug: formData.get('slug'),
     name: formData.get('name'),
@@ -111,6 +115,7 @@ export async function createFolderAction(_prev: ActionState, formData: FormData)
 }
 
 export async function renameFolderAction(slug: string, folderId: string, name: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const clean = name.trim().slice(0, 80);
   if (!clean) return;
@@ -119,6 +124,7 @@ export async function renameFolderAction(slug: string, folderId: string, name: s
 }
 
 export async function deleteFolderAction(slug: string, folderId: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteFolder(project.id, folderId);
   revalidatePath(`${projectBase(project)}/documents`);
@@ -129,12 +135,14 @@ export async function moveDocumentAction(
   documentId: string,
   folderId: string | null,
 ): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await moveDocument(project.id, documentId, folderId);
   revalidatePath(`${projectBase(project)}/documents`);
 }
 
 export async function deleteDocumentAction(slug: string, documentId: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteDocument(project.id, documentId);
   await removeOwner(project.id, 'document', documentId);
@@ -167,6 +175,7 @@ export async function updateDocumentAction(
   documentId: string,
   patch: z.input<typeof patchSchema>,
 ): Promise<ActionState> {
+  await requireSession();
   const parsed = patchSchema.safeParse(patch);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -187,6 +196,7 @@ const importSchema = z.object({
 
 /** Paste an arXiv id/URL, a DOI, or a direct PDF link: resolves metadata, downloads the PDF when one is known. */
 export async function importReferenceAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = importSchema.safeParse({
     slug: formData.get('slug'),
     reference: formData.get('reference'),
@@ -230,6 +240,7 @@ export async function importReferenceAction(_prev: ActionState, formData: FormDa
 
 /** Upload a PDF into a paper record that has metadata but no file yet. */
 export async function attachPdfAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const slug = String(formData.get('slug') ?? '');
   const documentId = String(formData.get('documentId') ?? '');
   const file = formData.get('file');

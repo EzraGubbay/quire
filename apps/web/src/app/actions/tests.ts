@@ -11,6 +11,7 @@ import { BudgetError } from '@/lib/ai/ledger';
 import { estimateTest, runReread, runTestGeneration, startTest, type TestEstimate } from '@/lib/ai/tests';
 import { removeStoredFile } from '@/lib/files';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 import { getTest } from '@/lib/tests';
 
 export interface ActionState {
@@ -29,6 +30,7 @@ export async function estimateTestAction(
   kind: 'weekly' | 'triweekly',
   sessionIds: string[],
 ): Promise<TestEstimate> {
+  await requireSession();
   const project = await projectOr404(slug);
   return estimateTest(project.id, { kind, sessionIds });
 }
@@ -38,6 +40,7 @@ export async function startTestAction(
   kind: 'weekly' | 'triweekly',
   sessionIds: string[],
 ): Promise<ActionState & { testId?: string }> {
+  await requireSession();
   const project = await projectOr404(slug);
   try {
     const row = await startTest(project.id, { kind, sessionIds });
@@ -55,6 +58,7 @@ export async function markQuestionAction(
   questionId: string,
   result: TestResult | null,
 ) {
+  await requireSession();
   const project = await projectOr404(slug);
   const t = await getTest(project.id, testId);
   if (!t) return;
@@ -67,6 +71,7 @@ export async function markQuestionAction(
 
 /** Every question marked: close the test and pick what to re-read in the background. */
 export async function finishMarkingAction(slug: string, testId: string): Promise<ActionState> {
+  await requireSession();
   const project = await projectOr404(slug);
   const t = await getTest(project.id, testId);
   if (!t) return { error: 'Not found' };
@@ -83,6 +88,7 @@ export async function finishMarkingAction(slug: string, testId: string): Promise
 }
 
 export async function toggleRereadAction(slug: string, itemId: string, done: boolean): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await db.update(rereadItems).set({ done }).where(eq(rereadItems.id, itemId));
   revalidatePath(`${projectBase(project)}/overview`);
@@ -90,6 +96,7 @@ export async function toggleRereadAction(slug: string, itemId: string, done: boo
 }
 
 export async function deleteTestAction(slug: string, testId: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const t = await getTest(project.id, testId);
   if (!t) return;

@@ -16,6 +16,7 @@ import {
   updateRun,
 } from '@/lib/experiments';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 export interface ActionState {
   error?: string;
@@ -35,6 +36,7 @@ const expSchema = z.object({
 });
 
 export async function createExperimentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = expSchema.safeParse({
     slug: formData.get('slug'),
     name: formData.get('name'),
@@ -50,6 +52,7 @@ export async function createExperimentAction(_prev: ActionState, formData: FormD
 }
 
 export async function deleteExperimentAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteExperiment(project.id, id);
   revalidatePath(`${projectBase(project)}/experiments`);
@@ -66,6 +69,7 @@ const runSchema = z.object({
 
 /** Manual run creation from the UI; params are a JSON object or `key=value` lines. */
 export async function createRunAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = runSchema.safeParse({
     slug: formData.get('slug'),
     experimentId: formData.get('experimentId'),
@@ -115,6 +119,7 @@ export async function setRunStatusAction(
   runId: string,
   status: (typeof RUN_STATUSES)[number],
 ): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const found = await getRun(project.id, runId);
   if (!found) return;
@@ -123,6 +128,7 @@ export async function setRunStatusAction(
 }
 
 export async function updateRunNotesAction(slug: string, runId: string, notes: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const found = await getRun(project.id, runId);
   if (!found) return;
@@ -131,6 +137,7 @@ export async function updateRunNotesAction(slug: string, runId: string, notes: s
 }
 
 export async function deleteRunAction(slug: string, runId: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const found = await getRun(project.id, runId);
   if (!found) return;
@@ -140,6 +147,7 @@ export async function deleteRunAction(slug: string, runId: string): Promise<void
 }
 
 export async function addObservationAction(slug: string, runId: string, body: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const found = await getRun(project.id, runId);
   if (!found || !body.trim()) return;
@@ -148,6 +156,7 @@ export async function addObservationAction(slug: string, runId: string, body: st
 }
 
 export async function deleteObservationAction(slug: string, runId: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const found = await getRun(project.id, runId);
   if (!found) return;

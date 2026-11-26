@@ -12,6 +12,7 @@ import {
   setProjectStatus,
   updateProject,
 } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 export interface ActionState {
   error?: string;
@@ -19,6 +20,7 @@ export interface ActionState {
 }
 
 export async function createProjectAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = projectCreateSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description') ?? '',
@@ -30,6 +32,7 @@ export async function createProjectAction(_prev: ActionState, formData: FormData
 }
 
 export async function createCourseAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = courseCreateSchema.safeParse({
     name: formData.get('name'),
     description: formData.get('description') ?? '',
@@ -46,6 +49,7 @@ export async function createCourseAction(_prev: ActionState, formData: FormData)
 
 /** Archive or restore. Purely a list filter: the workspace stays reachable by URL and editable. */
 export async function setProjectStatusAction(id: string, status: 'active' | 'archived'): Promise<void> {
+  await requireSession();
   const project = await getProjectById(id);
   if (!project) return;
   await setProjectStatus(id, status);
@@ -54,6 +58,7 @@ export async function setProjectStatusAction(id: string, status: 'active' | 'arc
 }
 
 export async function updateCourseMetaAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const id = String(formData.get('id') ?? '');
   const project = await getProjectById(id);
   if (!project) return { error: 'Course not found' };
@@ -78,6 +83,7 @@ export async function updateCourseMetaAction(_prev: ActionState, formData: FormD
 
 /** Kept for callers that still want the old redirecting behaviour. */
 export async function archiveProjectAction(id: string): Promise<void> {
+  await requireSession();
   await setProjectStatusAction(id, 'archived');
   redirect('/');
 }

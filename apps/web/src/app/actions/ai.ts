@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { type SpendSummary, spendSummary } from '@/lib/ai/ledger';
 import { aiConfigured, listModels } from '@/lib/ai/provider';
 import { type AiSettings, getAiSettings, saveAiSettings } from '@/lib/ai/settings';
+import { requireSession } from '@/lib/require-session';
 
 export async function spendSummaryAction(): Promise<{ summary: SpendSummary; configured: boolean }> {
+  await requireSession();
   return { summary: await spendSummary(), configured: aiConfigured() };
 }
 
@@ -18,6 +20,7 @@ export interface ActionState {
 const PROVIDERS = ['openai', 'openai-compatible', 'claude-api', 'claude-sub'] as const;
 
 export async function saveAiSettingsAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const cap = Number(formData.get('monthlyCapUsd'));
   const warn = Number(formData.get('warnAtPercent'));
   const providerRaw = String(formData.get('provider') ?? 'openai');
@@ -58,6 +61,7 @@ export async function saveAiSettingsAction(_prev: ActionState, formData: FormDat
 }
 
 export async function testConnectionAction(): Promise<ActionState> {
+  await requireSession();
   if (!aiConfigured()) return { error: 'No AI provider is configured on the server.' };
   try {
     const s = await getAiSettings();

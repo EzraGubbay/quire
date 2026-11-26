@@ -9,6 +9,7 @@ import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { createAnnotation, deleteAnnotation, updateAnnotation } from '@/lib/annotations';
 import { syncLinks } from '@/lib/notes';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 const createSchema = z.object({
   documentId: z.string().uuid(),
@@ -21,6 +22,7 @@ export async function createAnnotationAction(
   slug: string,
   input: z.input<typeof createSchema>,
 ): Promise<Annotation> {
+  await requireSession();
   const parsed = createSchema.parse(input);
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error('project not found');
@@ -42,6 +44,7 @@ export async function updateAnnotationAction(
   id: string,
   patch: z.input<typeof patchSchema>,
 ): Promise<void> {
+  await requireSession();
   const parsed = patchSchema.parse(patch);
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error('project not found');
@@ -52,6 +55,7 @@ export async function updateAnnotationAction(
 }
 
 export async function deleteAnnotationAction(slug: string, documentId: string, id: string): Promise<void> {
+  await requireSession();
   const project = await getProjectBySlug(slug);
   if (!project) throw new Error('project not found');
   await deleteAnnotation(project.id, id);

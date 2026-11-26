@@ -27,6 +27,7 @@ import {
   updateNote,
 } from '@/lib/notes';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 async function projectOr404(slug: string) {
   const project = await getProjectBySlug(slug);
@@ -52,6 +53,7 @@ const createSchema = z.object({
 });
 
 export async function createNoteAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = createSchema.safeParse({
     slug: formData.get('slug'),
     title: formData.get('title'),
@@ -74,6 +76,7 @@ const folderSchema = z.object({
 });
 
 export async function createNoteFolderAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = folderSchema.safeParse({
     slug: formData.get('slug'),
     name: formData.get('name'),
@@ -87,6 +90,7 @@ export async function createNoteFolderAction(_prev: ActionState, formData: FormD
 }
 
 export async function moveNoteAction(slug: string, noteId: string, folderId: string | null): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await moveNote(project.id, noteId, folderId);
   revalidatePath(`${projectBase(project)}/notes`);
@@ -100,6 +104,7 @@ const patchSchema = z.object({
 
 /** When the note last changed (ISO string), for live read views polling from another device. */
 export async function noteVersionAction(slug: string, id: string): Promise<string | null> {
+  await requireSession();
   const project = await getProjectBySlug(slug);
   if (!project) return null;
   const note = await getNote(project.id, id);
@@ -111,6 +116,7 @@ export async function updateNoteAction(
   id: string,
   patch: z.input<typeof patchSchema>,
 ): Promise<ActionState & { noteSlug?: string }> {
+  await requireSession();
   const parsed = patchSchema.safeParse(patch);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -123,6 +129,7 @@ export async function updateNoteAction(
 }
 
 export async function deleteNoteAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteNote(project.id, id);
   await removeOwner(project.id, 'note', id);
@@ -135,6 +142,7 @@ export async function deleteNoteAction(slug: string, id: string): Promise<void> 
  * `Name#14` opens a document at page 14; `Name#heading` jumps to that heading in a note.
  */
 export async function followWikiLinkAction(slug: string, raw: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const base = projectBase(project);
   const { name, anchor } = splitWikiName(raw);
@@ -159,6 +167,7 @@ export async function followWikiLinkAction(slug: string, raw: string): Promise<v
 
 /** Turns a note into a Markdown document (same body), deleting the note. */
 export async function promoteNoteAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const note = await getNote(project.id, id);
   if (!note) throw new Error('note not found');
@@ -173,6 +182,7 @@ export async function promoteNoteAction(slug: string, id: string): Promise<void>
 }
 
 export async function estimateSynthesisAction(slug: string, rawNoteId: string): Promise<SynthesisEstimate> {
+  await requireSession();
   const project = await projectOr404(slug);
   return estimateSynthesis(project.id, rawNoteId);
 }
@@ -183,6 +193,7 @@ export async function synthesizeAction(
   rawNoteId: string,
   title: string,
 ): Promise<ActionState & { noteSlug?: string }> {
+  await requireSession();
   const clean = title.trim().slice(0, 200);
   if (!clean) return { error: 'Give the synthesized note a title.' };
   const project = await projectOr404(slug);
@@ -199,6 +210,7 @@ export async function synthesizeAction(
 
 /** Re-runs a failed synthesis into the same note (keeps the title). */
 export async function retrySynthesisAction(slug: string, noteId: string): Promise<ActionState> {
+  await requireSession();
   const project = await projectOr404(slug);
   const raw = await synthesizedFrom(project.id, noteId);
   if (!raw) return { error: 'This note has no source note to synthesize from.' };
@@ -221,6 +233,7 @@ export async function setSynthesizedFromAction(
   noteId: string,
   rawNoteId: string | null,
 ): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await setSynthesizedFrom(project.id, noteId, rawNoteId);
   revalidatePath(`${projectBase(project)}/notes`, 'layout');
@@ -228,6 +241,7 @@ export async function setSynthesizedFromAction(
 
 /** Open a document at a page (slide citations). */
 export async function openDocumentPageAction(slug: string, documentId: string, page: number): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const doc = await getDocument(project.id, documentId);
   if (!doc) return;

@@ -6,6 +6,7 @@ import { after } from 'next/server';
 import { z } from 'zod';
 import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 import { createSource, deleteSource, snapshotUrl, updateSource } from '@/lib/sources';
 
 export interface ActionState {
@@ -44,6 +45,7 @@ const schema = z.object({
 
 /** Create or update a source. With a URL and snapshot on, fetches the page for a title and text. */
 export async function saveSourceAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = schema.safeParse({
     slug: formData.get('slug'),
     id: formData.get('id') || undefined,
@@ -91,6 +93,7 @@ export async function saveSourceAction(_prev: ActionState, formData: FormData): 
 }
 
 export async function deleteSourceAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteSource(project.id, id);
   await removeOwner(project.id, 'source', id);

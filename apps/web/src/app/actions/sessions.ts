@@ -10,6 +10,7 @@ import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { builtinFolder, createDeckDocument, deleteDocument, getDocument } from '@/lib/documents';
 import { clearSessionNote, createNote, getNote, listNotes, sessionNote, updateNote } from '@/lib/notes';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 import {
   attachDocumentToSession,
   createSession,
@@ -56,6 +57,7 @@ const createSchema = z.object({
 });
 
 export async function createSessionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = createSchema.safeParse({
     slug: formData.get('slug'),
     kind: formData.get('kind'),
@@ -81,6 +83,7 @@ export async function createSessionAction(_prev: ActionState, formData: FormData
  * its name, date today) with the file attached; `sessionId` attaches every file to an existing session instead.
  */
 export async function dropSessionFilesAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const slug = String(formData.get('slug') ?? '');
   const kind = kindSchema.safeParse(formData.get('kind'));
   if (!kind.success) return { error: 'Unknown session kind' };
@@ -145,6 +148,7 @@ export async function updateSessionAction(
   id: string,
   patch: z.input<typeof patchSchema>,
 ): Promise<ActionState> {
+  await requireSession();
   const parsed = patchSchema.safeParse(patch);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -158,6 +162,7 @@ export async function updateSessionAction(
 }
 
 export async function deleteSessionAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const s = await getSession(project.id, id);
   if (!s) return;
@@ -176,6 +181,7 @@ export async function moveDeckToSessionAction(
   documentId: string,
   sessionId: string | null,
 ): Promise<ActionState> {
+  await requireSession();
   const project = await projectOr404(slug);
   const doc = await getDocument(project.id, documentId);
   if (!doc) return { error: 'Deck not found' };
@@ -197,6 +203,7 @@ export async function moveDeckToSessionAction(
 
 /** Deletes a deck (the PDF/pptx document and its pages); the lecture and its note are untouched. */
 export async function deleteDeckAction(slug: string, documentId: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const doc = await getDocument(project.id, documentId);
   await deleteDocument(project.id, documentId);
@@ -220,6 +227,7 @@ export async function setSessionNoteAction(
   sessionId: string,
   noteId: string,
 ): Promise<ActionState & { note?: Note }> {
+  await requireSession();
   const project = await projectOr404(slug);
   const s = await getSession(project.id, sessionId);
   if (!s) return { error: 'Session not found' };
@@ -241,6 +249,7 @@ export async function newSessionNoteAction(
   slug: string,
   sessionId: string,
 ): Promise<ActionState & { note?: Note }> {
+  await requireSession();
   const project = await projectOr404(slug);
   const s = await getSession(project.id, sessionId);
   if (!s) return { error: 'Session not found' };
@@ -258,6 +267,7 @@ export async function newSessionNoteAction(
 export async function listNoteOptionsAction(
   slug: string,
 ): Promise<{ id: string; title: string; sessionId: string | null }[]> {
+  await requireSession();
   const project = await projectOr404(slug);
   const notes = await listNotes(project.id);
   return notes
@@ -267,6 +277,7 @@ export async function listNoteOptionsAction(
 
 /** The raw note taken in a session, created in the Raw folder on first use. */
 export async function sessionNoteAction(slug: string, sessionId: string): Promise<Note> {
+  await requireSession();
   const project = await projectOr404(slug);
   const existing = await sessionNote(project.id, sessionId);
   if (existing) return existing;
@@ -285,6 +296,7 @@ export async function saveSessionNoteAction(
   noteId: string,
   body: string,
 ): Promise<ActionState> {
+  await requireSession();
   const project = await projectOr404(slug);
   const note = await getNote(project.id, noteId);
   if (!note) return { error: 'Note not found' };
