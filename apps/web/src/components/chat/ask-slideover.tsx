@@ -17,10 +17,14 @@ import s from './chat.module.css';
 import { SpendBanner } from './spend-banner';
 import { ThreadView } from './thread-view';
 
+const tutorMode = (mode: ThreadMode, questionId?: string | null): ThreadMode =>
+  mode !== 'default' || questionId ? 'tutor-hint' : 'default';
+
 /**
  * "Ask" from anywhere in a project, in a right-hand panel. Opens on the most recent chat in scope (the document's
- * chats, a homework question's chats, or the project-wide ones) rather than creating a new one; a new chat is created
- * only when asked for, or silently when the first question is sent and there is no chat yet.
+ * chats, a homework question's chats, or the project-wide ones) rather than creating a new one. A new chat, whether
+ * from the New chat button or the first question with no chat yet, is created lazily when the first question is sent,
+ * so closing the panel without asking leaves nothing behind. The tutor's Full-solution choice is held locally until then.
  */
 export function AskSlideover({
   slug,
@@ -48,12 +52,14 @@ export function AskSlideover({
   const [threadId, setThreadId] = useState<string | null>(context.threads[0]?.id ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>(context.messages);
   const [view, setView] = useState(0);
+  const [pendingMode, setPendingMode] = useState<ThreadMode>(tutorMode(mode, questionId));
   useEffect(() => {
+    setPendingMode(tutorMode(mode, questionId));
     setThreads(context.threads);
     setThreadId(context.threads[0]?.id ?? null);
     setMessages(context.messages);
     setView((v) => v + 1);
-  }, [context]);
+  }, [context, mode, questionId]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -65,29 +71,24 @@ export function AskSlideover({
 
   const tutor = mode !== 'default' || Boolean(questionId);
   const current = threads.find((t) => t.id === threadId);
-  const currentMode: ThreadMode = (current?.mode as ThreadMode | undefined) ?? mode;
+  const currentMode: ThreadMode = (current?.mode as ThreadMode | undefined) ?? pendingMode;
 
-  // `reset` clears the view (New chat button); the first-question path keeps the optimistic messages in place.
-  const create = useCallback(
-    async (reset: boolean) => {
-      const id = await newThreadAction(slug, documentId ?? null, {
-        mode: tutor ? 'tutor-hint' : 'default',
-        questionId,
-      });
-      setThreads((t) => [
-        { id, title: 'New chat', updatedAt: new Date(), mode: tutor ? 'tutor-hint' : 'default' },
-        ...t,
-      ]);
-      setThreadId(id);
-      if (reset) {
-        setMessages([]);
-        setView((v) => v + 1);
-      }
-      return id;
-    },
-    [slug, documentId, tutor, questionId],
-  );
-  const ensure = useCallback(() => create(false), [create]);
+  // New chat only resets the panel; the row is created by `ensure` when the first question is sent.
+  const startNew = () => {
+    setThreadId(null);
+    setMessages([]);
+    setPendingMode(tutorMode(mode, questionId));
+    setView((v) => v + 1);
+  };
+  const ensure = useCallback(async () => {
+    const id = await newThreadAction(slug, documentId ?? null, { mode: pendingMode, questionId });
+    setThreads((t) => [
+      { id, title: 'New chat', updatedAt: new Date(), mode: pendingMode },
+      ...t.filter((x) => x.id !== id),
+    ]);
+    setThreadId(id);
+    return id;
+  }, [slug, documentId, pendingMode, questionId]);
   const switchTo = async (id: string) => {
     const msgs = await threadMessagesAction(slug, id);
     setThreadId(id);
@@ -95,8 +96,11 @@ export function AskSlideover({
     setView((v) => v + 1);
   };
   const toggleMode = async () => {
-    if (!threadId) return;
     const next: ThreadMode = currentMode === 'tutor-full' ? 'tutor-hint' : 'tutor-full';
+    if (!threadId) {
+      setPendingMode(next);
+      return;
+    }
     await setThreadModeAction(slug, threadId, next);
     setThreads((ts) => ts.map((t) => (t.id === threadId ? { ...t, mode: next } : t)));
   };
@@ -125,14 +129,14 @@ export function AskSlideover({
             onChange={(e) => void switchTo(e.target.value)}
             disabled={threads.length === 0}
           >
-            {threads.length === 0 && <option value="">New chat</option>}
+            {threadId === null && <option value="">New chat</option>}
             {threads.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.title}
               </option>
             ))}
           </select>
-          <Button variant="secondary" size="sm" icon={<Icon icon={Plus} />} onClick={() => void create(true)}>
+          <Button variant="secondary" size="sm" icon={<Icon icon={Plus} />} onClick={startNew}>
             New chat
           </Button>
           {threadId && (
@@ -151,7 +155,6 @@ export function AskSlideover({
             <input
               type="checkbox"
               checked={currentMode === 'tutor-full'}
-              disabled={!threadId}
               onChange={() => void toggleMode()}
             />
             <span>

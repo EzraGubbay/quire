@@ -42,10 +42,15 @@ test('chat: ask reuses the last chat, doc mentions, per-document chats, retry an
   await askDoc.click();
   await expect(dialog.getByTestId('chat-message').nth(1)).toContainText('Mock answer', { timeout: 20_000 });
   await expect(dialog.getByLabel('Chat', { exact: true })).toContainText('What does this document say');
-  // New chat from the panel switches to an empty one; the switcher lists both.
+  // New chat from the panel is lazy: it shows an empty, unsaved chat (placeholder + the saved one) without
+  // creating a row, so reopening the panel lists only the saved chat.
   await dialog.getByRole('button', { name: 'New chat' }).click();
   await expect(dialog.getByTestId('chat-message')).toHaveCount(0);
   await expect(dialog.getByLabel('Chat', { exact: true }).locator('option')).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  await askDoc.click();
+  await expect(dialog.getByLabel('Chat', { exact: true }).locator('option')).toHaveCount(1);
+  await expect(dialog.getByLabel('Chat', { exact: true })).toContainText('What does this document say');
   await page.keyboard.press('Escape');
 
   // Per-row downloads: the Markdown document comes back as a .md attachment.
@@ -62,7 +67,8 @@ test('chat: ask reuses the last chat, doc mentions, per-document chats, retry an
   await page.getByRole('button', { name: /^All documents/ }).click();
   await page.getByRole('link', { name: 'Chats about Routing summary' }).click();
   await page.waitForURL(/\/chat\?doc=/);
-  await expect(page.locator('[class*="itemTitle"]')).toHaveCount(2);
+  // One saved chat: the Ask panel's New chat above never created a row.
+  await expect(page.locator('[class*="itemTitle"]')).toHaveCount(1);
   await page.getByRole('button', { name: 'New chat' }).click();
   await page.waitForURL(/\/chat\/[0-9a-f-]{36}$/);
   await expect(page.getByText('about:')).toContainText('Routing summary');

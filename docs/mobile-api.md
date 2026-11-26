@@ -63,9 +63,9 @@ Paths are relative to `/api/mobile/v1`. `{course}` is a course slug or UUID.
 | GET | `/courses/{course}/files/{fileId}/content` | File bytes (`?format=pdf\|original\|markdown`), Range + ETag | 200 / 206 / 304 |
 | GET | `/courses/{course}/notes` | Note summaries (read-only) | 200 |
 | GET | `/courses/{course}/notes/{noteId}` | Note with raw Markdown | 200 |
-| GET | `/threads` | Recent chat threads across courses (`?limit=1..100`, default 20) | 200 |
-| GET | `/courses/{course}/threads` | Threads of a course | 200 |
-| POST | `/courses/{course}/threads` | Create a thread | 201 |
+| GET | `/threads` | Recent chat threads across courses with at least one message (`?limit=1..100`, default 20) | 200 |
+| GET | `/courses/{course}/threads` | Threads of a course that have at least one message | 200 |
+| POST | `/courses/{course}/threads` | Create a thread (reuses an empty thread in the same scope; empty threads are pruned after 24 h) | 201 |
 | DELETE | `/courses/{course}/threads/{threadId}` | Delete a thread | 204 |
 | GET | `/courses/{course}/threads/{threadId}/messages` | Thread history | 200 |
 | POST | `/courses/{course}/threads/{threadId}/messages` | Ask a question; answer streams as NDJSON | 200 |

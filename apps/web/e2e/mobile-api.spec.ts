@@ -297,10 +297,20 @@ test.describe
       expect(thread.id).toBeTruthy();
       threadId = thread.id;
 
+      // An unsent thread is not listed (neither recent nor per course), and a second create reuses it.
       const recent = await authedGet(request, `${BASE}/threads?limit=10`);
       expect(recent.status()).toBe(200);
       const threads = (await recent.json()) as Array<{ id: string }>;
-      expect(threads.some((t) => t.id === threadId)).toBeTruthy();
+      expect(threads.some((t) => t.id === threadId)).toBeFalsy();
+      const perCourse = await authedGet(request, `${BASE}/courses/${seeded.slug}/threads`);
+      expect(perCourse.status()).toBe(200);
+      const courseThreads = (await perCourse.json()) as Array<{ id: string }>;
+      expect(courseThreads.some((t) => t.id === threadId)).toBeFalsy();
+      const again = await request.post(`${BASE}/courses/${seeded.slug}/threads`, {
+        headers: bearer(),
+        data: {},
+      });
+      expect(((await again.json()) as { id: string }).id).toBe(threadId);
     });
 
     test('QMOB-E1-S7 · posting a question streams NDJSON answer events (AI_MOCK=1)', async ({ request }) => {
@@ -324,6 +334,11 @@ test.describe
         .map((e) => e.text ?? '')
         .join('');
       expect(streamed).toContain('Mock answer');
+
+      // Once a question was sent the thread is listed.
+      const recent = await authedGet(request, `${BASE}/threads?limit=10`);
+      const recentThreads = (await recent.json()) as Array<{ id: string }>;
+      expect(recentThreads.some((t) => t.id === threadId)).toBeTruthy();
 
       // History carries citations without the web-only `href`.
       const history = await authedGet(request, `${BASE}/courses/${seeded.slug}/threads/${threadId}/messages`);
