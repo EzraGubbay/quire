@@ -27,7 +27,14 @@ vi.mock('@/lib/projects', () => ({
 }));
 
 const route = await import('./route');
-const links = await import('@/lib/mcp/upload-links');
+const realLinks = await import('@/lib/mcp/upload-links');
+// The scope is an explicit, required argument; these tests exercise the course scope.
+const links = {
+  ...realLinks,
+  createLink: (b: Omit<Parameters<typeof realLinks.createLink>[0], 'scope'>) =>
+    realLinks.createLink({ ...b, scope: 'course' }),
+  getStatus: (id: string) => realLinks.getStatus(id, 'course'),
+};
 
 const project = { id: 'p1', slug: 'algo', name: 'Algorithms', kind: 'course' };
 const pdf = new TextEncoder().encode('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');

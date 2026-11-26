@@ -4,6 +4,7 @@ import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { filePath } from '@/lib/files';
 import { type FileFormat, resolveFile } from '@/lib/mcp/courses';
+import { COURSE_SCOPE } from '@/lib/mcp/scope';
 import { requireDevice } from '@/lib/mobile/device-auth';
 import { etagFor, ifNoneMatchHits, ifRangeAllows, parseRange } from '@/lib/mobile/range';
 import { fail } from '@/lib/mobile/respond';
@@ -25,7 +26,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ course: string;
 
   let file: Awaited<ReturnType<typeof resolveFile>>;
   try {
-    file = await resolveFile(course, fileId, (fmt ?? 'pdf') as FileFormat);
+    file = await resolveFile(course, fileId, (fmt ?? 'pdf') as FileFormat, COURSE_SCOPE);
   } catch (e) {
     return fail('not_found', e instanceof Error ? e.message : 'File not found');
   }

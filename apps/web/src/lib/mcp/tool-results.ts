@@ -53,8 +53,8 @@ export function oversizeHint(r: ResolvedFile, scope: McpScope): string {
 export async function fileToolResult(
   course: string,
   fileId: string,
-  format?: FileFormat,
-  scope: McpScope = COURSE_SCOPE,
+  format: FileFormat | undefined,
+  scope: McpScope,
 ): Promise<{ content: Content[] }> {
   const r = await resolveFile(course, fileId, format, scope);
   if (r.kind === 'markdown') return text(r.text ?? '');
@@ -90,8 +90,8 @@ export async function fileToolResult(
 export async function textToolResult(
   course: string,
   fileId: string,
-  pages?: string,
-  scope: McpScope = COURSE_SCOPE,
+  pages: string | undefined,
+  scope: McpScope,
 ): Promise<{ content: Content[] }> {
   const { doc, courseName } = await loadDoc(course, fileId, scope);
   if (doc.kind === 'markdown' && !doc.filePath) {
@@ -120,7 +120,7 @@ export async function imagesToolResult(
   course: string,
   fileId: string,
   pages: string,
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<{ content: Content[] }> {
   const { doc } = await loadDoc(course, fileId, scope);
   if (!doc.filePath) return text('This file has no PDF to render; use get_file for its text.');
@@ -153,11 +153,7 @@ export async function imagesToolResult(
 }
 
 /** First budget's worth of a PDF's page text, for resources/read. */
-export async function pagesAsText(
-  course: string,
-  fileId: string,
-  scope: McpScope = COURSE_SCOPE,
-): Promise<string> {
+export async function pagesAsText(course: string, fileId: string, scope: McpScope): Promise<string> {
   const { doc, courseName } = await loadDoc(course, fileId, scope);
   const content = await loadPageContent(doc);
   return buildTextResult({
@@ -177,7 +173,7 @@ export async function readFileResource(
   slug: string,
   docId: string,
   format: FileFormat | undefined,
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<ReadResourceResult> {
   const r = await resolveFile(slug, docId, format, scope);
   if (r.kind === 'markdown') {

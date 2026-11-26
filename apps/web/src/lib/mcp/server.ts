@@ -7,7 +7,7 @@ import { MAX_IMAGES_PER_CALL } from './content';
 import { type FileFormat, listAllFileResources, listCourseFiles, listCourses } from './courses';
 import { driveConfig } from './drive/config';
 import { registerDriveTools } from './drive/tools';
-import { mcpWriteEnabled } from './scope';
+import { COURSE_SCOPE, mcpWriteEnabled } from './scope';
 import { fileToolResult, imagesToolResult, readFileResource, text, textToolResult } from './tool-results';
 import {
   createUploadLinkTool,
@@ -48,7 +48,7 @@ function registerWriteTools(server: McpServer): void {
         .describe('existing folder name or id in that section; default: top level'),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    async (args) => text(await uploadMarkdown(args)),
+    async (args) => text(await uploadMarkdown(args, COURSE_SCOPE)),
   );
 
   server.tool(
@@ -65,7 +65,7 @@ function registerWriteTools(server: McpServer): void {
       folder: z.string().optional().describe('existing Documents folder name or id; default: top level'),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    async (args) => text(await uploadPdfFromUrl(args)),
+    async (args) => text(await uploadPdfFromUrl(args, COURSE_SCOPE)),
   );
 
   server.tool(
@@ -88,7 +88,7 @@ function registerWriteTools(server: McpServer): void {
         .describe('existing folder name or id in that section; default: top level'),
     },
     { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    async (args) => text(await createUploadLinkTool(args)),
+    async (args) => text(await createUploadLinkTool(args, COURSE_SCOPE)),
   );
 
   server.tool(
@@ -97,7 +97,7 @@ function registerWriteTools(server: McpServer): void {
       'or expired, with the new file or note id once done.',
     { uploadId: z.string().describe('the uploadId returned by create_upload_link') },
     READ_ONLY,
-    async ({ uploadId }) => text(uploadStatusTool({ uploadId })),
+    async ({ uploadId }) => text(uploadStatusTool({ uploadId }, COURSE_SCOPE)),
   );
 
   const drive = driveConfig();
@@ -145,8 +145,8 @@ export function registerQuireMcp(server: McpServer): void {
     READ_ONLY,
     async ({ course, fileId, pages, format }) =>
       !format || format === 'text'
-        ? textToolResult(course, fileId, pages)
-        : fileToolResult(course, fileId, format),
+        ? textToolResult(course, fileId, pages, COURSE_SCOPE)
+        : fileToolResult(course, fileId, format, COURSE_SCOPE),
   );
 
   server.tool(
@@ -159,7 +159,7 @@ export function registerQuireMcp(server: McpServer): void {
       pages: z.string().describe('pages to render, e.g. "4", "2-5" or "1,3,8"'),
     },
     READ_ONLY,
-    async ({ course, fileId, pages }) => imagesToolResult(course, fileId, pages),
+    async ({ course, fileId, pages }) => imagesToolResult(course, fileId, pages, COURSE_SCOPE),
   );
 
   if (mcpWriteEnabled()) registerWriteTools(server);
@@ -175,6 +175,7 @@ export function registerQuireMcp(server: McpServer): void {
         String(variables.slug),
         String(variables.docId),
         asFormat(uri.searchParams.get('format')),
+        COURSE_SCOPE,
       ),
   );
 }

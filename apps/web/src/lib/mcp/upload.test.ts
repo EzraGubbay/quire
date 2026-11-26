@@ -26,15 +26,20 @@ vi.mock('./safe-fetch', async (orig) => ({
   fetchPublicPdf,
 }));
 
-const {
-  createUploadLinkTool,
-  ingestPdf,
-  raceDeadline,
-  splitTitle,
-  uploadMarkdown,
-  uploadPdfFromUrl,
-  uploadStatusTool,
-} = await import('./upload');
+const upload = await import('./upload');
+const { COURSE_SCOPE } = await import('./scope');
+const { raceDeadline, splitTitle } = upload;
+// The scope is now an explicit, required argument: these are the course-scope call forms the tests exercise.
+const createUploadLinkTool = (a: Parameters<typeof upload.createUploadLinkTool>[0]) =>
+  upload.createUploadLinkTool(a, COURSE_SCOPE);
+const ingestPdf = (p: Parameters<typeof upload.ingestPdf>[0], a: Parameters<typeof upload.ingestPdf>[1]) =>
+  upload.ingestPdf(p, a, COURSE_SCOPE);
+const uploadMarkdown = (a: Parameters<typeof upload.uploadMarkdown>[0]) =>
+  upload.uploadMarkdown(a, COURSE_SCOPE);
+const uploadPdfFromUrl = (a: Parameters<typeof upload.uploadPdfFromUrl>[0]) =>
+  upload.uploadPdfFromUrl(a, COURSE_SCOPE);
+const uploadStatusTool = (a: Parameters<typeof upload.uploadStatusTool>[0]) =>
+  upload.uploadStatusTool(a, COURSE_SCOPE);
 const { __storeForTests, setStatus } = await import('./upload-links');
 
 const project = { id: 'p1', slug: 'algo', name: 'Algorithms', kind: 'course' };

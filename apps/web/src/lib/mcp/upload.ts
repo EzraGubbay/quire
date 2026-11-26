@@ -63,7 +63,7 @@ type UploadResultBase = {
 // (Not a union, so Omit<UploadResult, …> in drive/import.ts keeps working: exactly one owner key is ever set.)
 export type UploadResult = UploadResultBase & { course?: Owner; project?: Owner };
 
-export async function resolveUploadProject(ref: string, scope: McpScope = COURSE_SCOPE): Promise<Project> {
+export async function resolveUploadProject(ref: string, scope: McpScope): Promise<Project> {
   const project = await resolveInScope(scope, ref);
   if (!project || project.kind !== scope.kind) {
     throw new UploadError(`No ${scope.noun} found for "${ref}". Call ${scope.listTool} for the valid slugs.`);
@@ -72,7 +72,8 @@ export async function resolveUploadProject(ref: string, scope: McpScope = COURSE
 }
 
 /** Course-scope alias kept for drive/import.ts. */
-export const resolveUploadCourse = (course: string): Promise<Project> => resolveUploadProject(course);
+export const resolveUploadCourse = (course: string): Promise<Project> =>
+  resolveUploadProject(course, COURSE_SCOPE);
 
 export interface ResolvedFolder {
   id: string | null;
@@ -214,7 +215,7 @@ async function placeOf(
 export function ingestMarkdown(
   project: Project,
   a: { section: 'notes' | 'documents'; title: string; body: string; folder: ResolvedFolder },
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<UploadResult> {
   const { section, title, body, folder } = a;
   const base = { section, ...ownerOf(project, scope), title, folder: folder.name } as const;
@@ -285,7 +286,7 @@ export async function uploadMarkdown(
     title?: string;
     folder?: string;
   },
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<UploadResult> {
   const section = args.section ?? 'notes';
   const limits = uploadLimits();
@@ -316,7 +317,7 @@ export function ingestPdf(
     doi?: string | null;
     meta?: PdfUpload['meta'];
   },
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<UploadResult> {
   if (!hasPdfMagic(a.data)) return Promise.reject(new UploadError('That is not a PDF (no %PDF header).'));
   const title = a.title?.trim() ? checkTitle(a.title) : undefined;
@@ -376,8 +377,8 @@ export const processingResult = (
   section: 'notes' | 'documents',
   title: string,
   folder: ResolvedFolder,
-  sizeBytes?: number,
-  scope: McpScope = COURSE_SCOPE,
+  sizeBytes: number | undefined,
+  scope: McpScope,
 ): UploadResult => ({
   status: 'processing',
   section,
@@ -404,7 +405,7 @@ export async function createUploadLinkTool(
     title?: string;
     folder?: string;
   },
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ) {
   const filename = args.filename.trim();
   if (/[\\/\0]/.test(filename)) throw new UploadError('filename must be a bare file name, without / or \\.');
@@ -468,8 +469,8 @@ export async function createUploadLinkTool(
 
 export function uploadStatusTool(
   args: { uploadId: string },
-  scope: McpScope = COURSE_SCOPE,
-): UploadStatus | string {
+  scope: McpScope,
+): Omit<UploadStatus, 'scope'> | string {
   const s = getStatus(args.uploadId.trim(), scope.kind);
   if (!s) {
     return 'Unknown uploadId: the link may be older than 24 h or the server restarted; create a new link with create_upload_link.';
@@ -488,7 +489,7 @@ export async function uploadPdfFromUrl(
     title?: string;
     folder?: string;
   },
-  scope: McpScope = COURSE_SCOPE,
+  scope: McpScope,
 ): Promise<UploadResult> {
   if (!args.url?.trim())
     throw new Error('Pass `url`: a public https link to a PDF. For a local file use create_upload_link.');

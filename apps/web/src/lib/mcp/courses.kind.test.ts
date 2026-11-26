@@ -30,8 +30,12 @@ vi.mock('@/lib/homework', () => ({ listAssignments: vi.fn(async () => []) }));
 vi.mock('@/lib/lemida/files', () => ({ lemidaFilesByProject: vi.fn(async () => []) }));
 vi.mock('@/lib/files', () => ({ readStoredFile: vi.fn(), filePath: vi.fn() }));
 
-const { resolveCourse, listCourseFiles, resolveFile } = await import('./courses');
-const { loadDoc } = await import('./content');
+const { resolveCourse, listCourseFiles, resolveFile: resolveFileIn } = await import('./courses');
+const { loadDoc: loadDocIn } = await import('./content');
+const { COURSE_SCOPE } = await import('./scope');
+const resolveFile = (r: string, id: string, f: Parameters<typeof resolveFileIn>[2]) =>
+  resolveFileIn(r, id, f, COURSE_SCOPE);
+const loadDoc = (r: string, id: string) => loadDocIn(r, id, COURSE_SCOPE);
 const { registerQuireMcp } = await import('./server');
 
 type Handler = (args: Record<string, unknown>) => Promise<unknown>;

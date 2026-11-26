@@ -171,11 +171,7 @@ export interface LoadedDoc {
   slug: string;
 }
 
-export async function loadDoc(
-  course: string,
-  fileId: string,
-  scope: McpScope = COURSE_SCOPE,
-): Promise<LoadedDoc> {
+export async function loadDoc(course: string, fileId: string, scope: McpScope): Promise<LoadedDoc> {
   const project = await resolveInScope(scope, course);
   if (!project) throw new Error(`No ${scope.noun} found for "${course}"`);
   const doc = await getDocument(project.id, fileId);

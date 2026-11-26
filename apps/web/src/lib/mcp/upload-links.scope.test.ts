@@ -3,6 +3,7 @@ import { __storeForTests, createLink, getStatus, type LinkBinding, setStatus } f
 
 const base: LinkBinding = {
   projectId: 'p1',
+  scope: 'course',
   section: 'documents',
   kind: 'pdf',
   filename: 'a.pdf',
@@ -24,7 +25,7 @@ describe('upload link scope binding', () => {
     expect(s.statuses.get(uploadId)?.scope).toBe('research');
     expect(JSON.stringify([...s.links.keys()])).not.toContain(token);
   });
-  it('defaults to course', () => {
+  it('a course link has a course-scoped status', () => {
     const { uploadId } = createLink(base);
     expect(getStatus(uploadId, 'course')?.state).toBe('pending');
   });
