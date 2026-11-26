@@ -18,6 +18,9 @@ const PUBLIC_PREFIXES = [
   // missing/invalid token gets the JSON 401 envelope rather than the session gate. The trailing slash
   // matters: it excludes /api/mobile/pairing-codes (the mint route), which stays session-gated.
   '/api/mobile/v1/',
+  // Single-use MCP upload links: authorized solely by the unguessable token in the path (see
+  // lib/mcp/upload-links.ts). The trailing slash matters: it keeps look-alike prefixes session-gated.
+  '/api/upload-links/',
 ];
 
 function bearerOk(req: NextRequest): boolean {

@@ -4,14 +4,19 @@
 //   QUIRE_DB_TESTS=1 DATABASE_URL=postgres://… pnpm --filter web exec vitest run db.integration
 // Every row belongs to a run-unique project and is deleted afterwards (the project cascade).
 import { randomUUID } from 'node:crypto';
-import { inArray } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { eq, inArray } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db, getSql } from '@/db/client';
 import { documents, notes, type Project, projects } from '@/db/schema';
 
 const run = process.env.QUIRE_DB_TESTS === '1' && !!process.env.DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
 const projectIds: string[] = [];
+let tmp = '';
+const sha = async (b: Uint8Array) => (await import('@/lib/files')).sha256(b);
 
 async function newProject(): Promise<Project> {
   const [p] = await db
@@ -24,9 +29,55 @@ async function newProject(): Promise<Project> {
 }
 
 describe.skipIf(!run)('MCP upload idempotency queries (integration)', () => {
+  beforeAll(async () => {
+    tmp = await mkdtemp(path.join(os.tmpdir(), 'quire-mcp-it-'));
+    process.env.FILES_DIR = tmp;
+  });
   afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
     if (projectIds.length) await db.delete(projects).where(inArray(projects.id, projectIds));
     await getSql().end();
+  });
+
+  it('findDuplicatePdf matches on content_hash', async () => {
+    const { findDuplicatePdf } = await import('./upload-store');
+    const p = await newProject();
+    const bytes = new TextEncoder().encode(`%PDF-1.7 ${randomUUID()}`);
+    const hash = await sha(bytes);
+    const [d] = await db
+      .insert(documents)
+      .values({ projectId: p.id, kind: 'pdf', title: 'a', contentHash: hash, fileSize: bytes.length })
+      .returning();
+    expect((await findDuplicatePdf(p.id, hash, bytes.length))?.id).toBe(d?.id);
+    expect(await findDuplicatePdf(p.id, 'f'.repeat(64), bytes.length)).toBeUndefined();
+  });
+
+  it('findDuplicatePdf backfills an unhashed same-size row and ignores other sizes', async () => {
+    const { findDuplicatePdf } = await import('./upload-store');
+    const p = await newProject();
+    const bytes = new TextEncoder().encode(`%PDF-1.7 ${randomUUID()}`);
+    const rel = `${p.id}/hand.pdf`;
+    await mkdir(path.join(tmp, p.id), { recursive: true });
+    await writeFile(path.join(tmp, rel), bytes);
+    const [same] = await db
+      .insert(documents)
+      .values({ projectId: p.id, kind: 'pdf', title: 'hand', filePath: rel, fileSize: bytes.length })
+      .returning();
+    await db.insert(documents).values({
+      projectId: p.id,
+      kind: 'pdf',
+      title: 'other',
+      filePath: `${p.id}/missing.pdf`,
+      fileSize: bytes.length + 5,
+    });
+    const hash = await sha(bytes);
+    expect((await findDuplicatePdf(p.id, hash, bytes.length))?.id).toBe(same?.id);
+    const [after] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, same?.id ?? ''));
+    expect(after?.contentHash).toBe(hash);
+    expect(await findDuplicatePdf(p.id, 'e'.repeat(64), bytes.length + 5)).toBeUndefined();
   });
 
   it('findNoteByTitle is case-insensitive and project-scoped', async () => {

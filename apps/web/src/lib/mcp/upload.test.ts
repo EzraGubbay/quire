@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
 // upload_markdown / upload_pdf orchestration with the data layer mocked: caps, validation, course and folder
 // resolution, idempotency, the deadline, and side effects.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createMarkdownDocument = vi.fn();
 const listFolders = vi.fn();
-vi.mock('@/lib/documents', () => ({ createMarkdownDocument, listFolders }));
+const createPdfDocument = vi.fn();
+vi.mock('@/lib/documents', () => ({ createMarkdownDocument, createPdfDocument, listFolders }));
 const createNote = vi.fn();
 vi.mock('@/lib/notes', () => ({ createNote }));
 const indexOwner = vi.fn();
@@ -13,19 +15,37 @@ const revalidatePath = vi.fn();
 vi.mock('next/cache', () => ({ revalidatePath }));
 const findNoteByTitle = vi.fn();
 const findMarkdownDoc = vi.fn();
-vi.mock('./upload-store', () => ({ findNoteByTitle, findMarkdownDoc }));
+const findDuplicatePdf = vi.fn();
+const setContentHash = vi.fn();
+vi.mock('./upload-store', () => ({ findNoteByTitle, findMarkdownDoc, findDuplicatePdf, setContentHash }));
 const resolveCourse = vi.fn();
 vi.mock('./courses', () => ({ resolveCourse }));
 
-const { splitTitle, uploadMarkdown } = await import('./upload');
+const { createUploadLinkTool, ingestPdf, raceDeadline, splitTitle, uploadMarkdown, uploadStatusTool } =
+  await import('./upload');
+const { __storeForTests, setStatus } = await import('./upload-links');
 
 const project = { id: 'p1', slug: 'algo', name: 'Algorithms', kind: 'course' };
 
+const pdfBytes = new TextEncoder().encode('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');
+const sha = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
+const pdfDoc = (over = {}) => ({
+  id: 'd1',
+  title: 'Lecture',
+  pageCount: 3,
+  fileSize: pdfBytes.length,
+  ...over,
+});
+
 beforeEach(() => {
+  __storeForTests().links.clear();
+  __storeForTests().statuses.clear();
   vi.clearAllMocks();
   resolveCourse.mockResolvedValue(project);
   listFolders.mockResolvedValue([]);
   findNoteByTitle.mockResolvedValue(undefined);
+  findDuplicatePdf.mockResolvedValue(undefined);
+  createPdfDocument.mockResolvedValue(pdfDoc());
   findMarkdownDoc.mockResolvedValue(undefined);
   indexOwner.mockResolvedValue(undefined);
   createNote.mockResolvedValue({ id: 'n1', slug: 'my-note', title: 'My note' });
@@ -232,5 +252,151 @@ describe('duplicates and concurrency', () => {
   });
   it('rejects markdown that is empty once the H1 is stripped', async () => {
     await expect(uploadMarkdown({ course: 'algo', markdown: '# Only title\n' })).rejects.toThrow(/no text/);
+  });
+});
+
+describe('create_upload_link', () => {
+  const folders = [{ id: '11111111-1111-4111-8111-111111111111', name: 'Week 1' }];
+  it('returns a bound link with a ready curl', async () => {
+    const r = await createUploadLinkTool({ course: 'algo', section: 'documents', filename: "O'Brien.pdf" });
+    expect(r.uploadUrl).toMatch(/^https:\/\/quire\.ezragubbay\.com\/api\/upload-links\/[A-Za-z0-9_-]{43}$/);
+    expect(Math.abs(new Date(r.expiresAt).getTime() - (Date.now() + 600_000))).toBeLessThan(2000);
+    expect(r.maxBytes).toBe(100 * 1024 * 1024);
+    expect(r.curl).toContain("-T './O'\\''Brien.pdf'");
+    expect(r.curl).toContain("-H 'content-type: application/pdf'");
+    expect(r.curl).toContain(`'${r.uploadUrl}'`);
+    const md = await createUploadLinkTool({ course: 'algo', section: 'notes', filename: 'n.md' });
+    expect(md.maxBytes).toBe(2 * 1024 * 1024);
+    expect(md.contentType).toBe('text/markdown');
+  });
+  it('rejects bad filenames, notes+pdf and content type mismatches', async () => {
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'documents', filename: 'x.docx' }),
+    ).rejects.toThrow(/\.pdf, \.md/);
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'notes', filename: 'x.pdf' }),
+    ).rejects.toThrow(/Notes hold Markdown/);
+    await expect(
+      createUploadLinkTool({
+        course: 'algo',
+        section: 'documents',
+        filename: 'x.pdf',
+        contentType: 'text/plain',
+      }),
+    ).rejects.toThrow(/does not match/);
+    expect(
+      (
+        await createUploadLinkTool({
+          course: 'algo',
+          section: 'notes',
+          filename: 'x.md',
+          contentType: 'text/markdown; charset=utf-8',
+        })
+      ).contentType,
+    ).toBe('text/markdown');
+  });
+  it('refuses unknown courses and research projects, and resolves the folder at creation', async () => {
+    resolveCourse.mockResolvedValueOnce(undefined);
+    await expect(
+      createUploadLinkTool({ course: 'x', section: 'documents', filename: 'a.pdf' }),
+    ).rejects.toThrow(/list_courses/);
+    resolveCourse.mockResolvedValueOnce({ ...project, kind: 'research' });
+    await expect(
+      createUploadLinkTool({ course: 'x', section: 'documents', filename: 'a.pdf' }),
+    ).rejects.toThrow(/list_courses/);
+    listFolders.mockResolvedValue(folders);
+    const r = await createUploadLinkTool({
+      course: 'algo',
+      section: 'notes',
+      filename: 'a.md',
+      folder: 'week 1',
+    });
+    expect(listFolders).toHaveBeenCalledWith('p1', 'notes');
+    expect(r.folder).toBe('Week 1');
+    await expect(
+      createUploadLinkTool({ course: 'algo', section: 'notes', filename: 'a.md', folder: 'nope' }),
+    ).rejects.toThrow(/Week 1/);
+  });
+});
+
+describe('get_upload_status', () => {
+  it('reports states and explains unknown ids', async () => {
+    const r = await createUploadLinkTool({ course: 'algo', section: 'documents', filename: 'a.pdf' });
+    expect(uploadStatusTool({ uploadId: r.uploadId })).toMatchObject({ state: 'pending' });
+    setStatus(r.uploadId, { state: 'created', result: { fileId: 'd1' } });
+    expect(uploadStatusTool({ uploadId: r.uploadId })).toMatchObject({
+      state: 'created',
+      result: { fileId: 'd1' },
+    });
+    expect(uploadStatusTool({ uploadId: 'nope' })).toMatch(/Unknown uploadId/);
+  });
+});
+
+describe('ingestPdf', () => {
+  const folder = { id: null, name: null };
+  it('rejects non-PDF bytes', async () => {
+    await expect(
+      ingestPdf(project as never, { data: new TextEncoder().encode('hello'), fileName: 'a.pdf', folder }),
+    ).rejects.toThrow(/not a PDF/);
+  });
+  it('creates, appends .pdf, records the hash, indexes and revalidates', async () => {
+    const r = await ingestPdf(project as never, {
+      data: pdfBytes,
+      fileName: 'lec',
+      title: ' T ',
+      sourceUrl: 'https://x/y.pdf',
+      folder,
+    });
+    expect(createPdfDocument).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ fileName: 'lec.pdf', sourceUrl: 'https://x/y.pdf', meta: { title: 'T' } }),
+    );
+    expect(setContentHash).toHaveBeenCalledWith('d1', sha(pdfBytes));
+    expect(indexOwner).toHaveBeenCalledWith('p1', 'document', 'd1');
+    expect(revalidatePath).toHaveBeenCalledWith('/c/algo/documents');
+    expect(r).toMatchObject({ status: 'created', fileId: 'd1', pageCount: 3 });
+  });
+  it('wraps extractor failures and returns duplicates', async () => {
+    createPdfDocument.mockRejectedValueOnce(new Error('bad xref'));
+    await expect(ingestPdf(project as never, { data: pdfBytes, fileName: 'a.pdf', folder })).rejects.toThrow(
+      'Could not read that PDF: bad xref',
+    );
+    findDuplicatePdf.mockResolvedValue(pdfDoc({ id: 'old' }));
+    const r = await ingestPdf(project as never, { data: pdfBytes, fileName: 'a.pdf', folder });
+    expect(r).toMatchObject({ status: 'duplicate', fileId: 'old' });
+    expect(findDuplicatePdf).toHaveBeenCalledWith('p1', sha(pdfBytes), pdfBytes.length);
+  });
+  it('two concurrent identical calls create one document', async () => {
+    let release!: () => void;
+    createPdfDocument.mockImplementation(
+      () =>
+        new Promise((res) => {
+          release = () => res(pdfDoc());
+        }),
+    );
+    const a = ingestPdf(project as never, { data: pdfBytes, fileName: 'a.pdf', folder });
+    const b = ingestPdf(project as never, { data: pdfBytes, fileName: 'a.pdf', folder });
+    await vi.waitFor(() => expect(createPdfDocument).toHaveBeenCalled());
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(createPdfDocument).toHaveBeenCalledTimes(1);
+    expect([ra.fileId, rb.fileId]).toEqual(['d1', 'd1']);
+  });
+});
+
+describe('raceDeadline', () => {
+  it('returns null when late, finishes in the background, and does not leak rejections', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const late = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('late')), 40));
+    expect(await raceDeadline(late, 10)).toBeNull();
+    await vi.waitFor(() => expect(err).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    err.mockRestore();
+    const ok = { status: 'created' } as never;
+    expect(await raceDeadline(Promise.resolve(ok), 1000)).toBe(ok);
   });
 });
