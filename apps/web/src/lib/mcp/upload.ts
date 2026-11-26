@@ -135,7 +135,8 @@ export function markdownFromFile(
 const g = globalThis as unknown as { __quireMcpInFlight?: Map<string, Promise<UploadResult>> };
 /** Concurrent identical calls (tool or PUT) join the first one instead of racing it to a second row. */
 function once(key: string, work: () => Promise<UploadResult>): Promise<UploadResult> {
-  const inFlight = (g.__quireMcpInFlight ??= new Map());
+  g.__quireMcpInFlight ??= new Map();
+  const inFlight = g.__quireMcpInFlight;
   const running = inFlight.get(key);
   if (running) return running;
   const p = work().finally(() => inFlight.delete(key));
