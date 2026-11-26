@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { MindMapNode, Project } from '@/db/schema';
 import { createMindMapNode, deleteMindMapNode, reparentMindMapNode, updateMindMapNode } from '@/lib/mindmap';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 async function projectOr404(slug: string) {
   const project = await getProjectBySlug(slug);
@@ -43,6 +44,7 @@ export async function createMindMapNodeAction(
   slug: string,
   input: z.input<typeof createSchema>,
 ): Promise<NodeResult> {
+  await requireSession();
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -61,6 +63,7 @@ export async function createMindMapNodeAction(
 }
 
 export async function renameMindMapNodeAction(slug: string, id: string, label: string): Promise<NodeResult> {
+  await requireSession();
   const clean = label.trim().slice(0, 200);
   if (!clean) return { error: 'A node needs a label.' };
   const project = await projectOr404(slug);
@@ -72,6 +75,7 @@ export async function renameMindMapNodeAction(slug: string, id: string, label: s
 const noteSchema = z.string().max(2_000_000);
 
 export async function updateMindMapNoteAction(slug: string, id: string, note: string): Promise<OkResult> {
+  await requireSession();
   const parsed = noteSchema.safeParse(note);
   if (!parsed.success) return { error: 'Note too long' };
   const project = await projectOr404(slug);
@@ -89,6 +93,7 @@ export async function moveMindMapNodeAction(
   x: number,
   y: number,
 ): Promise<OkResult> {
+  await requireSession();
   const parsed = posSchema.safeParse({ x, y });
   if (!parsed.success) return { error: 'Bad position' };
   const project = await projectOr404(slug);
@@ -99,6 +104,7 @@ export async function moveMindMapNodeAction(
 
 /** Clear a node's drag override so it snaps back to the computed auto-layout position. */
 export async function resetMindMapPositionAction(slug: string, id: string): Promise<OkResult> {
+  await requireSession();
   const project = await projectOr404(slug);
   const node = await updateMindMapNode(project.id, id, { x: null, y: null });
   if (node) revalidate(project);
@@ -110,6 +116,7 @@ export async function toggleMindMapCollapseAction(
   id: string,
   collapsed: boolean,
 ): Promise<OkResult> {
+  await requireSession();
   const project = await projectOr404(slug);
   const node = await updateMindMapNode(project.id, id, { collapsed });
   if (node) revalidate(project);
@@ -121,6 +128,7 @@ export async function reparentMindMapNodeAction(
   id: string,
   parentId: string | null,
 ): Promise<NodeResult> {
+  await requireSession();
   const project = await projectOr404(slug);
   try {
     const node = await reparentMindMapNode(project.id, id, parentId);
@@ -132,6 +140,7 @@ export async function reparentMindMapNodeAction(
 }
 
 export async function deleteMindMapNodeAction(slug: string, id: string): Promise<OkResult> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteMindMapNode(project.id, id);
   revalidate(project);

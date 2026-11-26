@@ -7,12 +7,14 @@ import { indexOwner } from '@/lib/ai/index';
 import { createPaperStub, createPdfDocument } from '@/lib/documents';
 import { downloadPdf } from '@/lib/ingest';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 import { createSource } from '@/lib/sources';
 
 export async function discoverAction(
   slug: string,
   query: string,
 ): Promise<DiscoverResult | { error: string }> {
+  await requireSession();
   const project = await getProjectBySlug(slug);
   if (!project) return { error: 'project not found' };
   try {
@@ -39,6 +41,7 @@ export async function addCandidateAction(
   c: AddCandidateInput,
   as: 'document' | 'source',
 ): Promise<{ ok: true; href: string } | { error: string }> {
+  await requireSession();
   const project = await getProjectBySlug(slug);
   if (!project) return { error: 'project not found' };
   if (as === 'source') {

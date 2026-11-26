@@ -20,6 +20,7 @@ import {
   updateQuestion,
 } from '@/lib/homework';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 export interface ActionState {
   error?: string;
@@ -44,6 +45,7 @@ const createSchema = z.object({
 
 /** `+ Assignment`: number, title, due date/time, and an optional first list of question labels (one per line). */
 export async function createAssignmentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = createSchema.safeParse({
     slug: formData.get('slug'),
     number: formData.get('number') || undefined,
@@ -87,6 +89,7 @@ export async function updateAssignmentAction(
   id: string,
   patch: z.input<typeof patchSchema>,
 ): Promise<ActionState> {
+  await requireSession();
   const parsed = patchSchema.safeParse(patch);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -110,6 +113,7 @@ export async function updateAssignmentAction(
 }
 
 export async function deleteAssignmentAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const files = await deleteAssignment(project.id, id);
   for (const f of files) await removeStoredFile(f.filePath);
@@ -122,6 +126,7 @@ export async function addQuestionAction(
   assignmentId: string,
   label: string,
 ): Promise<ActionState> {
+  await requireSession();
   const clean = label.trim().slice(0, 80);
   if (!clean) return { error: 'Give the question a label.' };
   const project = await projectOr404(slug);
@@ -146,6 +151,7 @@ export async function updateQuestionAction(
   questionId: string,
   patch: z.input<typeof qPatch>,
 ) {
+  await requireSession();
   const parsed = qPatch.safeParse(patch);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   const project = await projectOr404(slug);
@@ -164,6 +170,7 @@ export async function deleteQuestionAction(
   assignmentId: string,
   questionId: string,
 ): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteQuestion(questionId);
   revalidatePath(`${projectBase(project)}/homework/${assignmentId}`);
@@ -171,6 +178,7 @@ export async function deleteQuestionAction(
 
 /** Submission files (any type) are stored, not opened; PDFs for the sheet / returned paper go through documents. */
 export async function uploadSubmissionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const slug = String(formData.get('slug') ?? '');
   const assignmentId = String(formData.get('assignmentId') ?? '');
   const files = formData.getAll('files').filter((f): f is File => f instanceof File && f.size > 0);
@@ -198,6 +206,7 @@ export async function removeSubmissionAction(
   assignmentId: string,
   fileId: string,
 ): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await removeSubmissionFile(fileId);
   revalidatePath(`${projectBase(project)}/homework/${assignmentId}`);
@@ -208,6 +217,7 @@ export async function attachAssignmentPdfAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  await requireSession();
   const slug = String(formData.get('slug') ?? '');
   const assignmentId = String(formData.get('assignmentId') ?? '');
   const which = formData.get('which') === 'returned' ? 'returned' : 'sheet';

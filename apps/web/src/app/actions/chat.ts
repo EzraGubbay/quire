@@ -11,6 +11,7 @@ import { createThread, deleteThread, getThread, listMessages, listThreads, setTh
 import { listDocuments } from '@/lib/documents';
 import { deckNote } from '@/lib/notes';
 import { baseFromSlug, getProjectBySlug, projectBase } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 async function projectOr404(slug: string) {
   const project = await getProjectBySlug(slug);
@@ -31,6 +32,7 @@ export async function newThreadAction(
   documentId?: string | null,
   scope: AskScope = {},
 ): Promise<string> {
+  await requireSession();
   const project = await projectOr404(slug);
   const mode =
     scope.mode && (THREAD_MODES as readonly string[]).includes(scope.mode) ? scope.mode : 'default';
@@ -44,6 +46,7 @@ export async function newThreadAction(
 }
 
 export async function newThreadAndGoAction(slug: string, documentId?: string | null): Promise<void> {
+  await requireSession();
   const id = await newThreadAction(slug, documentId ?? null);
   redirect(`${await baseFromSlug(slug)}/chat/${id}`);
 }
@@ -67,6 +70,7 @@ export async function askContextAction(
   documentId?: string | null,
   scope: AskScope = {},
 ): Promise<AskContext> {
+  await requireSession();
   const project = await projectOr404(slug);
   const [summary, docs, all, working] = await Promise.all([
     spendSummary(),
@@ -94,6 +98,7 @@ export async function askContextAction(
 }
 
 export async function threadMessagesAction(slug: string, threadId: string): Promise<ChatMessage[]> {
+  await requireSession();
   const project = await projectOr404(slug);
   const thread = await getThread(project.id, threadId);
   if (!thread) throw new Error('thread not found');
@@ -101,6 +106,7 @@ export async function threadMessagesAction(slug: string, threadId: string): Prom
 }
 
 export async function setThreadModeAction(slug: string, threadId: string, mode: ThreadMode): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   const thread = await getThread(project.id, threadId);
   if (!thread) return;
@@ -109,6 +115,7 @@ export async function setThreadModeAction(slug: string, threadId: string, mode: 
 }
 
 export async function deleteThreadAction(slug: string, id: string): Promise<void> {
+  await requireSession();
   const project = await projectOr404(slug);
   await deleteThread(project.id, id);
   revalidatePath(`${projectBase(project)}/chat`);
@@ -116,11 +123,13 @@ export async function deleteThreadAction(slug: string, id: string): Promise<void
 }
 
 export async function reindexAction(slug: string, force = false): Promise<{ indexed: number }> {
+  await requireSession();
   const project = await projectOr404(slug);
   return reindexProject(project.id, force);
 }
 
 export async function clearProviderBlockAction(): Promise<void> {
+  await requireSession();
   await clearProviderBlock();
   revalidatePath('/settings');
 }

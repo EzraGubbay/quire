@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { deleteMacro, parseMacroLine, upsertMacro } from '@/lib/macros';
 import { baseFromSlug, getProjectBySlug } from '@/lib/projects';
+import { requireSession } from '@/lib/require-session';
 
 export interface ActionState {
   error?: string;
@@ -15,6 +16,7 @@ const schema = z.object({ slug: z.string().optional(), text: z.string().max(2000
 
 /** Adds or updates macros from a textarea: one per line, `\newcommand{\name}[n]{def}` or `\name[n]: def`. */
 export async function addMacrosAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSession();
   const parsed = schema.safeParse({
     slug: formData.get('slug') ?? undefined,
     text: formData.get('text') ?? '',
@@ -46,6 +48,7 @@ export async function addMacrosAction(_prev: ActionState, formData: FormData): P
 }
 
 export async function deleteMacroAction(id: string, slug?: string): Promise<void> {
+  await requireSession();
   await deleteMacro(id);
   revalidatePath('/settings');
   if (slug) revalidatePath(await baseFromSlug(slug), 'layout');
