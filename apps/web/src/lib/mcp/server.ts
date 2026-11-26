@@ -23,6 +23,8 @@ import {
   readFileBytes,
   resolveFile,
 } from './courses';
+import { driveConfig } from './drive/config';
+import { registerDriveTools } from './drive/tools';
 import {
   createUploadLinkTool,
   kb,
@@ -229,6 +231,9 @@ function registerWriteTools(server: McpServer): void {
     READ_ONLY,
     async ({ uploadId }) => text(uploadStatusTool({ uploadId })),
   );
+
+  const drive = driveConfig();
+  if (drive.enabled) registerDriveTools(server, drive);
 }
 
 export function registerQuireMcp(server: McpServer): void {
