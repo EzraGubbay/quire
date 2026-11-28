@@ -141,7 +141,7 @@ describe('readPptx', () => {
   });
 
   it('I8 reads a large deck quickly', { timeout: 30_000 }, () => {
-    const slides = Array.from({ length: 150 }, (_, i) => {
+    const slides = Array.from({ length: 150 }, () => {
       const shapes = Array.from({ length: 40 }, (_, j) =>
         sp([para([run('שלום '), run(`word ${j} `), run('O(n)')], { rtl: j % 2 === 0 })], {
           box: box((j % 8) * IN, Math.floor(j / 8) * IN),
