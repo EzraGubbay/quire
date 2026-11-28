@@ -124,23 +124,23 @@ async function expectMatrix(expectedSrc: string) {
 
 const GITHUB = `
 row                            | none | master | research | jwt-ok | jwt-other | device | master+na | research+na
-GET /                          | 307  | pass   | 307      | pass   | pass      | 307    | pass      | 307
-POST / [next-action]           | 307  | pass   | 307      | pass   | pass      | 307    | pass      | 307
-POST /api/projects/x/runs      | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
-GET /api/lemida/commands       | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
+GET /                          | 307  | pass   | 307      | pass   | 307       | 307    | pass      | 307
+POST / [next-action]           | 307  | pass   | 307      | pass   | 307       | 307    | pass      | 307
+POST /api/projects/x/runs      | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
+GET /api/lemida/commands       | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
 GET /api/mobile/v1/me          | pass | pass   | pass     | pass   | pass      | pass   | pass      | 401
 POST /api/mobile/v1/auth/pair  | pass | pass   | pass     | pass   | pass      | pass   | pass      | 401
-POST /api/mobile/pairing-codes | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
-POST /mcp                      | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
-POST /research/mcp             | 401  | pass   | pass     | pass   | pass      | 401    | pass      | 401
-POST /research/mcp/x           | 307  | pass   | 307      | pass   | pass      | 307    | pass      | 307
-POST /research/mcpx            | 307  | pass   | 307      | pass   | pass      | 307    | pass      | 307
+POST /api/mobile/pairing-codes | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
+POST /mcp                      | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
+POST /research/mcp             | 401  | pass   | pass     | pass   | 401       | 401    | pass      | 401
+POST /research/mcp/x           | 307  | pass   | 307      | pass   | 307       | 307    | pass      | 307
+POST /research/mcpx            | 307  | pass   | 307      | pass   | 307       | 307    | pass      | 307
 PUT /api/upload-links/<43>     | pass | pass   | pass     | pass   | pass      | pass   | pass      | 401
-GET /api/upload-links/<43>     | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
-PUT /api/upload-links/<42>     | 401  | pass   | 401      | pass   | pass      | 401    | pass      | 401
+GET /api/upload-links/<43>     | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
+PUT /api/upload-links/<42>     | 401  | pass   | 401      | pass   | 401       | 401    | pass      | 401
 GET /api/health                | pass | pass   | pass     | pass   | pass      | pass   | pass      | 401
 GET /icons/icon-192.png        | pass | pass   | pass     | pass   | pass      | pass   | pass      | 307
-POST /icons/x/documents/y      | 307  | pass   | 307      | pass   | pass      | 307    | pass      | 307
+POST /icons/x/documents/y      | 307  | pass   | 307      | pass   | 307       | 307    | pass      | 307
 `;
 
 const GITHUB_UNCONFIGURED = `
@@ -191,10 +191,12 @@ beforeEach(() => {
   h.session = null;
   process.env.QUIRE_API_KEY = MASTER;
   process.env.QUIRE_RESEARCH_API_KEY = RESEARCH;
+  process.env.ALLOWED_GITHUB_LOGIN = ALLOWED;
 });
 afterEach(() => {
   delete process.env.QUIRE_API_KEY;
   delete process.env.QUIRE_RESEARCH_API_KEY;
+  delete process.env.ALLOWED_GITHUB_LOGIN;
 });
 
 describe('proxy decision matrix', () => {
@@ -230,14 +232,12 @@ describe('proxy decision matrix', () => {
     expect(t.slice(1).map((r) => r[idx])).not.toContain('pass');
   });
 
-  it('FINDING F1 (issue #111): a session for a NON-allowed login passes the proxy exactly like the allowed one', async () => {
-    // Characterization only. The proxy checks `req.auth?.user`, never isAllowedLogin. Issue #111 will fix
-    // this deliberately; at that point the jwt-other column (and this assertion) change intentionally.
+  it('F1 fixed (issue #111): a session for a non-allowed login is treated exactly like no session', async () => {
     const t = await actualTable();
     const head = t[0] ?? [];
-    const ok = head.indexOf('jwt-ok');
+    const none = head.indexOf('none');
     const other = head.indexOf('jwt-other');
-    expect(t.slice(1).map((r) => r[other])).toEqual(t.slice(1).map((r) => r[ok]));
+    expect(t.slice(1).map((r) => r[other])).toEqual(t.slice(1).map((r) => r[none]));
   });
 });
 
@@ -304,13 +304,33 @@ const EDGES: Edge[] = [
     headers: bearer(RESEARCH),
     env: { QUIRE_RESEARCH_API_KEY: undefined },
   },
+  {
+    label: "GET / jwt login 'OWNER' (allowed 'Owner')",
+    method: 'GET',
+    path: '/',
+    session: sess('OWNER'),
+  },
+  {
+    label: 'GET / jwt-ok, ALLOWED_GITHUB_LOGIN unset',
+    method: 'GET',
+    path: '/',
+    session: sess(ALLOWED),
+    env: { ALLOWED_GITHUB_LOGIN: undefined },
+  },
+  {
+    label: 'POST /api/mobile/pairing-codes master + jwt-other',
+    method: 'POST',
+    path: '/api/mobile/pairing-codes',
+    headers: bearer(MASTER),
+    session: sess(OTHER),
+  },
 ];
 
 // Note: the trailing-space row is `pass` because the Headers API trims trailing whitespace from values
 // before proxy ever sees it (plan predicted 401; the code is the truth).
 const EDGE_EXPECTED = `
 scenario                                                      | outcome
-GET / session {user:{}} (no login)                            | pass
+GET / session {user:{}} (no login)                            | 307
 GET / session {expires} (no user)                             | 307
 POST /mcp 'bearer <master>' (lowercase scheme)                | 401
 POST /mcp 'Bearer <master> ' (trailing space)                 | pass
@@ -320,6 +340,9 @@ GET /research/mcp research key                                | pass
 DELETE /research/mcp research key                             | pass
 POST /api/projects/x/runs research key + jwt-ok               | pass
 POST /research/mcp research key, QUIRE_RESEARCH_API_KEY unset | 401
+GET / jwt login 'OWNER' (allowed 'Owner')                     | pass
+GET / jwt-ok, ALLOWED_GITHUB_LOGIN unset                      | 307
+POST /api/mobile/pairing-codes master + jwt-other             | pass
 `;
 
 describe('proxy edge scenarios (github mode)', () => {
@@ -335,10 +358,12 @@ describe('proxy edge scenarios (github mode)', () => {
         actual.push([e.label, await run(e.method, e.path, e.headers ?? {}, e.session ?? null)]);
         process.env.QUIRE_API_KEY = saved.QUIRE_API_KEY;
         process.env.QUIRE_RESEARCH_API_KEY = saved.QUIRE_RESEARCH_API_KEY;
+        process.env.ALLOWED_GITHUB_LOGIN = saved.ALLOWED_GITHUB_LOGIN;
       }
     } finally {
       process.env.QUIRE_API_KEY = saved.QUIRE_API_KEY;
       process.env.QUIRE_RESEARCH_API_KEY = saved.QUIRE_RESEARCH_API_KEY;
+      process.env.ALLOWED_GITHUB_LOGIN = saved.ALLOWED_GITHUB_LOGIN;
     }
     const expected = table(EDGE_EXPECTED);
     expect(expected.slice(1).map((r) => r[0])).toEqual(EDGES.map((e) => e.label));

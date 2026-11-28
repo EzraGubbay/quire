@@ -1,12 +1,15 @@
 import { type NextFetchEvent, type NextRequest, NextResponse } from 'next/server';
 import { AUTH_MODE, auth, githubConfigured } from '@/auth';
 import { type CallerEnv, classify, RESEARCH_MCP_PATH } from '@/core/identity/caller';
+import { allowedSessionLogin } from '@/core/identity/login';
 
 // Public-path rules live in core/identity/caller.ts; re-exported for existing importers.
 export { isPublic } from '@/core/identity/caller';
 
 const withSession = auth((req) => {
-  if (req.auth?.user) return NextResponse.next();
+  // Only the allowed GitHub login passes; any other session is treated like no session (#111).
+  if (allowedSessionLogin(req.auth, process.env.ALLOWED_GITHUB_LOGIN ?? '') !== null)
+    return NextResponse.next();
   // API and MCP clients get a clean 401; only browser page routes redirect to sign-in.
   const p = req.nextUrl.pathname;
   if (p.startsWith('/api/') || p === '/mcp' || p.startsWith('/mcp/') || p === RESEARCH_MCP_PATH) {
