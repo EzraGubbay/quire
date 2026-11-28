@@ -20,19 +20,22 @@ export interface SessionName {
 
 /** Bounds the regex work on adversarial input; a kind word past this is ignored. */
 const MAX_NAME = 512;
-/** Bidi control marks, which Hebrew file names often carry. */
-const BIDI = /[‎‏‪-‮⁦-⁩]/g;
+/** Bidi control marks (common in Hebrew file names) and zero-width spaces/joiners. */
+const BIDI = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g;
 /** A short extension, only when it has a letter, so `Lec.3` keeps its `.3`. */
 const EXT = /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,5}$/;
-/** Trailing term marker (A 2027, 2027A, spring 2027, Hebrew semester), stripped like the legacy parser does. */
+/**
+ * Trailing term marker (A 2027, 2027A, spring 2027, Hebrew semester), stripped like the legacy parser does.
+ * Inherent ambiguity: a real title ending in a letter A or B plus a year (`Part A 2027`) is read as a term.
+ */
 const TERM =
-  /[\s\-–—(]*(?:(?<!\p{L})[AB]\s*\d{4}|\d{4}\s*[AB](?!\p{L})|(?:spring|fall|autumn|winter|summer)\s*\d{4}|סמסטר\s*(?:[אב]['׳]?(?:\s*\d{4})?|\d{4}))\)?\s*$/iu;
+  /[\s\-–—(]*(?:(?<!\p{L})[AB]\s*\d{4}|\d{4}\s*[AB](?!\p{L})|(?<!\p{L})(?:spring|fall|autumn|winter|summer)\s*\d{4}|סמסטר\s*(?:[אב]['׳]?(?:\s*\d{4})?|\d{4}))\)?\s*$/iu;
 /** Separators allowed between a kind word and its number (includes the Hebrew maqaf). */
 const SEP = '[\\s\\-–—־:.#]';
 /** Optional "no.", "number", or Hebrew "מספר"/"מס'" written before the number. */
 const MARKER = "(?:(?:no|num|number)\\.?|מספר|מס['׳]?)";
-/** One to three digits bound to the kind word, not followed by a letter or digit. */
-const NUMBER = `${SEP}*(?:${MARKER}${SEP}*)?(\\d{1,3})(?![\\p{L}\\p{N}])`;
+/** One to three digits bound to the kind word, not followed by a letter, a digit, or a date/decimal tail like `.03` or `/12`. */
+const NUMBER = `${SEP}*(?:${MARKER}${SEP}*)?(\\d{1,3})(?![\\p{L}\\p{N}]|[.,/]\\d)`;
 /** A whole token: not preceded by a letter or digit, not followed by a letter. */
 const word = (alts: string) => `(?<![\\p{L}\\p{N}])(?:${alts})(?!\\p{L})`;
 
@@ -46,7 +49,7 @@ const PATTERNS = [
   {
     kind: 'recitation',
     short: false,
-    words: 'recitation|tutorial|tirgul|exercise|תרגול|תירגול|תרגיל(?!\\s*בית)',
+    words: 'recitation|tutorial|tirgul|exercise|תרגול|תירגול|תרגיל(?![\\s\\-־]*בית)',
   },
   { kind: 'recitation', short: true, words: 'rec|tut|ex' },
 ].map(({ kind, short, words }) => ({
