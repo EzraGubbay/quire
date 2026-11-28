@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "project": "<slug:research>",
+      "fileId": "<id:method>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "# Method",
+          "",
+          "Hebrew + $x^2$ body"
+        ]
+      }
+    ]
+  }
+}

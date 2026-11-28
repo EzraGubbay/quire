@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "project": "<slug:research>",
+      "fileId": "<id:stub>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "\"Stub paper\" has no PDF (its conversion may have failed), so there is no page text."
+      }
+    ]
+  }
+}

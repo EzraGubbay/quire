@@ -306,4 +306,102 @@ describe.skipIf(!run)('MCP golden transcripts (integration)', () => {
     expect(await writeCounts(), 'write-tool error paths must not write').toEqual(before);
     await assertNoStale(golden(S).dir, COURSE_STEPS);
   });
+
+  const RESEARCH_STEPS = [
+    'tools-list',
+    'resource-templates',
+    'list_projects',
+    'list_project_files',
+    'list_project_files.course-slug',
+    'get_file.paper.text',
+    'get_file.paper.pages-1',
+    'get_file.method.text',
+    'get_file.stub.text',
+    'get_file.paper.pdf',
+    'get_file.course-doc',
+    'get_page_images.paper.p1',
+    'get_note',
+    'get_note.missing',
+    'resources.list',
+    'resources.read.paper',
+    'upload_markdown.missing-project',
+    'upload_pdf.missing-project',
+    'add_paper.missing-project',
+    'add_paper.plain-url',
+    'create_upload_link.missing-project',
+    'get_upload_status.unknown',
+  ];
+
+  it('research server transcript', async () => {
+    const { registerQuireResearchMcp } = await import('@/lib/mcp-research/server');
+    const client = await connectMcp(registerQuireResearchMcp);
+    const S = 'research' as const;
+    const id = seed.ids;
+    const slug = seed.research.slug;
+    const f = (name: string, extra: Record<string, unknown> = {}) => ({
+      project: slug,
+      fileId: id[name],
+      ...extra,
+    });
+    const before = await writeCounts();
+
+    const listed = jsonOf((await client.callTool({ name: 'list_projects', arguments: {} })) as ToolRes);
+    const projects = listed.projects as { slug: string }[];
+    const mine = projects.filter((p) => p.slug === slug);
+    expect(mine).toHaveLength(1);
+    expect(projects.some((p) => p.slug === seed.course.slug)).toBe(false);
+    await filtered(S, 'list_projects', { method: 'tools/call', name: 'list_projects' }, { projects: mine });
+
+    await tool(client, S, 'list_project_files', 'list_project_files', { project: slug });
+    const wrong = await tool(client, S, 'list_project_files.course-slug', 'list_project_files', {
+      project: seed.course.slug,
+    });
+    expect(wrong.isError).toBe(true);
+
+    await tool(client, S, 'get_file.paper.text', 'get_file', f('paper'));
+    await tool(client, S, 'get_file.paper.pages-1', 'get_file', f('paper', { pages: '1' }));
+    await tool(client, S, 'get_file.method.text', 'get_file', f('method'));
+    await tool(client, S, 'get_file.stub.text', 'get_file', f('stub'));
+    await tool(client, S, 'get_file.paper.pdf', 'get_file', f('paper', { format: 'pdf' }));
+    // A course document id under the research slug: kind isolation.
+    await tool(client, S, 'get_file.course-doc', 'get_file', {
+      project: slug,
+      fileId: id['lecture-deck'],
+    });
+    await tool(client, S, 'get_page_images.paper.p1', 'get_page_images', f('paper', { pages: '1' }));
+    await tool(client, S, 'get_note', 'get_note', { project: slug, noteId: id.note });
+    await tool(client, S, 'get_note.missing', 'get_note', { project: slug, noteId: MISSING });
+
+    const resources = await seededResources(client, slug);
+    expect(resources).toHaveLength(3);
+    await filtered(S, 'resources.list', { method: 'resources/list' }, { resources });
+    await resourceRead(client, S, 'resources.read.paper', `quire://research/${slug}/file/${id.paper}`);
+
+    const missing = `golden-missing-${RUN}`;
+    await tool(client, S, 'upload_markdown.missing-project', 'upload_markdown', {
+      project: missing,
+      markdown: '# T\nbody',
+    });
+    await tool(client, S, 'upload_pdf.missing-project', 'upload_pdf', {
+      project: missing,
+      url: 'https://example.org/x.pdf',
+    });
+    await tool(client, S, 'add_paper.missing-project', 'add_paper', {
+      project: missing,
+      reference: '2401.01234',
+    });
+    await tool(client, S, 'add_paper.plain-url', 'add_paper', {
+      project: slug,
+      reference: 'https://example.org/p',
+    });
+    await tool(client, S, 'create_upload_link.missing-project', 'create_upload_link', {
+      project: missing,
+      section: 'documents',
+      filename: 'x.pdf',
+    });
+    await tool(client, S, 'get_upload_status.unknown', 'get_upload_status', { uploadId: 'nope' });
+
+    expect(await writeCounts(), 'write-tool error paths must not write').toEqual(before);
+    await assertNoStale(golden(S).dir, RESEARCH_STEPS);
+  });
 });

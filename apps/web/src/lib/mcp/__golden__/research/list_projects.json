@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "list_projects"
+  },
+  "response": {
+    "projects": [
+      {
+        "slug": "<slug:research>",
+        "id": "<id:research>",
+        "name": "Golden Research <run>",
+        "description": "Synthetic research project for MCP goldens",
+        "documentCount": 3,
+        "noteCount": 1,
+        "sourceCount": 1
+      }
+    ]
+  }
+}
