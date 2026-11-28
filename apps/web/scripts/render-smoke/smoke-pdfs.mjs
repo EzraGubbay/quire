@@ -133,7 +133,33 @@ const regionsOf = (list, min = 0.02) =>
   list.map(([name, x, y, w, h, m]) => ({ name, x, y, w, h, min: m ?? min }));
 
 /** Per-region minimum non-white ratios, calibrated against the best variant inside the runtime image. */
-const MIN = {};
+const MIN = {
+  'text-type3/row1': 0.213,
+  'text-type3/row2': 0.207,
+  'text-type3/row3': 0.206,
+  'text-helvetica/row1': 0.069,
+  'text-helvetica/row2': 0.074,
+  'text-helvetica/row3': 0.069,
+  'text-embedded-truetype/row1': 0.069,
+  'text-embedded-truetype/row2': 0.074,
+  'text-embedded-truetype/row3': 0.069,
+  'vector-shapes/box-blue': 0.333,
+  'vector-shapes/box-orange': 0.333,
+  'vector-shapes/box-green': 0.333,
+  'vector-shapes/polygon': 0.17,
+  'vector-shapes/curve': 0.021,
+  'shading-axial/gradient': 0.333,
+  'image-raw-gray/image': 0.332,
+  'image-jpeg/image': 0.332,
+  'image-smask/image': 0.28,
+  'image-stencil-mask/mask': 0.167,
+  'transparency-group/group-alpha': 0.279,
+  'transparency-group/group-masked': 0.296,
+  'slide-combo/title': 0.046,
+  'slide-combo/diagram': 0.226,
+  'slide-combo/photo': 0.332,
+  'slide-combo/label': 0.137,
+};
 const minOf = (id, name, fallback = 0.005) => MIN[`${id}/${name}`] ?? fallback;
 
 const CASES = [
@@ -231,7 +257,7 @@ const CASES = [
       ['box-orange', 280, 250, 160, 90],
       ['box-green', 520, 250, 160, 90],
       ['polygon', 500, 60, 180, 140],
-      ['curve', 40, 120, 360, 80, 0.005],
+      ['curve', 40, 120, 360, 80],
     ],
     build: () =>
       onePage(() => ({
@@ -251,7 +277,7 @@ const CASES = [
     id: 'shading-axial',
     title: 'Axial gradient',
     feature: 'Type 2 axial shading through a clip rectangle (sh operator)',
-    regions: [['gradient', 60, 60, 600, 285, 0.5]],
+    regions: [['gradient', 60, 60, 600, 285]],
     build: () =>
       onePage(() => ({
         resources:
@@ -265,7 +291,7 @@ const CASES = [
     id: 'image-raw-gray',
     title: 'Raw gray image',
     feature: '64x64 8-bit DeviceGray image, uncompressed (paintImageXObject via a temp canvas)',
-    regions: [['image', 160, 50, 400, 300, 0.5]],
+    regions: [['image', 160, 50, 400, 300]],
     build: () =>
       onePage((pdf) => {
         const im = pdf.addStream(
@@ -279,7 +305,7 @@ const CASES = [
     id: 'image-jpeg',
     title: 'JPEG image',
     feature: '96x64 DeviceRGB image with a DCTDecode filter',
-    regions: [['image', 120, 40, 480, 320, 0.5]],
+    regions: [['image', 120, 40, 480, 320]],
     build: () =>
       onePage((pdf) => {
         const im = pdf.addStream(
@@ -293,7 +319,7 @@ const CASES = [
     id: 'image-smask',
     title: 'Image with soft mask',
     feature: '64x64 raw RGB image with a 64x64 gray soft mask (radial alpha)',
-    regions: [['image', 160, 50, 400, 300, 0.1]],
+    regions: [['image', 160, 50, 400, 300]],
     build: () =>
       onePage((pdf) => {
         const n = 64;
@@ -324,7 +350,7 @@ const CASES = [
     id: 'image-stencil-mask',
     title: 'Stencil mask image',
     feature: '1-bit /ImageMask checkerboard filled blue (paintImageMaskXObject)',
-    regions: [['mask', 200, 40, 320, 320, 0.2]],
+    regions: [['mask', 200, 40, 320, 320]],
     build: () =>
       onePage((pdf) => {
         const rows = [];
@@ -348,8 +374,8 @@ const CASES = [
     feature:
       'Form XObject with a transparency group under constant alpha 0.6, and again under a luminosity soft mask',
     regions: [
-      ['group-alpha', 40, 60, 280, 280, 0.2],
-      ['group-masked', 380, 100, 280, 200, 0.1],
+      ['group-alpha', 40, 60, 280, 280],
+      ['group-masked', 380, 100, 280, 200],
     ],
     build: () =>
       onePage((pdf) => {
@@ -376,7 +402,7 @@ const CASES = [
     regions: [
       ['title', 40, 340, 420, 36],
       ['diagram', 40, 150, 360, 120],
-      ['photo', 460, 150, 200, 133, 0.5],
+      ['photo', 460, 150, 200, 133],
       ['label', 40, 60, 280, 20],
     ],
     build: () =>
