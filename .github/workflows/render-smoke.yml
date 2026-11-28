@@ -1,0 +1,66 @@
+name: Render smoke
+on:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: render-smoke-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  render-smoke:
+    # Renders synthetic PDF pages inside the real runtime image (infra/Dockerfile, target runtime) on native arm64
+    # and reports, per page, crash/error/blank and the non-white pixel ratio (#122). Non-blocking until the render
+    # fixes land (that change removes continue-on-error and makes this check required). Always runs and reports; the
+    # heavy steps skip only when the gate finds no render-relevant change (any doubt means run).
+    name: Render smoke (runtime image)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - id: gate
+        name: Decide whether render-relevant paths changed
+        continue-on-error: true
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node apps/web/scripts/render-smoke/gate.mjs --event "$EVENT" --base "$BASE" --head "$HEAD_SHA"
+      - name: Report skip
+        if: steps.gate.outputs.run == 'false'
+        env:
+          REASON: ${{ steps.gate.outputs.reason }}
+        run: echo "Render smoke skipped: $REASON" >> "$GITHUB_STEP_SUMMARY"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.gate.outputs.run != 'false'
+      - name: Build the runtime image (arm64, loaded, not pushed)
+        if: steps.gate.outputs.run != 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/Dockerfile
+          target: runtime
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: quire-render-smoke:ci
+          # Read-only use of the deploy's layer cache; never cache-to, so the deploy scope is not written.
+          cache-from: type=gha
+      - name: Render smoke pages inside the image
+        if: steps.gate.outputs.run != 'false'
+        continue-on-error: true
+        run: apps/web/scripts/render-smoke/run-in-image.sh quire-render-smoke:ci "$RUNNER_TEMP/render-smoke"
+      - name: Job summary
+        if: always() && steps.gate.outputs.run != 'false'
+        run: cat "$RUNNER_TEMP/render-smoke/summary.md" >> "$GITHUB_STEP_SUMMARY" || echo "No summary written." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.run != 'false'
+        with:
+          name: render-smoke
+          path: ${{ runner.temp }}/render-smoke
+          retention-days: 7
+          if-no-files-found: warn
