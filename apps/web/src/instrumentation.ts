@@ -1,6 +1,6 @@
 // Runs once when the Next.js server boots: apply pending migrations before serving traffic, then mark background
 // jobs that died with the previous process as failed so their pages offer Retry instead of spinning forever, and prune unsent (message-less) chats older than a day. The
-// push loop starts on every nodejs boot, after migrations when they run, including under SKIP_MIGRATIONS=1.
+// push loop and the durable jobs worker start on every nodejs boot, after migrations when they run, including under SKIP_MIGRATIONS=1.
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   if (process.env.SKIP_MIGRATIONS !== '1') await migrateAndCleanUp();
@@ -9,6 +9,12 @@ export async function register() {
     startPushLoop();
   } catch (err) {
     console.warn('[push] loop failed to start', (err as Error)?.name ?? 'Error');
+  }
+  try {
+    const { startJobWorker } = await import('./core/jobs/worker');
+    startJobWorker({ installSignalHandlers: true });
+  } catch (err) {
+    console.warn('[jobs] worker failed to start', (err as Error)?.name ?? 'Error');
   }
 }
 

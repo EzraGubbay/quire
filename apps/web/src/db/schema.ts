@@ -907,3 +907,37 @@ export const mobilePushOutbox = pgTable(
   ],
 );
 export type MobilePushOutboxRow = typeof mobilePushOutbox.$inferSelect;
+
+export type JobStatus = 'queued' | 'running' | 'failed' | 'done' | 'dead';
+
+/**
+ * Durable background jobs (ADR 0001, decision 6): long or resumable work only (extraction, backfills, pruning);
+ * short work stays on after(). The in-process worker (core/jobs/worker.ts) claims one due row at a time with
+ * FOR UPDATE SKIP LOCKED and holds it with a lease (`lease_until`, fenced by `locked_by`); an expired lease is
+ * re-claimable. `dedupe_key` is unique per `type` among live (queued/running/failed) rows only.
+ */
+export const jobs = pgTable(
+  'jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    type: text('type').notNull(),
+    dedupeKey: text('dedupe_key'),
+    payload: jsonb('payload').$type<unknown>().notNull().default({}),
+    status: text('status').$type<JobStatus>().notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(5),
+    runAfter: timestamp('run_after', { withTimezone: true }).notNull().defaultNow(),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    lockedBy: text('locked_by'),
+    lastError: text('last_error'),
+    ...timestamps,
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('jobs_dedupe_live_uq')
+      .on(t.type, t.dedupeKey)
+      .where(sql`${t.status} in ('queued', 'running', 'failed')`),
+    index('jobs_claim_idx').on(t.status, t.runAfter),
+  ],
+);
+export type Job = typeof jobs.$inferSelect;
