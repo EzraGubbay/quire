@@ -83,8 +83,8 @@ test('session check lists a duplicate number and a mismatched deck', async ({ pa
   await page.goto('/settings');
   await hydrated(page);
   const row = page.getByTestId('session-check-summary').locator(`[data-slug="${slug}"]`);
-  await expect(row).toContainText('3');
-  await expect(row).toContainText('1');
+  await expect(row.locator('td').nth(1)).toHaveText('3');
+  await expect(row.locator('td').nth(2)).toHaveText('1');
   await row.getByRole('link').click();
   await expect(page).toHaveURL(new RegExp(`/c/${slug}/settings#session-check$`));
   await expect(panel).toBeVisible();

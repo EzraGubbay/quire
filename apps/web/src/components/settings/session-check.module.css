@@ -18,6 +18,7 @@
 .item {
   font: 400 13px / 1.45 var(--eg-font-ui);
   color: var(--eg-text);
+  overflow-wrap: anywhere;
 }
 .item[data-severity="notice"] {
   color: var(--eg-muted);
