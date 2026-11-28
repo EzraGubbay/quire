@@ -7,8 +7,8 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   `homework` / `exam` / `book` / `paper` / `other`, with a stable `fileId` and a `resourceUri`.
 - **`get_file`** (`course`, `fileId`, `pages?`, `format?`) — by default (`format: "text"`) the file's page text
   with `--- Page N ---` markers, at most `MCP_TEXT_BUDGET_CHARS` characters of page text per call (default
-  20,000; a single longer page is cut and says so). `pages` picks pages (`"1-10"`, `"3,7"`, `"20-"` to the end;
-  default from page 1); when the budget runs out the result ends with the exact `pages="…"` to call next. It
+  20,000; a single longer page is cut and says so). On a Markdown document the default returns its body, not page text. `pages` picks pages (`"1-10"`, `"3,7"`, `"20-"` to the end;
+  default from page 1); when the budget runs out the result includes the exact `pages="…"` hint to call next (figure, sparse-page and formula hint lines can follow it). It
   flags pages that are mostly figures or scans, embed images, or are formula-heavy, and points to
   `get_page_images` for them. `format: "markdown"` returns a Markdown document's body; `format: "pdf"` /
   `"original"` returns the raw file as an embedded binary resource (only Claude Code can open it), or, over
@@ -214,10 +214,9 @@ course server above never serves research projects, and this one never serves co
 - **URL:** `https://quire.ezragubbay.com/research/mcp` (Streamable HTTP, stateless;
   `apps/web/src/app/research/mcp/route.ts`).
 - **Tools:** read: `list_projects`, `list_project_files` (documents with paper metadata, notes, sources),
-  `get_file`, `get_page_images`, `get_note`. Write (additive, idempotent): `upload_markdown` (notes or
+  `get_file`, `get_page_images`, `get_note`. Write (additive; idempotent except `create_upload_link`): `upload_markdown` (notes or
   documents, e.g. a Markdown document into `<project-slug>`), `upload_pdf {url}` (SSRF-guarded fetch), `add_paper`
-  (arXiv id/URL or DOI, with metadata; dedupes by arXiv base id or DOI), `create_upload_link` +
-  `get_upload_status`. Resource template `quire://research/{slug}/file/{docId}`.
+  (arXiv id/URL or DOI, with metadata; dedupes by arXiv base id or DOI), `create_upload_link`; `get_upload_status` is read-only. Resource template `quire://research/{slug}/file/{docId}`.
 - **Reading:** `get_file` (with `pages`) and `get_page_images` behave as on the course server, with the same
   text budget and image caps. Over `MCP_MAX_INLINE_BYTES`, a raw `format: "pdf"`/`"original"` result points to
   the file's page in Quire and to the text and image tools, never to `/api` (the research key cannot reach it).
