@@ -16,8 +16,8 @@ import {
   createSession,
   deleteSession,
   getSession,
-  parseSessionFilename,
   SESSION_LABEL,
+  sessionFromFileName,
   sessionTitle,
   updateSession,
 } from '@/lib/sessions';
@@ -105,7 +105,7 @@ export async function dropSessionFilesAction(_prev: ActionState, formData: FormD
     let target = sessionId;
     let title: string | undefined;
     if (!target) {
-      const parsed = parseSessionFilename(file.name);
+      const parsed = sessionFromFileName(file.name);
       const s = await createSession(project.id, {
         kind: kind.data,
         number: parsed.number,

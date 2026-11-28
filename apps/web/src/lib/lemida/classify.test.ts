@@ -68,4 +68,41 @@ describe('classifyLemidaFile', () => {
     const garbled = String.fromCharCode(...new TextEncoder().encode(name));
     expect(classifyLemidaFile({ fileName: garbled }).kind).toBe('unknown');
   });
+
+  it('reads a number bound to the kind word, ignoring the week number', () => {
+    const c = classifyLemidaFile({
+      fileName: '\u05E9\u05D1\u05D5\u05E2 2 - \u05D4\u05E8\u05E6\u05D0\u05D4 3.pdf',
+      sectionTitle: '\u05D4\u05E8\u05E6\u05D0\u05D5\u05EA',
+    });
+    expect(c.kind).toBe('lecture');
+    expect(c.number).toBe(3);
+    expect(c.title).toBe('\u05E9\u05D1\u05D5\u05E2 2');
+  });
+
+  it('gives no number to a lecture whose name has none', () => {
+    const c = classifyLemidaFile({
+      fileName: 'Course overview.pdf',
+      sectionTitle: '\u05D4\u05E8\u05E6\u05D0\u05D5\u05EA',
+    });
+    expect(c.kind).toBe('lecture');
+    expect(c.number).toBeUndefined();
+  });
+
+  it('keeps a leading index as the number when the name has no kind-bound number', () => {
+    const c = classifyLemidaFile({
+      fileName: '07 Memory models.pdf',
+      sectionTitle: '\u05D4\u05E8\u05E6\u05D0\u05D5\u05EA',
+    });
+    expect(c.number).toBe(7);
+    expect(c.title).toBe('Memory models');
+  });
+
+  it('reads a glued kind and number', () => {
+    const c = classifyLemidaFile({
+      fileName: 'ABC Lecture3.pptx',
+      sectionTitle: '\u05D4\u05E8\u05E6\u05D0\u05D5\u05EA',
+    });
+    expect(c.number).toBe(3);
+    expect(c.title).toBe('ABC');
+  });
 });
