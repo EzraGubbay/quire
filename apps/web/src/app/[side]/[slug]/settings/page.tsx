@@ -3,10 +3,12 @@ import { notFound } from 'next/navigation';
 import { CoursePanel } from '@/components/settings/course-panel';
 import { MacrosPanel } from '@/components/settings/macros-panel';
 import { ReindexPanel } from '@/components/settings/reindex-panel';
+import { SessionCheckPanel } from '@/components/settings/session-check-panel';
 import s from '@/components/settings/settings.module.css';
 import { listMacros } from '@/lib/macros';
 import { currentFeature } from '@/lib/platform-server';
 import { getProjectBySlug, projectBase, projectMeta } from '@/lib/projects';
+import { loadSessionIntegrity } from '@/lib/session-integrity';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
     currentFeature('settings.full'),
   ]);
   const lite = full.level === 'lite';
+  const integrity = project.kind === 'course' && !lite ? await loadSessionIntegrity(project.id) : null;
   return (
     <div className={s.wrap}>
       <NextLink href={`${base}/overview`} className={s.crumb}>
@@ -33,6 +36,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
           meta={projectMeta(project)}
         />
       )}
+      {integrity && <SessionCheckPanel report={integrity} base={base} />}
       {!lite && (
         <MacrosPanel
           scope="project"
