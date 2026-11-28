@@ -15,6 +15,7 @@ import {
   connectMcp,
   expectGolden,
   type GoldenDir,
+  goldenDirs,
   goldenResult,
   type NormCtx,
   normalize,
@@ -35,10 +36,7 @@ if (run) {
   Object.assign(globalThis, { Path2D: canvas.Path2D });
 }
 
-const golden = (server: 'course' | 'research'): GoldenDir => ({
-  dir: new URL(`./__golden__/${server}/`, import.meta.url),
-  dumpDir: new URL(`../../../test-results/mcp-golden/${server}/`, import.meta.url),
-});
+const golden = (server: 'course' | 'research'): GoldenDir => goldenDirs(import.meta.url, server);
 
 type Seed = Awaited<ReturnType<typeof import('@/lib/testing/seed-course')['seedGolden']>>;
 let seed: Seed;
@@ -49,7 +47,17 @@ describe.skipIf(!run)('MCP golden transcripts (integration)', () => {
     seed = await seedGolden(RUN);
   });
   afterAll(async () => {
-    await seed?.cleanup();
+    if (seed) {
+      await seed.cleanup();
+      const { db } = await import('@/db/client');
+      const { projects } = await import('@/db/schema');
+      const { inArray } = await import('drizzle-orm');
+      const left = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(inArray(projects.id, [seed.course.id, seed.research.id]));
+      expect(left, 'cleanup() removes both seeded projects').toEqual([]);
+    }
     await rm(tmp, { recursive: true, force: true });
     const { getSql } = await import('@/db/client');
     await getSql().end();

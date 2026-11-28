@@ -6,6 +6,8 @@
 // imports, and this module is imported statically.
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -148,7 +150,30 @@ export interface GoldenDir {
   dumpDir: URL;
 }
 
+/**
+ * Golden and dump directories for a test file in lib/mcp. Built with path.join, never `new URL(template,
+ * import.meta.url)`: under jsdom Vite rewrites that into `<dir>/undefined`.
+ */
+export function goldenDirs(metaUrl: string, server: 'course' | 'research'): GoldenDir {
+  const here = path.dirname(fileURLToPath(metaUrl));
+  return {
+    dir: pathToFileURL(path.join(here, '__golden__', server) + path.sep),
+    dumpDir: pathToFileURL(
+      path.join(here, '..', '..', '..', 'test-results', 'mcp-golden', server) + path.sep,
+    ),
+  };
+}
+
+/** Goldens are only ever read, written or deleted in an absolute `.../__golden__/<server>` directory. */
+export function assertGoldenDir(dir: URL): void {
+  const p = dir.protocol === 'file:' ? fileURLToPath(dir) : '';
+  if (!path.isAbsolute(p) || !/[\\/]__golden__[\\/](course|research)[\\/]?$/.test(p)) {
+    throw new Error(`refusing to use ${dir.href} as a golden directory`);
+  }
+}
+
 export async function expectGolden(g: GoldenDir, name: string, value: unknown): Promise<void> {
+  assertGoldenDir(g.dir);
   const file = new URL(`${name}.json`, g.dir);
   const actual = serialize(value);
   if (updating()) {
@@ -171,6 +196,7 @@ export async function expectGolden(g: GoldenDir, name: string, value: unknown): 
 
 /** The golden directory must hold exactly the expected files; under UPDATE_GOLDENS=1 extras are deleted. */
 export async function assertNoStale(dir: URL, expected: string[]): Promise<void> {
+  assertGoldenDir(dir);
   let present: string[] = [];
   try {
     present = (await readdir(dir)).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));

@@ -3,7 +3,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { assertNoStale, expectGolden, goldenResult, MISSING_ID, type NormCtx, normalize } from './mcp-golden';
+import {
+  assertGoldenDir,
+  assertNoStale,
+  expectGolden,
+  goldenDirs,
+  goldenResult,
+  MISSING_ID,
+  type NormCtx,
+  normalize,
+} from './mcp-golden';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const ctx: NormCtx = {
@@ -79,7 +88,7 @@ describe('expectGolden and assertNoStale', () => {
   beforeEach(async () => {
     tmp = await mkdtemp(path.join(os.tmpdir(), 'mcp-golden-unit-'));
     g = {
-      dir: pathToFileURL(`${tmp}/golden/`),
+      dir: pathToFileURL(`${tmp}/__golden__/course/`),
       dumpDir: pathToFileURL(`${tmp}/dump/`),
     };
   });
@@ -115,5 +124,19 @@ describe('expectGolden and assertNoStale', () => {
     expect(await readdir(new URL('.', g.dir))).toEqual(['a.json']);
     await writeFile(new URL('note.txt', g.dir), 'ignored');
     await assertNoStale(g.dir, ['a']);
+  });
+});
+
+describe('golden directory guard', () => {
+  it('accepts goldenDirs() and rejects anything else', async () => {
+    expect(() => assertGoldenDir(goldenDirs(import.meta.url, 'research').dir)).not.toThrow();
+    expect(() => assertGoldenDir(pathToFileURL('/tmp/__golden__/course/'))).not.toThrow();
+    expect(() => assertGoldenDir(pathToFileURL('/tmp/undefined/'))).toThrow(/refusing/);
+    expect(() => assertGoldenDir(pathToFileURL('/tmp/__golden__/other/'))).toThrow(/refusing/);
+    expect(() => assertGoldenDir(new URL('http://x/__golden__/course/'))).toThrow(/refusing/);
+    await expect(
+      expectGolden({ dir: pathToFileURL('/tmp/undefined/'), dumpDir: pathToFileURL('/tmp/d/') }, 'a', 1),
+    ).rejects.toThrow(/refusing/);
+    await expect(assertNoStale(pathToFileURL('/tmp/undefined/'), [])).rejects.toThrow(/refusing/);
   });
 });

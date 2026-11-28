@@ -9,7 +9,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   connectMcp,
   expectGolden,
-  type GoldenDir,
+  goldenDirs,
   type NormCtx,
   normalize,
   pinEnv,
@@ -24,15 +24,9 @@ const { registerQuireResearchMcp } = await import('@/lib/mcp-research/server');
 
 const ctx: NormCtx = { ids: {}, slugs: {}, run: 'no-run-token', filesDir: tmp, step: 'tools' };
 const dirs = {
-  course: {
-    dir: new URL('./__golden__/course/', import.meta.url),
-    dumpDir: new URL('../../../test-results/mcp-golden/course/', import.meta.url),
-  },
-  research: {
-    dir: new URL('./__golden__/research/', import.meta.url),
-    dumpDir: new URL('../../../test-results/mcp-golden/research/', import.meta.url),
-  },
-} satisfies Record<string, GoldenDir>;
+  course: goldenDirs(import.meta.url, 'course'),
+  research: goldenDirs(import.meta.url, 'research'),
+};
 
 afterAll(async () => {
   await rm(tmp, { recursive: true, force: true });
