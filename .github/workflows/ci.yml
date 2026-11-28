@@ -70,15 +70,16 @@ jobs:
   image-build:
     name: Image build (deploy parity)
     # Builds the deploy image's `build` stage exactly as infra/Dockerfile does (filtered `pnpm install --filter web...`
-    # then `pnpm --filter web build`), on native amd64. The full-workspace install the other jobs use can type-check
+    # then `pnpm --filter web build`), on native arm64. The full-workspace install the other jobs use can type-check
     # against a wider lib than the image (#69/#70: a desktop-only transitive `type-fest@0.13.1` carries
     # `/// <reference lib="esnext"/>` into the web program via mermaid's phantom import), so only this job sees what
-    # the deploy will see. Type and module-resolution errors don't depend on the CPU, so amd64 stands in for arm64.
+    # the deploy will see. It builds natively on arm64 like the deploy, so arm64-only dependency breakage is caught too.
     # PR-only: on push to main the Deploy workflow builds the real image anyway. No push, no gha cache (so the
     # deploy's cache scope is never touched).
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Build the image's build stage (amd64, not pushed)
-        run: docker build --progress=plain --platform linux/amd64 --target build -f infra/Dockerfile .
+      - name: Build the image's build stage (arm64, not pushed)
+        run: docker build --progress=plain --platform linux/arm64 --target build -f infra/Dockerfile .
