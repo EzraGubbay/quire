@@ -1,18 +1,23 @@
 // @vitest-environment node
-// Property test: the pure classifier, plus a model of the proxy's response semantics, must reproduce every
-// cell recorded by the S0.2 characterization matrix. The recorded tables are read from that file's source so
-// the outputs are never duplicated here. Does not import ./proxy or @/auth.
+// Property test: the pure classifier, plus a model of the proxy's response semantics (classify + the
+// allowed-login session check), must reproduce every cell recorded by the S0.2 characterization matrix. The
+// recorded tables are read from that file's source so the outputs are never duplicated here. Does not import
+// ./proxy or @/auth.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { type CallerEnv, capabilities, classify, RESEARCH_MCP_PATH } from '@/core/identity/caller';
+import { allowedSessionLogin } from '@/core/identity/login';
 
 const MASTER = 'qk_test_master';
 const RESEARCH = 'qk_r_test_research';
+const ALLOWED = 'Owner';
+const OTHER = 'mallory';
 const DEVICE = `dEv1ce_${'x'.repeat(36)}`;
 const TOKEN43 = 'A'.repeat(43);
 const TOKEN42 = 'A'.repeat(42);
 const NA = { 'next-action': '0'.repeat(40) };
+const sess = (login?: string) => ({ user: { login } });
 
 type Row = { label: string; method: string; path: string; headers?: Record<string, string> };
 const ROWS: Row[] = [
@@ -35,16 +40,16 @@ const ROWS: Row[] = [
   { label: 'POST /icons/x/documents/y', method: 'POST', path: '/icons/x/documents/y', headers: NA },
 ];
 
-type Cred = { id: string; authorization?: string; hasSession: boolean; nextAction?: boolean };
+type Cred = { id: string; authorization?: string; session: unknown; nextAction?: boolean };
 const CREDS: Cred[] = [
-  { id: 'none', hasSession: false },
-  { id: 'master', authorization: `Bearer ${MASTER}`, hasSession: false },
-  { id: 'research', authorization: `Bearer ${RESEARCH}`, hasSession: false },
-  { id: 'jwt-ok', hasSession: true },
-  { id: 'jwt-other', hasSession: true },
-  { id: 'device', authorization: `Bearer ${DEVICE}`, hasSession: false },
-  { id: 'master+na', authorization: `Bearer ${MASTER}`, hasSession: false, nextAction: true },
-  { id: 'research+na', authorization: `Bearer ${RESEARCH}`, hasSession: false, nextAction: true },
+  { id: 'none', session: null },
+  { id: 'master', authorization: `Bearer ${MASTER}`, session: null },
+  { id: 'research', authorization: `Bearer ${RESEARCH}`, session: null },
+  { id: 'jwt-ok', session: sess(ALLOWED) },
+  { id: 'jwt-other', session: sess(OTHER) },
+  { id: 'device', authorization: `Bearer ${DEVICE}`, session: null },
+  { id: 'master+na', authorization: `Bearer ${MASTER}`, session: null, nextAction: true },
+  { id: 'research+na', authorization: `Bearer ${RESEARCH}`, session: null, nextAction: true },
 ];
 
 const bearer = (k: string) => ({ authorization: `Bearer ${k}` });
@@ -53,12 +58,13 @@ type Edge = {
   method: string;
   path: string;
   headers?: Record<string, string>;
-  hasSession?: boolean;
+  session?: unknown;
+  allowedLogin?: string;
   env?: Partial<CallerEnv>;
 };
 const EDGES: Edge[] = [
-  { label: 'GET / session {user:{}} (no login)', method: 'GET', path: '/', hasSession: true },
-  { label: 'GET / session {expires} (no user)', method: 'GET', path: '/' },
+  { label: 'GET / session {user:{}} (no login)', method: 'GET', path: '/', session: { user: {} } },
+  { label: 'GET / session {expires} (no user)', method: 'GET', path: '/', session: { expires: 'x' } },
   {
     label: "POST /mcp 'bearer <master>' (lowercase scheme)",
     method: 'POST',
@@ -101,7 +107,7 @@ const EDGES: Edge[] = [
     method: 'POST',
     path: '/api/projects/x/runs',
     headers: bearer(RESEARCH),
-    hasSession: true,
+    session: sess(ALLOWED),
   },
   {
     label: 'POST /research/mcp research key, QUIRE_RESEARCH_API_KEY unset',
@@ -109,6 +115,21 @@ const EDGES: Edge[] = [
     path: '/research/mcp',
     headers: bearer(RESEARCH),
     env: { researchKey: undefined },
+  },
+  { label: "GET / jwt login 'OWNER' (allowed 'Owner')", method: 'GET', path: '/', session: sess('OWNER') },
+  {
+    label: 'GET / jwt-ok, ALLOWED_GITHUB_LOGIN unset',
+    method: 'GET',
+    path: '/',
+    session: sess(ALLOWED),
+    allowedLogin: '',
+  },
+  {
+    label: 'POST /api/mobile/pairing-codes master + jwt-other',
+    method: 'POST',
+    path: '/api/mobile/pairing-codes',
+    headers: bearer(MASTER),
+    session: sess(OTHER),
   },
 ];
 
@@ -127,11 +148,16 @@ function recorded(name: string): string[][] {
 }
 
 /** The proxy's response semantics as a pure function of the classified kind. */
-function predicted(kind: Parameters<typeof capabilities>[0], hasSession: boolean, pathname: string): string {
+function predicted(
+  kind: Parameters<typeof capabilities>[0],
+  session: unknown,
+  allowedLogin: string,
+  pathname: string,
+): string {
   const cap = capabilities(kind).proxy;
   if (cap === 'pass') return 'pass';
   if (cap === 'unavailable') return '503';
-  if (hasSession) return 'pass';
+  if (allowedSessionLogin(session, allowedLogin) !== null) return 'pass';
   const apiLike =
     pathname.startsWith('/api/') ||
     pathname === '/mcp' ||
@@ -168,7 +194,7 @@ describe('classify() reproduces the recorded S0.2 matrix', () => {
           ...(cred.nextAction ? NA : {}),
         });
         const { kind } = classify({ method: row.method, pathname: row.path, headers }, { ...BASE, ...env });
-        const got = predicted(kind, cred.hasSession, row.path);
+        const got = predicted(kind, cred.session, ALLOWED, row.path);
         const want = rec[i + 1]?.[j + 1];
         cells++;
         if (got !== want) mismatches.push(`${row.label} x ${cred.id}: got ${got}, recorded ${want}`);
@@ -187,7 +213,7 @@ describe('classify() reproduces the recorded S0.2 matrix', () => {
         { method: e.method, pathname: e.path, headers: new Headers(e.headers ?? {}) },
         { ...BASE, ...e.env },
       );
-      const got = predicted(kind, e.hasSession ?? false, e.path);
+      const got = predicted(kind, e.session ?? null, e.allowedLogin ?? ALLOWED, e.path);
       const want = rec[i + 1]?.[1];
       if (got !== want) mismatches.push(`${e.label}: got ${got}, recorded ${want}`);
     });
