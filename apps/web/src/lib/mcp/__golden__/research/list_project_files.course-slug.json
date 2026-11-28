@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "list_project_files",
+    "arguments": {
+      "project": "<slug:course>"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "No research project found for \"<slug:course>\". Call list_projects for the valid slugs."
+      }
+    ]
+  }
+}

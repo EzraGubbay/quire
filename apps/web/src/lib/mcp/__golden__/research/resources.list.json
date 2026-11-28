@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "resources/list"
+  },
+  "response": {
+    "resources": [
+      {
+        "name": "Golden Research <run> — Method",
+        "uri": "quire://research/<slug:research>/file/<id:method>",
+        "description": "markdown",
+        "mimeType": "text/markdown"
+      },
+      {
+        "name": "Golden Research <run> — Stub paper",
+        "uri": "quire://research/<slug:research>/file/<id:stub>",
+        "description": "paper",
+        "mimeType": "application/octet-stream"
+      },
+      {
+        "name": "Golden Research <run> — A Synthetic Paper",
+        "uri": "quire://research/<slug:research>/file/<id:paper>",
+        "description": "paper",
+        "mimeType": "application/pdf"
+      }
+    ]
+  }
+}

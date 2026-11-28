@@ -1,0 +1,57 @@
+{
+  "request": {
+    "method": "resources/list"
+  },
+  "response": {
+    "resources": [
+      {
+        "name": "Golden Course <run> — Cheat sheet",
+        "uri": "quire://course/<slug:course>/file/<id:cheatsheet>",
+        "description": "other",
+        "mimeType": "text/markdown"
+      },
+      {
+        "name": "Golden Course <run> — Referenced paper",
+        "uri": "quire://course/<slug:course>/file/<id:course-paper>",
+        "description": "paper",
+        "mimeType": "application/octet-stream"
+      },
+      {
+        "name": "Golden Course <run> — Course book",
+        "uri": "quire://course/<slug:course>/file/<id:book>",
+        "description": "book",
+        "mimeType": "application/pdf"
+      },
+      {
+        "name": "Golden Course <run> — HW 1",
+        "uri": "quire://course/<slug:course>/file/<id:homework-sheet>",
+        "description": "homework",
+        "mimeType": "text/markdown"
+      },
+      {
+        "name": "Golden Course <run> — Practice exam 2025",
+        "uri": "quire://course/<slug:course>/file/<id:exam>",
+        "description": "exam",
+        "mimeType": "text/markdown"
+      },
+      {
+        "name": "Golden Course <run> — Lecture 2 deck",
+        "uri": "quire://course/<slug:course>/file/<id:pptx-deck>",
+        "description": "other",
+        "mimeType": "application/octet-stream"
+      },
+      {
+        "name": "Golden Course <run> — Recitation 1",
+        "uri": "quire://course/<slug:course>/file/<id:recitation-deck>",
+        "description": "recitation",
+        "mimeType": "application/pdf"
+      },
+      {
+        "name": "Golden Course <run> — Lecture 1 slides",
+        "uri": "quire://course/<slug:course>/file/<id:lecture-deck>",
+        "description": "lecture",
+        "mimeType": "application/pdf"
+      }
+    ]
+  }
+}

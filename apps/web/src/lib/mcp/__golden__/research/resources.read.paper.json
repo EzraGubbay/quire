@@ -1,0 +1,57 @@
+{
+  "request": {
+    "method": "resources/read",
+    "uri": "quire://research/<slug:research>/file/<id:paper>"
+  },
+  "response": {
+    "contents": [
+      {
+        "uri": "quire://research/<slug:research>/file/<id:paper>",
+        "mimeType": "text/plain",
+        "lines": [
+          "# A Synthetic Paper",
+          "Course: Golden Research <run> · 4 pages · showing pages 1-4",
+          "",
+          "--- Page 1 ---",
+          "תרגיל 2 – רדוקציות ו־NP-שלמות",
+          "מועד ההגשה: יום רביעי, 25.11.2026, עד השעה 23:59.",
+          "תהי T = t_1 ··· t_n מילה באורך סופי כלשהו",
+          "תחת ההנחה כי P ≠ NP, האם הבעיה קשה?",
+          "ב. צביעת גרף (Graph Coloring)",
+          "נסמן ב־Len(T) את אורך המילה T.",
+          "LEN = {T ∈ Σ^∗}.",
+          "",
+          "--- Page 2 ---",
+          "הקורס משלב בין:",
+          "• first deadline - 29.11",
+          "הציון, כולל בונוס (bonus).",
+          "שלב 9: testing",
+          "עד יום שני 16 בנובמבר בשעה 10:30",
+          "",
+          "--- Page 3 ---",
+          "Achieve a time complexity of O(log n).",
+          "Assume A[i] > 0 for every i.",
+          "SS_{half} = {I ⊆ [n] : ∑_{i∈I} a_i = b,",
+          "n/2 ≤ |I|}.",
+          "SS_{half} = {I ⊆ [n] : ∑_{i∈I} a_i = b,",
+          "n/2 ≤ |I|}.",
+          "",
+          "--- Page 4 ---",
+          "Fig. 1",
+          "",
+          "[Pages 4 have little or no text (figures, diagrams or scans). Call get_page_images with pages=\"4\" to see them.]",
+          "[Pages 2 contain images or figures that this text does not include. Call get_page_images with pages=\"2\" to see them.]",
+          "[Pages 3 contain formulas whose layout (fractions, sums, limits) is flattened in this text. Call get_page_images with pages=\"3\" to read them exactly.]"
+        ]
+      },
+      {
+        "uri": "quire://research/<slug:research>/file/<id:paper>",
+        "mimeType": "application/pdf",
+        "blob": {
+          "bytes": 17148,
+          "sha256": "6761e065e59088a9273ed1e2b0f0016475c8eb545683b842041f630e64d88ed4"
+        }
+      }
+    ]
+  }
+}

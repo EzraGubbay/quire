@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "project": "<slug:research>",
+      "fileId": "<id:paper>",
+      "format": "pdf"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Raw application/pdf file \"A Synthetic Paper.pdf\" (0.02 MB) is attached as an embedded resource. Many clients cannot read binary attachments: for the content use get_file without format (page text) and get_page_images (pages as images)."
+      },
+      {
+        "type": "resource",
+        "resource": {
+          "uri": "quire://research/<slug:research>/file/<id:paper>",
+          "mimeType": "application/pdf",
+          "blob": {
+            "bytes": 17148,
+            "sha256": "6761e065e59088a9273ed1e2b0f0016475c8eb545683b842041f630e64d88ed4"
+          }
+        }
+      }
+    ]
+  }
+}

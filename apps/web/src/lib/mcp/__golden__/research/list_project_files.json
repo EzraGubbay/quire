@@ -1,0 +1,108 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "list_project_files",
+    "arguments": {
+      "project": "<slug:research>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "json": {
+          "project": {
+            "slug": "<slug:research>",
+            "name": "Golden Research <run>"
+          },
+          "documents": [
+            {
+              "fileId": "<id:method>",
+              "title": "Method",
+              "kind": "markdown",
+              "folder": null,
+              "pageCount": null,
+              "sizeBytes": null,
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": true,
+              "readingStatus": "unread",
+              "tags": [],
+              "paper": null,
+              "resourceUri": "quire://research/<slug:research>/file/<id:method>"
+            },
+            {
+              "fileId": "<id:stub>",
+              "title": "Stub paper",
+              "kind": "pdf",
+              "folder": null,
+              "pageCount": null,
+              "sizeBytes": null,
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "readingStatus": "unread",
+              "tags": [],
+              "paper": {
+                "authors": [],
+                "year": null,
+                "arxivId": null,
+                "doi": "10.1000/stub",
+                "sourceUrl": null,
+                "abstract": ""
+              },
+              "resourceUri": "quire://research/<slug:research>/file/<id:stub>"
+            },
+            {
+              "fileId": "<id:paper>",
+              "title": "A Synthetic Paper",
+              "kind": "pdf",
+              "folder": "Papers",
+              "pageCount": 4,
+              "sizeBytes": 17148,
+              "hasPdf": true,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "readingStatus": "unread",
+              "tags": [
+                "golden"
+              ],
+              "paper": {
+                "authors": [
+                  "A. Author",
+                  "B. Author"
+                ],
+                "year": 2024,
+                "arxivId": "2401.01234",
+                "doi": "10.1000/golden",
+                "sourceUrl": "https://arxiv.org/abs/2401.01234",
+                "abstract": "Synthetic abstract."
+              },
+              "resourceUri": "quire://research/<slug:research>/file/<id:paper>"
+            }
+          ],
+          "notes": [
+            {
+              "noteId": "<id:note>",
+              "title": "Reading log",
+              "folder": "Reading notes",
+              "updatedAt": "<ts>"
+            }
+          ],
+          "sources": [
+            {
+              "sourceId": "<id:source>",
+              "type": "web",
+              "title": "Example source",
+              "url": "https://example.org/golden",
+              "description": "Synthetic description",
+              "tags": [
+                "golden"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
