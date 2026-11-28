@@ -131,17 +131,37 @@ export async function imagesToolResult(
   const pastEnd = imgs.length < batch.length;
   const content: Content[] = [];
   const sent = new Set<number>();
+  // Pages dealt with in this reply: sent as images, or reported blank in text.
+  const handled = new Set<number>();
   let used = 0;
   for (const img of imgs) {
+    if ('blank' in img) {
+      content.push({
+        type: 'text',
+        text: `Page ${img.pageNo} of "${doc.title}" rendered blank, so no image is attached; get_file with pages="${img.pageNo}" has its text.`,
+      });
+      handled.add(img.pageNo);
+      continue;
+    }
     if (sent.size > 0 && used + img.data.length > IMAGE_B64_BUDGET) break;
     content.push({ type: 'text', text: `Page ${img.pageNo} of "${doc.title}":` });
     content.push({ type: 'image', data: img.data, mimeType: 'image/jpeg' });
     sent.add(img.pageNo);
+    handled.add(img.pageNo);
     used += img.data.length;
   }
-  const lastSent = Math.max(0, ...sent);
+  if (sent.size > 0) {
+    const sentRanges = formatRanges([...sent]);
+    // First, so the "[More pages…]" line stays last. For clients that drop images (voice): the model still learns
+    // which pages were sent and where their text is.
+    content.unshift({
+      type: 'text',
+      text: `Images of "${doc.title}" page(s) ${sentRanges} follow. If your client shows no images, get_file with pages="${sentRanges}" returns the same pages as text.`,
+    });
+  }
+  const lastSent = Math.max(0, ...handled);
   const rest = wanted.filter((n) => n > lastSent && (!pastEnd || imgs.some((i) => i.pageNo === n)));
-  if (sent.size === 0) {
+  if (handled.size === 0) {
     content.push({ type: 'text', text: 'No pages rendered: check the page numbers.' });
   } else if (rest.length > 0) {
     content.push({
