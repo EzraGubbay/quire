@@ -20,8 +20,8 @@ export interface SessionName {
 
 /** Bounds the regex work on adversarial input; a kind word past this is ignored. */
 const MAX_NAME = 512;
-/** Bidi control marks (common in Hebrew file names) and zero-width spaces/joiners. */
-const BIDI = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g;
+/** Bidi control marks (common in Hebrew file names), zero-width space and non-joiner. U+200D (ZWJ) is kept so emoji sequences survive. */
+const BIDI = /[\u200B\u200C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
 /** A short extension, only when it has a letter, so `Lec.3` keeps its `.3`. */
 const EXT = /\.(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{1,5}$/;
 /**
@@ -78,8 +78,8 @@ function hits(s: string): Hit[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
-const LEAD = /^[\s\-–—־:.#]+/;
-const TRAIL = /[\s\-–—־:.#]+$/;
+const LEAD = /^[\s\-–—־:.#,/]+/;
+const TRAIL = /[\s\-–—־:.#,/]+$/;
 
 /** Joins the text on both sides of the removed span, keeping a dash from the gap if there was one. */
 function join(left: string, right: string): string {
@@ -106,7 +106,7 @@ export function parseSessionName(name: string): SessionName | null {
   const pick = found.find((h) => h.number !== undefined) ?? found[0];
   if (!pick) return null;
   const title = join(s.slice(0, pick.start), s.slice(pick.end))
-    .replace(/^[\s\-–—־:.]+|[\s\-–—־:.]+$/g, '')
+    .replace(/^[\s\-–—־:.,/]+|[\s\-–—־:.,/]+$/g, '')
     .trim();
   return { kind: pick.kind, number: pick.number, title };
 }

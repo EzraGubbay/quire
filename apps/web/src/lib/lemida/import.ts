@@ -19,7 +19,7 @@ import {
 import { readStoredFile, sha256 } from '@/lib/files';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
 import { notifyFilesAdded } from '@/lib/mobile/push/triggers';
-import { attachDocumentToSession, createSession, listSessions, sessionTitle } from '@/lib/sessions';
+import { attachDocumentToSession, createSession, listSessions } from '@/lib/sessions';
 import { classifyLemidaFile, cleanTitle, homeworkNumber, parseDueDate } from './classify';
 import { markSynced } from './courses';
 
@@ -87,18 +87,20 @@ async function ensureFolder(projectId: string, name: string): Promise<Folder> {
   return existing ?? createFolder(projectId, name, null, 'documents');
 }
 
-/** Find the session with this kind and number, or create it. */
+/**
+ * Find the session with this kind and number, or create it. A deck with no number in its name gets no session
+ * (`null`): inventing one by import order duplicated sessions, so it stays unattached and the integrity report lists it.
+ */
 async function findOrCreateSession(
   projectId: string,
   kind: 'lecture' | 'recitation',
   number: number | undefined,
   title: string | undefined,
 ) {
+  if (number === undefined) return null;
   const all = await listSessions(projectId, kind);
-  if (number !== undefined) {
-    const match = all.find((s) => s.number === number);
-    if (match) return match;
-  }
+  const match = all.find((s) => s.number === number);
+  if (match) return match;
   return createSession(projectId, { kind, number, title: title ?? '' });
 }
 
@@ -175,12 +177,12 @@ export async function importLemidaFile(
       const doc = await createDeckDocument(project.id, {
         fileName: meta.fileName,
         data,
-        sessionId: session.id,
-        title: cls.title ? sessionTitle(session) : undefined,
+        sessionId: session?.id ?? null,
+        title: cleanTitle(meta.fileName),
       });
       createdDocId = doc.id;
       await setHash(doc.id, hash);
-      placement.sessionId = session.id;
+      if (session) placement.sessionId = session.id;
       placement.documentId = doc.id;
       if (doc.filePath) indexLater(project.id, doc.id);
     } else if (cls.kind === 'homework') {
