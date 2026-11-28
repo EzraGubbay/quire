@@ -1,5 +1,6 @@
 // Child process of the render smoke: renders page 1 of one synthetic PDF with one variant, the way
 // apps/web/src/lib/slides.ts does (the `prod` variant mirrors lib/slides.ts + core/pdf/open.ts + lib/pdf-canvas.ts), and prints one `RESULT {json}` line.
+// The blank-render guard of lib/slides.ts (flat-colour check and retry) is deliberately not mirrored: the smoke judges the first render.
 // Each render runs in its own process so a native abort in @napi-rs/canvas shows up as a crash, not a dead harness.
 // Usage: node render-one.mjs --app-root <dir> --manifest <manifest.json> --case <id> --variant <name> --out <dir>
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

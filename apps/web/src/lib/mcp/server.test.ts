@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Document } from '@/db/schema';
+import { rawPdf } from '@/lib/testing/raw-pdf';
 import { SAMPLE_TEXT, samplePdf } from '@/lib/testing/sample-pdf';
 
 const tmp = await mkdtemp(path.join(os.tmpdir(), 'quire-mcp-'));
@@ -71,6 +72,7 @@ beforeAll(async () => {
   await mkdir(path.join(tmp, 'p1'), { recursive: true });
   await copyFile(path.resolve(__dirname, '../../../e2e/fixtures/ten-pages.pdf'), path.join(tmp, 'p1/d1.pdf'));
   await writeFile(path.join(tmp, 'p1/s1.pdf'), sample);
+  await writeFile(path.join(tmp, 'p1/blank.pdf'), rawPdf('1 g 0 0 720 405 re f'));
 });
 afterAll(() => rm(tmp, { recursive: true, force: true }));
 beforeEach(() => {
@@ -259,6 +261,16 @@ describe('get_page_images', () => {
     expect(res.content.at(-1)?.text).toContain('pages="5-6"');
   }, 60_000);
 
+  it('says a page rendered blank instead of attaching an image', async () => {
+    getDocument.mockResolvedValue(doc({ id: 'b1', filePath: 'p1/blank.pdf', fileSize: 555, pageCount: 1 }));
+    const res = await call('get_page_images', { course: 'parallel', fileId: 'b1', pages: '1' });
+    expect(res.content.filter((c) => c.type === 'image')).toHaveLength(0);
+    expect(res.content).toHaveLength(1);
+    expect(res.content[0]?.text).toBe(
+      'Page 1 of "Project: Simplified Waze Prototype" rendered blank, so no image is attached; get_file with pages="1" has its text.',
+    );
+  }, 60_000);
+
   it('says so when the file has no PDF', async () => {
     getDocument.mockResolvedValue(doc({ filePath: null }));
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '1' });
@@ -267,7 +279,7 @@ describe('get_page_images', () => {
 
   it('re-renders a 0-byte cached page and leaves no temp files behind', async () => {
     getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 777 }));
-    const dir = path.join(tmp, 'p1', 'd1.mcp2-777');
+    const dir = path.join(tmp, 'p1', 'd1.mcp3-777');
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, '7.jpg'), '');
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '7' });
@@ -283,7 +295,7 @@ describe('get_page_images', () => {
 
   it('serves a cached page without re-rendering', async () => {
     getDocument.mockResolvedValue(doc({ pageCount: 10, fileSize: 888 }));
-    const dir = path.join(tmp, 'p1', 'd1.mcp2-888');
+    const dir = path.join(tmp, 'p1', 'd1.mcp3-888');
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, '2.jpg'), Buffer.from('ffd8ffe0cafe', 'hex'));
     const res = await call('get_page_images', { course: 'parallel', fileId: 'd1', pages: '2' });
@@ -313,6 +325,7 @@ describe('get_page_images', () => {
     const images = res.content.filter((c) => c.type === 'image');
     expect(images).toHaveLength(2);
     expect(res.content.filter((c) => c.type === 'text').map((c) => c.text)).toEqual([
+      'Images of "Project: Simplified Waze Prototype" page(s) 9-10 follow. If your client shows no images, get_file with pages="9-10" returns the same pages as text.',
       'Page 9 of "Project: Simplified Waze Prototype":',
       'Page 10 of "Project: Simplified Waze Prototype":',
     ]);
