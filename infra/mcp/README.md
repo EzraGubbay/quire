@@ -1,12 +1,22 @@
 # Quire MCP server
 
-An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire and add Markdown to it (the read tools are read-only; the write tools are additive, never edit or delete, and can be switched off):
+An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client browse Quire and add Markdown and PDFs to it (the read tools are read-only; the write tools are additive, never edit or delete, and can be switched off):
 
 - **`list_courses`** — every course (stable `slug`, name, code, semester, file count).
 - **`list_course_files`** (`course`) — the course's files, each labeled `lecture` / `recitation` /
   `homework` / `exam` / `book` / `paper` / `other`, with a stable `fileId` and a `resourceUri`.
-- **`get_file`** (`course`, `fileId`, `format?`) — the file's bytes. Small PDFs/markdown come back inline;
-  files over `MCP_MAX_INLINE_BYTES` (default 10 MB) return a download URL instead.
+- **`get_file`** (`course`, `fileId`, `pages?`, `format?`) — by default (`format: "text"`) the file's page text
+  with `--- Page N ---` markers, at most `MCP_TEXT_BUDGET_CHARS` characters of page text per call (default
+  20,000; a single longer page is cut and says so). `pages` picks pages (`"1-10"`, `"3,7"`, `"20-"` to the end;
+  default from page 1); when the budget runs out the result ends with the exact `pages="…"` to call next. It
+  flags pages that are mostly figures or scans, embed images, or are formula-heavy, and points to
+  `get_page_images` for them. `format: "markdown"` returns a Markdown document's body; `format: "pdf"` /
+  `"original"` returns the raw file as an embedded binary resource (only Claude Code can open it), or, over
+  `MCP_MAX_INLINE_BYTES` (default 10 MB), a text note with the authenticated download URL instead.
+- **`get_page_images`** (`course`, `fileId`, `pages`) — renders PDF pages as JPEG images for slides, diagrams,
+  formulas, tables and scans: at most 4 pages per call, each image at most 72 KB, and about 100k base64
+  characters per call in total (always at least one page). Pages that did not fit are named in a closing
+  `pages="…"` hint. Rendered pages are cached.
 - **`upload_markdown`** (`course`, `markdown`, `section?`, `title?`, `folder?`) — **writes**: creates a Markdown
   note (`section: "notes"`, default) or Markdown document (`"documents"`) in a course, optionally in an existing
   folder (name or id; folders are never created). Never edits or deletes. Same title + text again returns
@@ -14,8 +24,9 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   (note titles are unique per course because `[[wiki links]]` resolve by title; the tool enforces this, the database does not, so two concurrent calls with the same title and different text could both succeed). A leading `# Title` line
   supplies the title when `title` is omitted and is stripped from the body. Max `MCP_UPLOAD_MAX_MARKDOWN_BYTES`
   (512 KB). Results are one JSON text item: `{status, section, course, noteId|fileId, title, folder, openUrl, next}`.
-  Read tools carry `readOnlyHint: true`; the write tool is `readOnlyHint: false, destructiveHint: false,
-  idempotentHint: true`, so clients can auto-allow reads and confirm writes.
+  Read tools (and `get_upload_status`) carry `readOnlyHint: true`; the write tools carry `readOnlyHint: false,
+  destructiveHint: false` (and `idempotentHint: true`, except `create_upload_link`), so clients can auto-allow
+  reads and confirm writes.
 - **`upload_pdf`** (`course`, `url`, `title?`, `folder?`) — **writes**: the *server* downloads a public https PDF
   into the course's Documents (the model passes only a URL). Use the direct PDF link (`https://arxiv.org/pdf/<id>`);
   landing pages are not scraped. Same PDF again returns `duplicate`; very slow extractions return `processing`
@@ -29,8 +40,10 @@ An [MCP](https://modelcontextprotocol.io) endpoint that lets a Claude client bro
   Markdown only). The PUT answers `201 created` / `200 duplicate` with the id, `202` if extraction outlasts 90 s.
 - **`get_upload_status`** (`uploadId`) — read-only: `pending`, `processing`, `created`, `duplicate`, `failed`
   or `expired`, with the new id when done (kept 24 h).
-- Files are also exposed as **MCP resources** (`quire://course/<slug>/file/<docId>`), the idiomatic way for
-  Claude to fetch a document.
+- Files are also exposed as **MCP resources** (`quire://course/<slug>/file/<docId>`, optional
+  `?format=pdf|original|markdown`; default: the PDF, else the Markdown body, else the original). Reading a PDF
+  returns its first page-text budget as text, then the PDF as a blob; over `MCP_MAX_INLINE_BYTES` it returns
+  a text note with the download URL instead.
 
 ## Endpoint & auth
 
@@ -87,7 +100,13 @@ npx @modelcontextprotocol/inspector
 ## Config
 
 - `MCP_MAX_INLINE_BYTES` — max bytes returned inline before falling back to a download URL (default
-  `10485760`). Large decks (~100 MB) always fall back.
+  `10485760`). Large decks (~100 MB) always fall back. The research server links to the file's page in Quire
+  instead.
+- `MCP_TEXT_BUDGET_CHARS` — characters of page text per `get_file` call and per PDF `resources/read`, on both
+  servers (default `20000`; a value below `1000` or not a number is ignored). It is read once at startup, and
+  the `get_file` tool descriptions print the same value, so the description always matches what is served.
+- `infra/compose.yml` does not pass `MCP_MAX_INLINE_BYTES` or `MCP_TEXT_BUDGET_CHARS` to the app, so production
+  uses their defaults; add them there to change them.
 - `QUIRE_PUBLIC_URL` — base URL used in the fallback download links (default `https://quire.ezragubbay.com`).
 - `MCP_WRITE_ENABLED` — default on. `0`/`false`/`off`/`no` stops registering the write tools (they vanish from
   `tools/list`). Kill switch: set `MCP_WRITE_ENABLED=false` in `/srv/quire/.env` and restart the app
@@ -150,7 +169,7 @@ claude.ai). `drive_inbox_status {}` lists what is in the Inbox and which files a
 - A call still running after `MCP_UPLOAD_DEADLINE_MS` returns `status:"processing"`; retrying is safe. Do not trash
   after `processing`, only after `created` / `duplicate`.
 
-**Setup** (one-off; the step-by-step list is `zz-your-steps-drive-inbox-upload.md`, kept by the maintainer): create the
+**Setup** (one-off): create the
 Drive folder, create a service account with no project roles and a JSON key, share the folder with the service account
 as **Viewer**, then set the GitHub Actions **secret** `DRIVE_SERVICE_ACCOUNT_JSON_BASE64` (base64 of the key JSON, one
 line) and **variable** `QUIRE_DRIVE_INBOX_FOLDER_ID`. `deploy.yml` writes both into `/srv/quire/.env`. If either is
@@ -196,9 +215,12 @@ course server above never serves research projects, and this one never serves co
   `apps/web/src/app/research/mcp/route.ts`).
 - **Tools:** read: `list_projects`, `list_project_files` (documents with paper metadata, notes, sources),
   `get_file`, `get_page_images`, `get_note`. Write (additive, idempotent): `upload_markdown` (notes or
-  documents, e.g. a Markdown document into `kairos`), `upload_pdf {url}` (SSRF-guarded fetch), `add_paper`
+  documents, e.g. a Markdown document into `<project-slug>`), `upload_pdf {url}` (SSRF-guarded fetch), `add_paper`
   (arXiv id/URL or DOI, with metadata; dedupes by arXiv base id or DOI), `create_upload_link` +
   `get_upload_status`. Resource template `quire://research/{slug}/file/{docId}`.
+- **Reading:** `get_file` (with `pages`) and `get_page_images` behave as on the course server, with the same
+  text budget and image caps. Over `MCP_MAX_INLINE_BYTES`, a raw `format: "pdf"`/`"original"` result points to
+  the file's page in Quire and to the text and image tools, never to `/api` (the research key cannot reach it).
 - **Auth:** its own key, `QUIRE_RESEARCH_API_KEY` (`qk_r_...`), sent as `Authorization: Bearer`. It is accepted
   **only** at exactly `/research/mcp` (never `/mcp`, `/api/**`, pages or Server Actions). The master
   `QUIRE_API_KEY` is **rejected** here: one credential per connector. An unset key closes the endpoint (401).
