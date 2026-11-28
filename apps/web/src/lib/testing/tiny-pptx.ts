@@ -223,7 +223,6 @@ const rels = (items: string[]): string =>
 
 /** Builds a PPTX package. Slides are files slide1..slideN; `order` decides their presentation order. */
 export function tinyPptx(slides: TinySlide[], opts: TinyPptxOptions = {}): Uint8Array {
-  const n = slides.length;
   const order = opts.order ?? slides.map((_, i) => i + 1);
   const size = opts.slideSize === undefined ? { cx: 12192000, cy: 6858000 } : opts.slideSize;
   const target = (i: number) => (opts.absoluteTargets ? `/ppt/slides/slide${i}.xml` : `slides/slide${i}.xml`);
