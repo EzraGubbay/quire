@@ -1,7 +1,76 @@
 // Test-only: builds a small, valid PPTX package in memory so PPTX reader tests run against real zip and
 // OOXML bytes without any real deck. Every builder returns an XML string, so a test reads like the slide it
 // describes. All text goes through escapeXml. Output is byte-for-byte deterministic in any time zone.
-import { strToU8, zipSync } from 'fflate';
+import { crc32, deflateRawSync } from 'node:zlib';
+
+const enc = new TextEncoder();
+
+/**
+ * A minimal zip writer: deterministic (fixed timestamp), deflate by default, stored with `store`. Test-only;
+ * it exists so tests need no zip library and can build the hostile archives the reader must refuse.
+ */
+export function zipBytes(
+  entries: Record<string, string | Uint8Array>,
+  opts: { store?: boolean; level?: number } = {},
+): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  const header = (size: number, fill: (v: DataView) => void): [Uint8Array, DataView] => {
+    const b = new Uint8Array(size);
+    const v = new DataView(b.buffer);
+    fill(v);
+    return [b, v];
+  };
+  for (const [name, content] of Object.entries(entries)) {
+    const data = typeof content === 'string' ? enc.encode(content) : content;
+    const method = opts.store ? 0 : 8;
+    const body = opts.store ? data : deflateRawSync(data, { level: opts.level ?? 6 });
+    const nameBytes = enc.encode(name);
+    const crc = crc32(data);
+    const common = (v: DataView, at: number) => {
+      v.setUint16(at, 0x0800, true); // UTF-8 names
+      v.setUint16(at + 2, method, true);
+      v.setUint16(at + 4, 0, true); // time
+      v.setUint16(at + 6, 0x21, true); // 1980-01-01
+      v.setUint32(at + 8, crc, true);
+      v.setUint32(at + 12, body.length, true);
+      v.setUint32(at + 16, data.length, true);
+      v.setUint16(at + 20, nameBytes.length, true);
+    };
+    const [local] = header(30, (v) => {
+      v.setUint32(0, 0x04034b50, true);
+      v.setUint16(4, 20, true);
+      common(v, 6);
+    });
+    const [cen] = header(46, (v) => {
+      v.setUint32(0, 0x02014b50, true);
+      v.setUint16(4, 20, true);
+      v.setUint16(6, 20, true);
+      common(v, 8);
+      v.setUint32(42, offset, true);
+    });
+    chunks.push(local, nameBytes, body);
+    central.push(cen, nameBytes);
+    offset += local.length + nameBytes.length + body.length;
+  }
+  const cdSize = central.reduce((n, c) => n + c.length, 0);
+  const [eocd] = header(22, (v) => {
+    v.setUint32(0, 0x06054b50, true);
+    v.setUint16(8, Object.keys(entries).length, true);
+    v.setUint16(10, Object.keys(entries).length, true);
+    v.setUint32(12, cdSize, true);
+    v.setUint32(16, offset, true);
+  });
+  const all = [...chunks, ...central, eocd];
+  const out = new Uint8Array(all.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of all) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
 
 export const EMU_PER_INCH = 914400;
 
@@ -193,12 +262,5 @@ export function tinyPptx(slides: TinySlide[], opts: TinyPptxOptions = {}): Uint8
 
   const entries: Record<string, string | Uint8Array> = { ...files, ...opts.extra };
   for (const name of opts.omit ?? []) delete entries[name];
-  const zipInput: Record<string, [Uint8Array, { level: 6; mtime: Date }]> = {};
-  for (const [name, data] of Object.entries(entries)) {
-    zipInput[name] = [
-      typeof data === 'string' ? strToU8(data) : data,
-      { level: 6, mtime: new Date(1980, 0, 1) },
-    ];
-  }
-  return zipSync(zipInput);
+  return zipBytes(entries);
 }

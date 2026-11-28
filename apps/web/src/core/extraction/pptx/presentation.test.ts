@@ -1,7 +1,6 @@
 // @vitest-environment node
-import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { para, slideXml, sp, tinyPptx } from '@/lib/testing/tiny-pptx';
+import { slideXml, tinyPptx, zipBytes } from '@/lib/testing/tiny-pptx';
 import { PptxError } from './errors';
 import { openPptx } from './presentation';
 
@@ -73,10 +72,7 @@ describe('openPptx', () => {
   });
 
   it('P7 rejects a zip that is not a presentation', () => {
-    const docx = zipSync({
-      'word/document.xml': strToU8('<w:document/>'),
-      '[Content_Types].xml': strToU8('<Types/>'),
-    });
+    const docx = zipBytes({ 'word/document.xml': '<w:document/>', '[Content_Types].xml': '<Types/>' });
     expect(codeOf(() => openPptx(docx))?.code).toBe('not_pptx');
   });
 
