@@ -23,6 +23,10 @@ RUN pnpm --filter web build
 # pdf.js loads @napi-rs/canvas at runtime by name; Next's file tracer cannot follow that, so bundle the
 # package (and its platform binary) with pnpm's symlink layout intact for the runtime stage.
 RUN cd /repo/node_modules && tar chf /tmp/canvas.tar $(ls -d .pnpm/@napi-rs+canvas*)
+# The root @napi-rs/canvas link must point at the copy apps/web resolves (its package.json range), not at whichever
+# version sorts first in .pnpm. Record that copy's path for the runtime stage.
+RUN readlink -f apps/web/node_modules/@napi-rs/canvas | sed 's|^/repo/node_modules/||' > /tmp/canvas.link \
+  && grep -q '^\.pnpm/@napi-rs+canvas@' /tmp/canvas.link
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
@@ -38,8 +42,10 @@ COPY --from=build --chown=quire:quire /repo/apps/web/.next/static ./apps/web/.ne
 COPY --from=build --chown=quire:quire /repo/apps/web/public ./apps/web/public
 COPY --from=build --chown=quire:quire /repo/apps/web/drizzle ./apps/web/drizzle
 COPY --from=build /tmp/canvas.tar /tmp/canvas.tar
+COPY --from=build /tmp/canvas.link /tmp/canvas.link
 RUN mkdir -p node_modules/@napi-rs && tar xf /tmp/canvas.tar -C node_modules && rm /tmp/canvas.tar \
-  && ln -s ../.pnpm/$(ls node_modules/.pnpm | grep '^@napi-rs+canvas@' | head -1)/node_modules/@napi-rs/canvas node_modules/@napi-rs/canvas \
+  && ln -s "../$(cat /tmp/canvas.link)" node_modules/@napi-rs/canvas && rm /tmp/canvas.link \
+  && test -f node_modules/@napi-rs/canvas/package.json \
   && chown -R quire:quire node_modules/@napi-rs node_modules/.pnpm
 USER quire
 EXPOSE 3000
