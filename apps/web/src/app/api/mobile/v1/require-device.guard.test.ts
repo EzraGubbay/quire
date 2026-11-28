@@ -1,5 +1,7 @@
 // @vitest-environment node
 // Structural sweep: every exported handler under /api/mobile/v1 must authenticate the device first.
+// Note: moving requireDevice into a shared wrapper (`export const GET = withDevice(...)`) needs a new "wrapped"
+// kind in checkRoute; until then such a change fails this sweep on purpose.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
@@ -246,8 +248,10 @@ function checkPushApi(src: string): string[] {
   };
 
   const raw = returnedObject(fnNamed('rawHandlers'));
-  const expected = ['putRegistration', 'getRegistration', 'deleteRegistration', 'sendTest'];
+  const expected = Object.values(DELEGATED).flatMap((m) => Object.values(m));
   const methods = raw?.properties.filter(ts.isMethodDeclaration) ?? [];
+  if (raw?.properties.some((p) => !ts.isMethodDeclaration(p)))
+    problems.push('rawHandlers must contain only method declarations (no arrow-function or other ops)');
   if (
     [...methods.map((m) => (isIdent(m.name) ? m.name.text : '?'))].sort().join() !==
     [...expected].sort().join()
@@ -429,6 +433,13 @@ describe('mobile v1 device-auth guard', () => {
     ],
   ])('the checker rejects unguarded shapes: %s', (_name, src) => {
     expect(checkRoute('x/route.ts', src).problems.length).toBeGreaterThan(0);
+  });
+
+  it('the push checker rejects an op defined as an arrow-function property', () => {
+    const src = `function rawHandlers(deps: any) {\n  return {\n    sendTest: async (req: Request) => new Response('x'),\n  };\n}`;
+    expect(checkPushApi(src)).toContain(
+      'rawHandlers must contain only method declarations (no arrow-function or other ops)',
+    );
   });
 
   it('the checker accepts the canonical shape', () => {
