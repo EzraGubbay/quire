@@ -3,7 +3,7 @@
 // tools (upload_markdown, create_upload_link, get_upload_status; off with MCP_WRITE_ENABLED=false) — nothing edits or deletes.
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { MAX_IMAGES_PER_CALL } from './content';
+import { MAX_IMAGES_PER_CALL, TEXT_BUDGET } from './content';
 import { type FileFormat, listAllFileResources, listCourseFiles, listCourses } from './courses';
 import { driveConfig } from './drive/config';
 import { registerDriveTools } from './drive/tools';
@@ -123,8 +123,10 @@ export function registerQuireMcp(server: McpServer): void {
 
   server.tool(
     'get_file',
-    'Read a course file. By default returns its text page by page ("--- Page N ---" markers, ~30k characters ' +
-      'per call; pass `pages` to continue) and flags pages that are mostly figures, contain embedded images ' +
+    // Same constant buildTextResult enforces (MCP_TEXT_BUDGET_CHARS), so the claim cannot drift.
+    'Read a course file. By default returns its text page by page ("--- Page N ---" markers, up to ' +
+      `${TEXT_BUDGET.toLocaleString('en-US')} characters of page text per call; pass \`pages\` to continue) ` +
+      'and flags pages that are mostly figures, contain embedded images ' +
       'or are heavy on formulas. Use get_page_images to see diagrams, slides, formulas or scans. format="pdf"/"original" returns the raw file as an embedded binary ' +
       'resource, which only Claude Code can open (other clients fail or drop it); use it only when the user ' +
       'needs the file itself.',
