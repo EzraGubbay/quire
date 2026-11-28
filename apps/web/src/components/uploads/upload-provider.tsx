@@ -59,11 +59,14 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     xhr.onload = () => {
       xhrs.current.delete(id);
       if (xhr.status >= 200 && xhr.status < 300) {
-        dispatch({ type: 'done', id });
         let newId: unknown;
+        let warning: unknown;
         try {
-          newId = JSON.parse(xhr.responseText)?.id;
+          const body = JSON.parse(xhr.responseText);
+          newId = body?.id;
+          warning = body?.warning;
         } catch {}
+        dispatch({ type: 'done', id, warning: typeof warning === 'string' && warning ? warning : undefined });
         if (openOnDone && typeof newId === 'string' && window.location.pathname === originPath)
           routerRef.current.push(openOnDone(newId));
         else routerRef.current.refresh();

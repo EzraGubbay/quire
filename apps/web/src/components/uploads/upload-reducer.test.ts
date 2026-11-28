@@ -17,6 +17,13 @@ describe('uploadReducer', () => {
     const next = uploadReducer(start(), { type: 'done', id: 'a' });
     expect(next[0]).toMatchObject({ status: 'done', progress: 1 });
   });
+  it('done keeps a server warning', () => {
+    const next = uploadReducer(start(), { type: 'done', id: 'a', warning: 'Looks like Lecture 3' });
+    expect(next[0]).toMatchObject({ status: 'done', warning: 'Looks like Lecture 3' });
+  });
+  it('done without a warning leaves it undefined', () => {
+    expect(uploadReducer(start(), { type: 'done', id: 'a' })[0]?.warning).toBeUndefined();
+  });
   it('error keeps the message', () => {
     const next = uploadReducer(start(), { type: 'error', id: 'a', error: 'Too big' });
     expect(next[0]).toMatchObject({ status: 'error', error: 'Too big' });

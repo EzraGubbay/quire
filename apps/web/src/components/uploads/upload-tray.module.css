@@ -80,3 +80,9 @@
   margin: 0;
   color: var(--eg-accent);
 }
+.warning {
+  margin: 0;
+  color: var(--eg-accent);
+  font-size: 12px;
+  line-height: 1.4;
+}

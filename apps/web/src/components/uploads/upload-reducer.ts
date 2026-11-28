@@ -5,12 +5,14 @@ export interface Upload {
   progress: number;
   status: 'uploading' | 'done' | 'error';
   error?: string;
+  /** A non-blocking note from the server, e.g. the file name points at another session. */
+  warning?: string;
 }
 
 export type UploadAction =
   | { type: 'enqueue'; id: string; name: string }
   | { type: 'progress'; id: string; progress: number }
-  | { type: 'done'; id: string }
+  | { type: 'done'; id: string; warning?: string }
   | { type: 'error'; id: string; error: string }
   | { type: 'dismiss'; id: string };
 
@@ -26,7 +28,7 @@ export function uploadReducer(state: Upload[], a: UploadAction): Upload[] {
         u.status === 'uploading' ? { ...u, progress: Math.min(1, Math.max(0, a.progress)) } : u,
       );
     case 'done':
-      return patch(state, a.id, (u) => ({ ...u, status: 'done', progress: 1 }));
+      return patch(state, a.id, (u) => ({ ...u, status: 'done', progress: 1, warning: a.warning }));
     case 'error':
       return patch(state, a.id, (u) => ({ ...u, status: 'error', error: a.error }));
     case 'dismiss':

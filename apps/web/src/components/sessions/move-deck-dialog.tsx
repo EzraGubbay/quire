@@ -43,10 +43,17 @@ export function MoveDeckDialog({
   const router = useRouter();
   const [choice, setChoice] = useState<string>(currentSessionId ?? UNASSIGN);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [pending, start] = useTransition();
 
   const lectures = sessions.filter((x) => x.kind === 'lecture');
   const recitations = sessions.filter((x) => x.kind === 'recitation');
+
+  const finish = () => {
+    router.refresh();
+    onMoved?.();
+    onClose();
+  };
 
   const move = () =>
     start(async () => {
@@ -58,11 +65,8 @@ export function MoveDeckDialog({
       }
       const res = await moveDeckToSessionAction(slug, doc.id, target);
       if (res.error) setError(res.error);
-      else {
-        router.refresh();
-        onMoved?.();
-        onClose();
-      }
+      else if (res.warning) setWarning(res.warning);
+      else finish();
     });
 
   const option = (value: string, label: string, isCurrent: boolean) => (
@@ -82,7 +86,7 @@ export function MoveDeckDialog({
   );
 
   return (
-    <Dialog open title="Move deck" onClose={onClose}>
+    <Dialog open title="Move deck" onClose={warning ? finish : onClose}>
       <p className={s.moveIntro}>
         Move <strong>{doc.title}</strong> to:
       </p>
@@ -106,13 +110,32 @@ export function MoveDeckDialog({
           {error}
         </p>
       )}
+      {warning && (
+        <p role="status" className={s.warning} data-testid="move-deck-warning">
+          {warning}
+        </p>
+      )}
       <DialogActions>
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="button" variant="primary" disabled={pending} onClick={move} data-testid="move-deck-go">
-          {pending ? 'Moving…' : 'Move'}
-        </Button>
+        {warning ? (
+          <Button type="button" variant="primary" onClick={finish} data-testid="move-deck-done">
+            Done
+          </Button>
+        ) : (
+          <>
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={pending}
+              onClick={move}
+              data-testid="move-deck-go"
+            >
+              {pending ? 'Moving…' : 'Move'}
+            </Button>
+          </>
+        )}
       </DialogActions>
     </Dialog>
   );
