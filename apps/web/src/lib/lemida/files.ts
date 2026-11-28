@@ -9,8 +9,8 @@ import { assignments, type LemidaFile, lemidaFiles, type Project, projects } fro
 import { indexOwner } from '@/lib/ai/index';
 import { builtinFolder, createFolder, listFolders, moveDocument } from '@/lib/documents';
 import { createAssignment, nextAssignmentNumber, updateAssignment } from '@/lib/homework';
-import { attachDocumentToSession, createSession, listSessions } from '@/lib/sessions';
-import { classifyLemidaFile, cleanTitle, homeworkNumber } from './classify';
+import { attachDocumentToSession, createSession, listSessions, sessionFromFileName } from '@/lib/sessions';
+import { cleanTitle, homeworkNumber } from './classify';
 
 export interface ReviewItem extends LemidaFile {
   project: Project;
@@ -76,14 +76,20 @@ export async function resolveReview(fileId: string, kind: LemidaKind): Promise<v
 
   if (docId) {
     if (kind === 'lecture' || kind === 'recitation') {
-      const cls = classifyLemidaFile({ fileName: file.fileName });
-      const all = await listSessions(projectId, kind);
-      const session =
-        (cls.number !== undefined && all.find((s) => s.number === cls.number)) ||
-        (await createSession(projectId, { kind, number: cls.number, title: cls.title ?? '' }));
+      // A name with no number is filed unattached; a session is never invented by order.
+      const parsed = sessionFromFileName(file.fileName);
       await moveDocument(projectId, docId, null);
-      await attachDocumentToSession(projectId, docId, session.id);
-      placement.sessionId = session.id;
+      if (parsed.number === undefined) {
+        await attachDocumentToSession(projectId, docId, null);
+        delete placement.sessionId;
+      } else {
+        const all = await listSessions(projectId, kind);
+        const session =
+          all.find((s) => s.number === parsed.number) ||
+          (await createSession(projectId, { kind, number: parsed.number, title: parsed.title }));
+        await attachDocumentToSession(projectId, docId, session.id);
+        placement.sessionId = session.id;
+      }
     } else if (kind === 'homework') {
       const folder = await ensureFolder(projectId, 'Homework');
       await moveDocument(projectId, docId, folder.id);
