@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "resources/templates/list"
+  },
+  "response": [
+    {
+      "name": "research-file",
+      "uriTemplate": "quire://research/{slug}/file/{docId}"
+    }
+  ]
+}

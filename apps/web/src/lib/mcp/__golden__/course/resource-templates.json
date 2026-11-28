@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "resources/templates/list"
+  },
+  "response": [
+    {
+      "name": "course-file",
+      "uriTemplate": "quire://course/{slug}/file/{docId}"
+    }
+  ]
+}
