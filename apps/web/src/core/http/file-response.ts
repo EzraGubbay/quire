@@ -1,5 +1,8 @@
 // HTTP file responses shared by every byte route: Range (206/416), a strong ETag, If-None-Match (304),
 // If-Range (strong-only) and an RFC 5987 `filename*` Content-Disposition (RFC 9110 §13, §14).
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
 
 export type RangeResult =
   | { kind: 'none' } // no/ignored Range header → serve the full body with 200
@@ -40,4 +43,67 @@ export function ifNoneMatchHits(header: string | null, etag: string): boolean {
 export function ifRangeAllows(header: string | null, etag: string): boolean {
   if (!header) return true;
   return header.trim() === etag;
+}
+
+/** Strong validator for an in-memory body: the first 128 bits of its SHA-256, hex, quoted. */
+export const contentEtag = (bytes: Uint8Array): string =>
+  `"${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}"`;
+
+/** `inline|attachment; filename*=UTF-8''<pct-encoded>`. Throws URIError on a lone surrogate (known bug, #108). */
+export const contentDisposition = (disposition: 'inline' | 'attachment', fileName: string): string =>
+  `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+
+/** A file the caller has already stat'ed, or an in-memory body. */
+export type FileBody = { absPath: string; size: number; mtimeMs: number } | { bytes: Uint8Array };
+
+export type RespondWithFileOptions = {
+  req: Request;
+  body: FileBody;
+  contentType: string;
+  /** Unencoded display name including extension; encoded here. */
+  fileName: string;
+  disposition: 'inline' | 'attachment';
+  /** Defaults to `private, no-cache` (always revalidate against the ETag). */
+  cacheControl?: string;
+  /** Defaults to etagFor(size, mtimeMs) for a file, contentEtag(bytes) for an in-memory body. */
+  etag?: string;
+};
+
+/** Full (200), partial (206), unsatisfiable (416) or not-modified (304) response for one file. */
+export function respondWithFile(o: RespondWithFileOptions): Response {
+  const { req, body } = o;
+  const size = 'bytes' in body ? body.bytes.length : body.size;
+  const etag = o.etag ?? ('bytes' in body ? contentEtag(body.bytes) : etagFor(body.size, body.mtimeMs));
+  const base: Record<string, string> = {
+    'content-type': o.contentType,
+    'content-disposition': contentDisposition(o.disposition, o.fileName),
+    'accept-ranges': 'bytes',
+    etag,
+    'cache-control': o.cacheControl ?? 'private, no-cache',
+  };
+
+  if (ifNoneMatchHits(req.headers.get('if-none-match'), etag)) {
+    return new Response(null, { status: 304, headers: base });
+  }
+
+  const range = ifRangeAllows(req.headers.get('if-range'), etag)
+    ? parseRange(req.headers.get('range'), size)
+    : ({ kind: 'none' } as const);
+
+  if (range.kind === 'unsatisfiable') {
+    return new Response(null, { status: 416, headers: { ...base, 'content-range': `bytes */${size}` } });
+  }
+
+  const [start, end, status] = range.kind === 'range' ? [range.start, range.end, 206] : [0, size - 1, 200];
+  const length = size === 0 ? 0 : end - start + 1;
+  const headers = {
+    ...base,
+    'content-length': String(length),
+    ...(status === 206 ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+  };
+  if (length === 0) return new Response(null, { status, headers });
+  if ('bytes' in body)
+    return new Response(new Uint8Array(body.bytes.subarray(start, end + 1)), { status, headers });
+  const stream = Readable.toWeb(createReadStream(body.absPath, { start, end })) as ReadableStream;
+  return new Response(stream, { status, headers });
 }
