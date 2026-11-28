@@ -1,5 +1,7 @@
 import type { SessionKind } from '@quire/shared';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { checkAttach } from '@/core/sessions/attach';
+import { parseSessionName } from '@/core/sessions/naming';
 import { db } from '@/db/client';
 import { type Document, documents, type Session, sessions } from '@/db/schema';
 
@@ -176,4 +178,25 @@ export function parseSessionFilename(fileName: string): ParsedSessionName {
     .trim();
   s = s.replace(/^[\s\-–—:.]+|[\s\-–—:.]+$/g, '').trim();
   return { kind, number, title: s };
+}
+
+/**
+ * Session number/title from a deck file name: the v2 parser when it finds a number bound to a kind word, else the
+ * legacy parser (keeps "07 Memory models.pdf" → 7 and "Course overview.pdf" → no number working).
+ */
+export function sessionFromFileName(fileName: string): ParsedSessionName {
+  const v2 = parseSessionName(fileName);
+  if (v2?.number !== undefined) return { kind: v2.kind, number: v2.number, title: v2.title };
+  return parseSessionFilename(fileName);
+}
+
+/** A non-blocking warning when a file's name points at a different session than the one it is attached to. */
+export function attachWarning(
+  session: Pick<Session, 'kind' | 'number'>,
+  fileName: string,
+): string | undefined {
+  const r = checkAttach(session, fileName);
+  if (r.ok) return undefined;
+  const named = `${SESSION_LABEL[r.fileKind ?? r.sessionKind].one} ${r.fileNumber}`;
+  return `"${fileName}" looks like ${named}, but it is attached to ${SESSION_LABEL[r.sessionKind].one} ${r.sessionNumber}.`;
 }

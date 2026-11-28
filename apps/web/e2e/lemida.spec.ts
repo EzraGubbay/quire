@@ -55,6 +55,22 @@ test('lemida import: classify + place, dedupe, and resolve a review item', async
     await expect(page.getByTestId('session-row').filter({ hasText: 'Intro' })).toBeVisible();
   });
 
+  await test.step('an unnumbered lecture deck is imported but not given a session', async () => {
+    const r = await importFile(request, slug, {
+      fileName: 'Course overview.pdf',
+      buffer: variant('overview'),
+      sectionTitle: '\u05D4\u05E8\u05E6\u05D0\u05D5\u05EA',
+      moduleType: 'mod_resource',
+    });
+    expect(r.detectedKind).toBe('lecture');
+    expect(r.status).toBe('imported');
+    expect(r.placement.sessionId).toBeUndefined();
+    expect(r.placement.documentId).toBeTruthy();
+    // Only the numbered lecture from the first step is listed; the unnumbered deck stays in Documents.
+    await page.goto(`/c/${slug}/lectures`);
+    await expect(page.getByTestId('session-row')).toHaveCount(1);
+  });
+
   await test.step('a Moodle assignment activity becomes homework', async () => {
     const r = await importFile(request, slug, {
       fileName: 'תרגיל בית 1.pdf',
@@ -88,9 +104,9 @@ test('lemida import: classify + place, dedupe, and resolve a review item', async
     await expect(review.getByText('misc-notes.pdf')).toBeVisible();
     await page.getByRole('button', { name: 'Recitation', exact: true }).first().click();
     await expect(page.getByTestId('lemida-review').getByText('misc-notes.pdf')).toHaveCount(0);
-    // It now shows up as a recitation session (empty title ⇒ "Recitation 1").
+    // A reviewed name with no number is filed without inventing a session.
     await page.goto(`/c/${slug}/recitations`);
-    await expect(page.getByText('Recitation 1')).toBeVisible();
+    await expect(page.getByText('No recitations yet')).toBeVisible();
   });
 });
 

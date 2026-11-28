@@ -10,7 +10,7 @@ const AUTO_DISMISS_MS = 4000;
 export function UploadTray() {
   const { uploads, dismiss } = useUploads();
   const doneKey = uploads
-    .filter((u) => u.status === 'done')
+    .filter((u) => u.status === 'done' && !u.warning)
     .map((u) => u.id)
     .join(',');
   useEffect(() => {
@@ -52,6 +52,7 @@ export function UploadTray() {
           ) : (
             <progress className={s.bar} value={u.progress} max={1} aria-label={`Uploading ${u.name}`} />
           )}
+          {u.warning && <p className={s.warning}>{u.warning}</p>}
         </div>
       ))}
     </section>
