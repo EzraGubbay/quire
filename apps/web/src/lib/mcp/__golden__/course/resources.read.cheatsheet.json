@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "resources/read",
+    "uri": "quire://course/<slug:course>/file/<id:cheatsheet>"
+  },
+  "response": {
+    "contents": [
+      {
+        "uri": "quire://course/<slug:course>/file/<id:cheatsheet>",
+        "mimeType": "text/markdown",
+        "lines": [
+          "# Cheat sheet",
+          "",
+          "## סיכום",
+          "",
+          "נוסחה: $\\sum_{i=1}^{n} i = n(n+1)/2$",
+          ""
+        ]
+      }
+    ]
+  }
+}

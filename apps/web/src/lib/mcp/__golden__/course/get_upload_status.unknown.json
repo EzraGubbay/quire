@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_upload_status",
+    "arguments": {
+      "uploadId": "nope"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Unknown uploadId: the link may be older than 24 h or the server restarted; create a new link with create_upload_link."
+      }
+    ]
+  }
+}

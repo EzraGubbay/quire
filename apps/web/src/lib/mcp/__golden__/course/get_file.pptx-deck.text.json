@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "course": "<slug:course>",
+      "fileId": "<id:pptx-deck>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "\"Lecture 2 deck\" has no PDF (its conversion may have failed), so there is no page text. The original upload is available with format=\"original\" (raw binary)."
+      }
+    ]
+  }
+}

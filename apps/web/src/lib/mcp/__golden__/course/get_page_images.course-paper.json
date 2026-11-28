@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_page_images",
+    "arguments": {
+      "course": "<slug:course>",
+      "fileId": "<id:course-paper>",
+      "pages": "1"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "This file has no PDF to render; use get_file for its text."
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "list_courses"
+  },
+  "response": {
+    "courses": [
+      {
+        "slug": "<slug:course>",
+        "id": "<id:course>",
+        "name": "Golden Course <run>",
+        "code": "GC101",
+        "semester": "2026A",
+        "type": "mixed",
+        "fileCount": 8
+      }
+    ]
+  }
+}

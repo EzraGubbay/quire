@@ -1,0 +1,130 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "list_course_files",
+    "arguments": {
+      "course": "<slug:course>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "json": {
+          "course": {
+            "slug": "<slug:course>",
+            "name": "Golden Course <run>"
+          },
+          "files": [
+            {
+              "fileId": "<id:cheatsheet>",
+              "title": "Cheat sheet",
+              "type": "other",
+              "pageCount": null,
+              "sizeBytes": null,
+              "kind": "markdown",
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": true,
+              "resourceUri": "quire://course/<slug:course>/file/<id:cheatsheet>"
+            },
+            {
+              "fileId": "<id:course-paper>",
+              "title": "Referenced paper",
+              "type": "paper",
+              "pageCount": null,
+              "sizeBytes": null,
+              "kind": "pdf",
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "resourceUri": "quire://course/<slug:course>/file/<id:course-paper>"
+            },
+            {
+              "fileId": "<id:book>",
+              "title": "Course book",
+              "type": "book",
+              "folder": "Course material",
+              "pageCount": 12,
+              "sizeBytes": 77169,
+              "kind": "pdf",
+              "hasPdf": true,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "resourceUri": "quire://course/<slug:course>/file/<id:book>"
+            },
+            {
+              "fileId": "<id:homework-sheet>",
+              "title": "HW 1",
+              "type": "homework",
+              "pageCount": null,
+              "sizeBytes": null,
+              "kind": "markdown",
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": true,
+              "resourceUri": "quire://course/<slug:course>/file/<id:homework-sheet>"
+            },
+            {
+              "fileId": "<id:exam>",
+              "title": "Practice exam 2025",
+              "type": "exam",
+              "folder": "Practice Exams",
+              "pageCount": null,
+              "sizeBytes": null,
+              "kind": "markdown",
+              "hasPdf": false,
+              "hasOriginal": false,
+              "hasMarkdown": true,
+              "resourceUri": "quire://course/<slug:course>/file/<id:exam>"
+            },
+            {
+              "fileId": "<id:pptx-deck>",
+              "title": "Lecture 2 deck",
+              "type": "other",
+              "pageCount": null,
+              "sizeBytes": 20,
+              "kind": "pdf",
+              "hasPdf": false,
+              "hasOriginal": true,
+              "hasMarkdown": false,
+              "resourceUri": "quire://course/<slug:course>/file/<id:pptx-deck>"
+            },
+            {
+              "fileId": "<id:recitation-deck>",
+              "title": "Recitation 1",
+              "type": "recitation",
+              "session": {
+                "number": 1,
+                "title": "Recitation 1 — Warm-up"
+              },
+              "pageCount": 1,
+              "sizeBytes": 1931,
+              "kind": "pdf",
+              "hasPdf": true,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "resourceUri": "quire://course/<slug:course>/file/<id:recitation-deck>"
+            },
+            {
+              "fileId": "<id:lecture-deck>",
+              "title": "Lecture 1 slides",
+              "type": "lecture",
+              "session": {
+                "number": 1,
+                "title": "Lecture 1 — Intro"
+              },
+              "pageCount": 4,
+              "sizeBytes": 17148,
+              "kind": "pdf",
+              "hasPdf": true,
+              "hasOriginal": false,
+              "hasMarkdown": false,
+              "resourceUri": "quire://course/<slug:course>/file/<id:lecture-deck>"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
