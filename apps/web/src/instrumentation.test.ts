@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const runMigrations = vi.fn(async () => {});
 const startPushLoop = vi.fn(() => true);
 vi.mock('./db/migrate', () => ({ runMigrations }));
+const startJobWorker = vi.fn(() => true);
 vi.mock('./lib/mobile/push/scheduler', () => ({ startPushLoop }));
+vi.mock('./core/jobs/worker', () => ({ startJobWorker }));
 vi.mock('./lib/ai/synthesis', () => ({ failStaleGenerating: async () => 0 }));
 vi.mock('./lib/ai/tests', () => ({ failStaleTests: async () => 0 }));
 const pruneEmptyThreads = vi.fn(async () => 0);
@@ -15,6 +17,8 @@ const { register } = await import('./instrumentation');
 beforeEach(() => {
   runMigrations.mockClear();
   startPushLoop.mockClear();
+  startJobWorker.mockReset();
+  startJobWorker.mockReturnValue(true);
   pruneEmptyThreads.mockReset();
   pruneEmptyThreads.mockResolvedValue(0);
   vi.stubEnv('NEXT_RUNTIME', 'nodejs');
@@ -56,9 +60,28 @@ describe('register', () => {
     expect(startPushLoop).toHaveBeenCalledOnce();
   });
 
+  it('starts the jobs worker with signal handlers, also under SKIP_MIGRATIONS=1', async () => {
+    vi.stubEnv('SKIP_MIGRATIONS', '1');
+    await register();
+    expect(startJobWorker).toHaveBeenCalledOnce();
+    expect(startJobWorker).toHaveBeenCalledWith({ installSignalHandlers: true });
+    expect(startPushLoop).toHaveBeenCalledOnce();
+  });
+
+  it('still boots when the jobs worker fails to start', async () => {
+    vi.stubEnv('SKIP_MIGRATIONS', '1');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    startJobWorker.mockImplementation(() => {
+      throw new Error('nope');
+    });
+    await expect(register()).resolves.toBeUndefined();
+    expect(startPushLoop).toHaveBeenCalledOnce();
+  });
+
   it('does nothing on the edge runtime', async () => {
     vi.stubEnv('NEXT_RUNTIME', 'edge');
     await register();
     expect(startPushLoop).not.toHaveBeenCalled();
+    expect(startJobWorker).not.toHaveBeenCalled();
   });
 });

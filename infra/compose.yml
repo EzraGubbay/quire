@@ -54,6 +54,8 @@ services:
       MCP_UPLOAD_DEADLINE_MS: ${MCP_UPLOAD_DEADLINE_MS:-40000}
       MCP_UPLOAD_MAX_MARKDOWN_BYTES: ${MCP_UPLOAD_MAX_MARKDOWN_BYTES:-524288}
       DISABLE_AUTOUPDATER: '1'
+      # Durable jobs worker; set JOBS_ENABLED=0 in .env to stop it claiming.
+      JOBS_ENABLED: ${JOBS_ENABLED:-1}
       GOTENBERG_URL: http://gotenberg:3000
       # Firebase service-account JSON, base64 on one line; written into .env by deploy.yml. Empty = push disabled.
       FCM_SERVICE_ACCOUNT_JSON_BASE64: ${FCM_SERVICE_ACCOUNT_JSON_BASE64:-}
