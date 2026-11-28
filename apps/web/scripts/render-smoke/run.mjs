@@ -4,8 +4,8 @@
 // Usage: node run.mjs --app-root <dir> --out <dir> [--variants a,b] [--cases a,b] [--timeout-ms 60000]
 //
 // Variants (only `prod` counts for the exit code):
-//   prod               mirrors lib/slides.ts exactly
-//   assets             prod + standardFontDataUrl / cMapUrl / wasmUrl from the first existing directory
+//   prod               what lib/slides.ts does: one canvas, bundled assets (incl. iccs), useSystemFonts: false
+//   assets             system fonts on, plus standardFontDataUrl / cMapUrl / wasmUrl / iccUrl from the first existing directory
 //   assets-nosys       assets with useSystemFonts: false (pdf.js skips its standard font data when it is true)
 //   one-canvas         app canvas for Path2D/DOMMatrix/ImageData and for pdfjs's CanvasFactory
 //   one-canvas+assets  both of the above

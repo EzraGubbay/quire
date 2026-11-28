@@ -1,9 +1,12 @@
 // Renders a PDF's pages to JPEG files for vision input, with pdf.js (legacy build) and @napi-rs/canvas.
+// pdf.js is opened through openPdf (bundled fonts, CMaps, wasm) and the canvas through loadPdfCanvas (one copy).
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { openPdf } from '@/core/pdf/open';
 import type { Document } from '@/db/schema';
 import { filePath } from './files';
+import { loadPdfCanvas } from './pdf-canvas';
 
 export interface SlideImage {
   pageNo: number;
@@ -41,12 +44,9 @@ export async function renderPageImages(
       .map((n) => ({ pageNo: n, path: path.join(dir, `${n}.jpg`) }));
   }
   await mkdir(abs, { recursive: true });
-  const [{ createCanvas }, pdfjs] = await Promise.all([
-    import('@napi-rs/canvas'),
-    import('pdfjs-dist/legacy/build/pdf.mjs'),
-  ]);
+  const canvas = await loadPdfCanvas();
   const data = await readFile(filePath(doc.filePath));
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
+  const pdf = await openPdf(data, { canvasFactory: canvas.CanvasFactory });
   const out: SlideImage[] = [];
   const n = Math.min(pdf.numPages, want);
   for (let i = 1; i <= n; i++) {
@@ -56,7 +56,7 @@ export async function renderPageImages(
       out.push({ pageNo: i, path: rel });
       continue;
     }
-    await renderPageTo(pdf, createCanvas, i, target, maxWidth, opts.quality ?? 80);
+    await renderPageTo(pdf, canvas.createCanvas, i, target, maxWidth, opts.quality ?? 80);
     out.push({ pageNo: i, path: rel });
   }
   await pdf.destroy();
@@ -143,19 +143,16 @@ export async function renderPages(
     else missing.push(n);
   }
   if (missing.length > 0) {
-    const [{ createCanvas }, pdfjs] = await Promise.all([
-      import('@napi-rs/canvas'),
-      import('pdfjs-dist/legacy/build/pdf.mjs'),
-    ]);
+    const canvas = await loadPdfCanvas();
     const data = await readFile(filePath(doc.filePath));
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
+    const pdf = await openPdf(data, { canvasFactory: canvas.CanvasFactory });
     try {
       for (const n of missing) {
         if (n < 1 || n > pdf.numPages) continue;
         const rel = path.join(dir, `${n}.jpg`);
         await renderPageTo(
           pdf,
-          createCanvas,
+          canvas.createCanvas,
           n,
           filePath(rel),
           opts.maxWidth,
