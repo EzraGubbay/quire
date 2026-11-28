@@ -33,6 +33,8 @@ export interface PptxPackage {
   hiddenCount: number;
   /** A parsed part, cached. A part that is not in the zip throws PptxError('missing_part'). */
   part(name: string): XNode;
+  /** Drops a parsed part from the cache, e.g. a slide once it has been read. */
+  release(name: string): void;
   /** Relationships of a part, by id. A part without a rels part has none. */
   rels(ofPart: string): Map<string, Rel>;
   /** First relationship of a part whose type ends with `typeSuffix`, e.g. '/slideLayout'. */
@@ -42,6 +44,28 @@ export interface PptxPackage {
 const DEFAULT_SLIDE_SIZE: SlideSize = { cx: 9144000, cy: 6858000 };
 const WANTED = /^ppt\/.+\.(xml|rels)$/;
 const isTrue = (v: string | undefined): boolean => v === '1' || v === 'true';
+
+const ROOT_TAG = /^[\s\S]*?<p:sld(?=[\s/>])((?:"[^"]*"|'[^']*'|[^>"'])*)>/;
+const SHOW_ATTR = /\sshow\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+
+/**
+ * Whether a slide is hidden, from its root start tag alone. Slides are not parsed here: parsed XML costs about
+ * 70x its size in heap, so a deck's slides are parsed one at a time, on demand, through `part`. Anything that
+ * does not look like a plain p:sld root is parsed in full so it fails with the right typed error.
+ */
+function slideIsHidden(zip: Map<string, Uint8Array>, name: string): boolean {
+  const data = zip.get(name);
+  if (!data) throw new PptxError('missing_part', `part ${name} is not in the package`, name);
+  const text = decodePart(data, name);
+  const tag = ROOT_TAG.exec(text.slice(0, 4096));
+  if (!tag) {
+    const root = parseXml(text, name);
+    throw new PptxError('unsupported', `unexpected root element ${root.name} in ${name}`, name);
+  }
+  const show = SHOW_ATTR.exec(tag[1] ?? '');
+  const value = show?.[1] ?? show?.[2];
+  return value === '0' || value === 'false';
+}
 
 /** Resolves a relationship target to an absolute part name; escaping the package root is missing_part. */
 function resolveTarget(sourcePart: string, target: string): string {
@@ -95,7 +119,12 @@ export function openPptx(bytes: Uint8Array, limits: ZipLimits = DEFAULT_ZIP_LIMI
       for (const r of children(part(relsName), 'Relationship')) {
         const { Id: id, Type: type, Target: target, TargetMode: mode } = r.attrs;
         if (id === undefined || type === undefined || target === undefined || mode === 'External') continue;
-        out.set(id, { id, type, target: resolveTarget(ofPart, target) });
+        // A relationship that points outside the package is dropped, not fatal: only one that is needed fails.
+        try {
+          out.set(id, { id, type, target: resolveTarget(ofPart, target) });
+        } catch (e) {
+          if (!(e instanceof PptxError)) throw e;
+        }
       }
     }
     relsCache.set(ofPart, out);
@@ -140,18 +169,22 @@ export function openPptx(bytes: Uint8Array, limits: ZipLimits = DEFAULT_ZIP_LIMI
         'ppt/presentation.xml',
       );
     }
-    const slide = part(rel.target);
-    if (slide.name !== 'p:sld') {
-      throw new PptxError(
-        'unsupported',
-        `unexpected root element ${slide.name} in ${rel.target}`,
-        rel.target,
-      );
-    }
-    const hidden = slide.attrs.show === '0' || slide.attrs.show === 'false';
+    const hidden = slideIsHidden(zip, rel.target);
     slides.push({ index: slides.length + 1, page: hidden ? null : ++page, part: rel.target, hidden });
   }
 
   const hiddenCount = slides.filter((s) => s.hidden).length;
-  return { slideSize, slides, visibleCount: slides.length - hiddenCount, hiddenCount, part, rels, relOfType };
+  const release = (name: string): void => {
+    parts.delete(name);
+  };
+  return {
+    slideSize,
+    slides,
+    visibleCount: slides.length - hiddenCount,
+    hiddenCount,
+    part,
+    release,
+    rels,
+    relOfType,
+  };
 }

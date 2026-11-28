@@ -106,10 +106,35 @@ describe('openPptx', () => {
     expect([pkg.visibleCount, pkg.hiddenCount]).toEqual([0, 0]);
   });
 
-  it('validates every slide part up front', () => {
+  it('reads hidden state without parsing slides, and parses a slide only on demand', () => {
     const bad = tinyPptx([{}, {}], { extra: { 'ppt/slides/slide2.xml': '<p:sld><p:cSld>' } });
-    const err = codeOf(() => openPptx(bad));
+    const pkg = openPptx(bad);
+    expect(pkg.slides).toHaveLength(2);
+    const err = codeOf(() => pkg.part('ppt/slides/slide2.xml'));
     expect(err?.code).toBe('malformed_xml');
     expect(err?.part).toBe('ppt/slides/slide2.xml');
+  });
+
+  it('rejects a slide whose root is not p:sld', () => {
+    const odd = '<x:sld xmlns:x="http://schemas.openxmlformats.org/presentationml/2006/main"/>';
+    expect(codeOf(() => openPptx(tinyPptx([{ xml: odd }])))?.code).toBe('unsupported');
+  });
+
+  it('release drops a cached part so it is parsed again', () => {
+    const pkg = openPptx(tinyPptx([{}]));
+    const first = pkg.part('ppt/slides/slide1.xml');
+    pkg.release('ppt/slides/slide1.xml');
+    expect(pkg.part('ppt/slides/slide1.xml')).not.toBe(first);
+  });
+
+  it('skips a relationship that escapes the package instead of failing the deck', () => {
+    const rels =
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://x/slide" Target="slides/slide1.xml"/>' +
+      '<Relationship Id="rIdM" Type="http://x/slideMaster" Target="slideMasters/slideMaster1.xml"/>' +
+      '<Relationship Id="rIdBad" Type="http://x/image" Target="../../../outside.png"/></Relationships>';
+    const pkg = openPptx(tinyPptx([{}], { extra: { 'ppt/_rels/presentation.xml.rels': rels } }));
+    expect(pkg.slides).toHaveLength(1);
+    expect(pkg.rels('ppt/presentation.xml').has('rIdBad')).toBe(false);
   });
 });
