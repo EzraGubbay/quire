@@ -10,13 +10,12 @@ permissions:
 jobs:
   render-smoke:
     # Renders synthetic PDF pages inside the real runtime image (infra/Dockerfile, target runtime) on native arm64
-    # and reports, per page, crash/error/blank and the non-white pixel ratio (#122). Non-blocking until the render
-    # fixes land (that change removes continue-on-error and makes this check required). Always runs and reports; the
-    # heavy steps skip only when the gate finds no render-relevant change (any doubt means run).
+    # and reports, per page, crash/error/blank and the non-white pixel ratio (#122). Blocking since the render
+    # fixes (#123). The job always runs and reports, so it is safe as a required check; the heavy steps skip only
+    # when the gate finds no render-relevant change (any doubt means run).
     name: Render smoke (runtime image)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -53,7 +52,6 @@ jobs:
           cache-from: type=gha
       - name: Render smoke pages inside the image
         if: steps.gate.outputs.run != 'false'
-        continue-on-error: true
         run: apps/web/scripts/render-smoke/run-in-image.sh quire-render-smoke:ci "$RUNNER_TEMP/render-smoke"
       - name: Job summary
         if: always() && steps.gate.outputs.run != 'false'
