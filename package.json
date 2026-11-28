@@ -5,7 +5,7 @@
   "description": "Quire: a personal research project manager on the Folio design register",
   "packageManager": "pnpm@10.18.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.2"
   },
   "scripts": {
     "dev": "pnpm --filter web dev",
