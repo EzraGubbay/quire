@@ -7,7 +7,7 @@ vi.mock('@/lib/projects', () => ({
 }));
 vi.mock('@/lib/documents', () => ({}));
 vi.mock('./courses', () => ({}));
-vi.mock('./content', () => ({ MAX_IMAGES_PER_CALL: 4 }));
+vi.mock('./content', () => ({ MAX_IMAGES_PER_CALL: 4, TEXT_BUDGET: 20_000 }));
 vi.mock('./tool-results', () => ({}));
 vi.mock('./upload', () => ({ kb: vi.fn(), uploadLimits: () => ({ maxMarkdownBytes: 1 }) }));
 vi.mock('./drive/tools', () => ({ registerDriveTools: vi.fn() }));
