@@ -1,0 +1,12 @@
+# Contract migrations approved by the owner (ADR 0001, decision 8).
+#
+# Migrations are expand-only. src/db/migrations.guard.test.ts fails when a migration newer than
+# 0014_even_blonde_phantom contains a contract operation: DROP, RENAME, SET NOT NULL, a column type
+# change, a unique index or constraint on an existing table, TRUNCATE, a DELETE/UPDATE data rewrite,
+# or an opaque DO/function block. A contract migration ships alone, in its own owner-gated PR, and is
+# listed here, one per line:
+#
+#   <migration tag> <reason, at least 10 characters>
+#
+# Example (commented out):
+# 0020_sessions_unique  Unique (project, kind, number) after the in-app repair showed 0 duplicates.

@@ -23,4 +23,5 @@
 - Logs: `ssh researchpi 'cd /srv/quire && docker compose logs -f app'`
 - Manual backup: `docker compose exec backup backup.sh`
 - Restore: `docker compose exec backup restore.sh`
+- Pre-deploy dumps: when a deploy changes `apps/web/drizzle/`, the deploy workflow first writes `/backups/predeploy/quire-predeploy-*.dump` (newest 5, local only). Restore one with `docker compose exec backup restore.sh /backups/predeploy/<file>`; this discards writes made after the dump.
 - Roll back: set `QUIRE_IMAGE=ghcr.io/ezragubbay/quire:<previous sha>` in `.env` and `docker compose up -d app`
