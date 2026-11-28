@@ -11,7 +11,7 @@
 
 - Transports: `app/actions`, `app/api/**`, MCP route handlers.
 - UI.
-- Auth and session lookup. Device-token auth stays in `lib/mobile/auth.ts`.
+- Session lookup and NextAuth. Pure credential classification lives in `identity/caller.ts`; device-token auth stays in `lib/mobile/auth.ts`.
 - Web-only domains: tests, homework, mindmap, experiments.
 
 ## The fence

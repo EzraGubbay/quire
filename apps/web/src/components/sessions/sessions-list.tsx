@@ -153,6 +153,11 @@ export function SessionsList({
           {dropState.error}
         </p>
       )}
+      {dropState.warning && (
+        <p role="status" className={s.warning} data-testid="drop-warning">
+          {dropState.warning}
+        </p>
+      )}
       {dropping && <p className={s.progress}>Uploading and converting… large decks take a minute.</p>}
       {sessions.length === 0 ? (
         <EmptyState title={`No ${label.many.toLowerCase()} yet`}>

@@ -29,11 +29,6 @@ const tmp = run ? await mkdtemp(path.join(os.tmpdir(), 'quire-mcp-golden-')) : '
 if (run) {
   process.env.FILES_DIR = tmp;
   pinEnv();
-  // pdf.js draws the Type 3 glyphs of the synthetic PDFs with Path2D, and outside Next it cannot polyfill it
-  // from @napi-rs/canvas itself ("Value is none of these types String, Path"). Pages that embed a raster image
-  // (sample pages 2 and 4) abort the native canvas under Node, so the image steps only render pages 1 and 3.
-  const canvas = await import('@napi-rs/canvas');
-  Object.assign(globalThis, { Path2D: canvas.Path2D });
 }
 
 const golden = (server: 'course' | 'research'): GoldenDir => goldenDirs(import.meta.url, server);
@@ -176,7 +171,9 @@ describe.skipIf(!run)('MCP golden transcripts (integration)', () => {
     'get_file.missing-file',
     'get_file.lecture.markdown-on-pdf',
     'get_page_images.lecture.p1',
+    'get_page_images.lecture.p2',
     'get_page_images.lecture.p3',
+    'get_page_images.lecture.p4',
     'get_page_images.course-paper',
     'get_page_images.bad-pages',
     'resources.list',
@@ -255,7 +252,9 @@ describe.skipIf(!run)('MCP golden transcripts (integration)', () => {
     );
 
     await tool(client, S, 'get_page_images.lecture.p1', 'get_page_images', f('lecture-deck', { pages: '1' }));
+    await tool(client, S, 'get_page_images.lecture.p2', 'get_page_images', f('lecture-deck', { pages: '2' }));
     await tool(client, S, 'get_page_images.lecture.p3', 'get_page_images', f('lecture-deck', { pages: '3' }));
+    await tool(client, S, 'get_page_images.lecture.p4', 'get_page_images', f('lecture-deck', { pages: '4' }));
     // Not a golden: the cut-off after the base64 budget depends on JPEG size, which depends on the platform.
     const many = (await client.callTool({
       name: 'get_page_images',

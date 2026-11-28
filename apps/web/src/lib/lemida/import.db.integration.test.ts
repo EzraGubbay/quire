@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, getSql } from '@/db/client';
-import { documents, type LemidaFile, lemidaFiles, type Project, projects } from '@/db/schema';
+import { documents, type LemidaFile, lemidaFiles, type Project, projects, sessions } from '@/db/schema';
 
 vi.mock('next/server', () => ({ after: vi.fn() }));
 vi.mock('@/lib/ai/index', () => ({ indexOwner: vi.fn() }));
@@ -36,6 +36,12 @@ const run = process.env.QUIRE_DB_TESTS === '1' && !!process.env.DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
 const projectIds: string[] = [];
 const meta = { fileName: 'x.pdf' };
+
+// Cleanup runs once, after every describe in this file has finished: delete every project created, then close.
+afterAll(async () => {
+  if (projectIds.length) await db.delete(projects).where(inArray(projects.id, projectIds));
+  await getSql().end();
+});
 
 async function newProject(): Promise<Project> {
   const [p] = await db
@@ -86,11 +92,6 @@ describe.skipIf(!run)('importLemidaFile retry (integration)', () => {
       return { ...d, filePath: null };
     }) as never);
   });
-  afterAll(async () => {
-    if (projectIds.length) await db.delete(projects).where(inArray(projects.id, projectIds));
-    await getSql().end();
-  });
-
   it('first import ok', async () => {
     const p = await newProject();
     const data = newBytes();
@@ -312,5 +313,74 @@ describe.skipIf(!run)('importLemidaFile retry (integration)', () => {
     }
 
     await expectHealsOnRetry(p, data);
+  });
+});
+
+describe.skipIf(!run)('importLemidaFile session placement (integration)', () => {
+  const asLecture = (number: number | undefined, title?: string) =>
+    vi
+      .mocked(classifyLemidaFile)
+      .mockReturnValue({ kind: 'lecture', number, title, confidence: 1, rule: 'r' } as never);
+  const sessionsFor = (projectId: string) =>
+    db.select().from(sessions).where(eq(sessions.projectId, projectId));
+
+  beforeEach(() => {
+    vi.mocked(createDeckDocument).mockReset();
+    vi.mocked(createDeckDocument).mockImplementation((async (
+      projectId: string,
+      upload: { sessionId?: string | null; title?: string },
+    ) => {
+      const [d] = await db
+        .insert(documents)
+        .values({
+          projectId,
+          kind: 'pdf',
+          title: upload.title ?? 'it',
+          sessionId: upload.sessionId ?? null,
+        })
+        .returning();
+      return { ...d, filePath: null };
+    }) as never);
+  });
+
+  it('a lecture with no number creates no session and stays unattached', async () => {
+    const p = await newProject();
+    asLecture(undefined);
+    const first = newBytes();
+    await importLemidaFile(p, { fileName: 'Course overview.pdf' }, first);
+    await importLemidaFile(p, { fileName: 'Course overview.pdf' }, newBytes());
+    expect(await sessionsFor(p.id)).toHaveLength(0);
+    const docs = await docsFor(p.id);
+    expect(docs).toHaveLength(2);
+    expect(docs.every((d) => d.sessionId === null && d.title === 'Course overview')).toBe(true);
+    const [row] = await rowsFor(p.id, sha256(first));
+    expect(row?.status).toBe('imported');
+    expect(row?.placement.sessionId).toBeUndefined();
+    expect(row?.placement.documentId).toBeTruthy();
+  });
+
+  it('a numbered lecture attaches to the existing session and titles the deck from its file name', async () => {
+    const p = await newProject();
+    const [seeded] = await db
+      .insert(sessions)
+      .values({ projectId: p.id, kind: 'lecture', number: 3, title: '' })
+      .returning();
+    asLecture(3, 'Locks');
+    await importLemidaFile(p, { fileName: 'Lecture 3 - Locks.pdf' }, newBytes());
+    expect(await sessionsFor(p.id)).toHaveLength(1);
+    const [doc] = await docsFor(p.id);
+    expect(doc?.sessionId).toBe(seeded?.id);
+    expect(doc?.title).toBe('Lecture 3 - Locks');
+  });
+
+  it('a numbered lecture with no session creates it', async () => {
+    const p = await newProject();
+    asLecture(4, 'Heaps');
+    await importLemidaFile(p, { fileName: 'Lecture 4 - Heaps.pdf' }, newBytes());
+    const all = await sessionsFor(p.id);
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ kind: 'lecture', number: 4 });
+    const [doc] = await docsFor(p.id);
+    expect(doc?.sessionId).toBe(all[0]?.id);
   });
 });

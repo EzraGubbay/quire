@@ -46,6 +46,13 @@
   margin: 0;
   color: var(--eg-accent-text);
 }
+.warning {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--eg-accent);
+  color: var(--eg-text-2);
+  font: 400 13px / 1.4 var(--eg-font-ui);
+}
 .progress {
   margin: 0;
   color: var(--eg-muted);

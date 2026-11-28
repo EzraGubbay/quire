@@ -1,48 +1,9 @@
 import { type NextFetchEvent, type NextRequest, NextResponse } from 'next/server';
 import { AUTH_MODE, auth, githubConfigured } from '@/auth';
-import { isApiKeyAuthorization, isResearchApiKeyAuthorization, RESEARCH_MCP_PATH } from '@/lib/api-key';
+import { type CallerEnv, classify, RESEARCH_MCP_PATH } from '@/core/identity/caller';
 
-// Public means "reachable without a session". It is deliberately narrow: Server Actions are directly
-// POSTable to any URL, so a loose prefix (e.g. `/icons/` matching `/icons/x/documents/y`, which falls
-// through to app/[side]/[slug]) would let anyone run them unauthenticated.
-
-// Any method: these are route handlers (never action hosts) that do their own auth.
-// Mobile API v1 handlers do per-device bearer auth (src/lib/mobile/device-auth.ts), so a missing/invalid
-// token gets the JSON 401 envelope rather than the session gate. The trailing slash matters: it excludes
-// /api/mobile/pairing-codes (the mint route), which stays session-gated.
-// Single-use MCP upload links: PUT to exactly one 43-char token segment, authorized solely by that token
-// (see lib/mcp/upload-links.ts). Deliberately not a prefix: deeper paths must stay session-gated.
-const UPLOAD_LINK_PUT = /^\/api\/upload-links\/[A-Za-z0-9_-]{43}$/;
-
-const PUBLIC_ANY_METHOD_PREFIXES = ['/api/auth/', '/api/mobile/v1/'];
-
-// GET/HEAD, exact paths only: health (probed over localhost by the deploy job), the PWA manifest, service
-// worker, offline page and the pdf.js worker.
-const PUBLIC_EXACT = new Set([
-  '/api/health',
-  '/manifest.webmanifest',
-  '/sw.js',
-  '/offline',
-  '/pdf.worker.min.mjs',
-]);
-
-// GET/HEAD static assets, anchored and extension-restricted. pdf.js fetches its fonts and CMaps from
-// inside its worker; public like the worker itself (fonts and CMaps are not private).
-const PUBLIC_ASSETS = [
-  /^\/icons\/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.png$/,
-  /^\/pdfjs\/(?:cmaps|standard_fonts)\/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:bcmap|pfb|ttf)$/,
-  /^\/mathjax\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|woff2?|ttf|json|css)$/,
-];
-
-export function isPublic(method: string, pathname: string, headers: Pick<Headers, 'has'>): boolean {
-  // A public path never runs a Server Action without auth.
-  if (headers.has('next-action')) return false;
-  if (PUBLIC_ANY_METHOD_PREFIXES.some((p) => pathname.startsWith(p))) return true;
-  if (method === 'PUT' && UPLOAD_LINK_PUT.test(pathname)) return true;
-  // MPA form posts carry the action id in the body, not a header, so restrict by method too.
-  if (method !== 'GET' && method !== 'HEAD') return false;
-  return PUBLIC_EXACT.has(pathname) || PUBLIC_ASSETS.some((re) => re.test(pathname));
-}
+// Public-path rules live in core/identity/caller.ts; re-exported for existing importers.
+export { isPublic } from '@/core/identity/caller';
 
 const withSession = auth((req) => {
   if (req.auth?.user) return NextResponse.next();
@@ -56,25 +17,44 @@ const withSession = auth((req) => {
   return NextResponse.redirect(signIn);
 });
 
+/**
+ * Built per request: the keys are read at call time (tests set them per case; prod reads them at runtime).
+ * AUTH_MODE and githubConfigured come from @/auth exactly as before.
+ */
+function callerEnv(): CallerEnv {
+  return {
+    authMode: AUTH_MODE,
+    githubConfigured,
+    masterKey: process.env.QUIRE_API_KEY,
+    researchKey: process.env.QUIRE_RESEARCH_API_KEY,
+  };
+}
+
 export function proxy(req: NextRequest, event: NextFetchEvent) {
-  const { pathname } = req.nextUrl;
-  if (isPublic(req.method, pathname, req.headers)) return NextResponse.next();
-  if (AUTH_MODE === 'none') return NextResponse.next();
-  // The research key opens exactly /research/mcp (exact match, never a prefix) and never a Server Action.
-  if (
-    pathname === RESEARCH_MCP_PATH &&
-    !req.headers.has('next-action') &&
-    isResearchApiKeyAuthorization(req.headers.get('authorization'))
-  ) {
-    return NextResponse.next();
+  const { kind } = classify(
+    { method: req.method, pathname: req.nextUrl.pathname, headers: req.headers },
+    callerEnv(),
+  );
+  switch (kind) {
+    case 'public':
+    case 'local':
+    case 'research-key':
+    case 'master-key':
+      return NextResponse.next();
+    case 'unconfigured':
+      return new NextResponse('Login is not configured: set AUTH_GITHUB_ID and AUTH_GITHUB_SECRET.', {
+        status: 503,
+      });
+    case 'needs-session':
+      return withSession(req as never, event as never);
+    default: {
+      // Fail closed: a kind added to the classifier without a mapping here must never fall through to the
+      // framework's default (continue) behaviour.
+      const unmapped: never = kind;
+      void unmapped;
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
   }
-  if (isApiKeyAuthorization(req.headers.get('authorization'))) return NextResponse.next();
-  if (!githubConfigured) {
-    return new NextResponse('Login is not configured: set AUTH_GITHUB_ID and AUTH_GITHUB_SECRET.', {
-      status: 503,
-    });
-  }
-  return withSession(req as never, event as never);
 }
 
 export const config = { matcher: ['/((?!_next/static/|_next/image$|favicon\\.ico$).*)'] };

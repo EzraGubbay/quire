@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 export const RENDER_PATHS = [
   'apps/web/src/lib/slides.ts',
   'apps/web/src/lib/pdf.ts',
+  'apps/web/src/lib/pdf-canvas.ts',
   'apps/web/src/lib/mcp/content.ts',
   'infra/Dockerfile',
   'apps/web/package.json',

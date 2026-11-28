@@ -4,7 +4,7 @@ import { after } from 'next/server';
 import { indexOwner } from '@/lib/ai/index';
 import { createDeckDocument } from '@/lib/documents';
 import { getProjectBySlug, projectBase } from '@/lib/projects';
-import { getSession } from '@/lib/sessions';
+import { attachWarning, getSession } from '@/lib/sessions';
 import { json, readUploadFile } from '@/lib/upload-limits';
 
 export const runtime = 'nodejs';
@@ -35,5 +35,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ slug: string; 
   revalidatePath(`${base}/${tab}`);
   revalidatePath(`${base}/${tab}/${session.id}`);
   revalidatePath(`${base}/documents`);
-  return json({ id: doc.id });
+  const warning = attachWarning(session, file.name);
+  return json(warning ? { id: doc.id, warning } : { id: doc.id });
 }

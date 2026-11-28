@@ -55,6 +55,10 @@ test('move a deck to another lecture from the list', async ({ page }) => {
   await dialog.getByRole('radio', { name: new RegExp(`Lecture ${targetNum}\\b`) }).check();
   await dialog.getByTestId('move-deck-go').click();
 
+  // The dropped sample.pdf is titled "Lecture 1 — sample", so moving it to another lecture warns (and still moves).
+  await expect(dialog.getByTestId('move-deck-warning')).toContainText('looks like Lecture 1');
+  await dialog.getByTestId('move-deck-done').click();
+
   // The deck now lives under the formerly empty lecture.
   await expect(targetRow).toContainText('1 file');
 });

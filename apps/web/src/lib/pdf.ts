@@ -1,4 +1,5 @@
 // Server-side PDF text extraction with pdf.js (legacy build runs in Node without a DOM).
+import { openPdf } from '@/core/pdf/open';
 import { layoutPage, MATH_HEAVY_SCORE, type PdfTextItem } from './pdf-layout';
 
 export interface ExtractedPdf {
@@ -203,7 +204,7 @@ export interface PdfAnalyzer {
  */
 export async function openPdfAnalyzer(data: Uint8Array, minFigureChars = 0): Promise<PdfAnalyzer> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
+  const doc = await openPdf(data);
   return {
     pageCount: doc.numPages,
     async page(pageNo) {
@@ -223,9 +224,8 @@ export async function openPdfAnalyzer(data: Uint8Array, minFigureChars = 0): Pro
 }
 
 export async function extractPdf(data: Uint8Array): Promise<ExtractedPdf> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // pdf.js transfers the buffer to its worker (detaching it), so hand it a copy and keep the caller's bytes intact.
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise;
+  // openPdf hands pdf.js a copy of the bytes, so the caller's buffer stays intact.
+  const doc = await openPdf(data);
   const pages: string[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);

@@ -2,7 +2,7 @@
 // the Moodle section heading it sat under, and the Moodle module type — no LLM. Every result records which
 // signal decided it and a confidence, so Phase 2 can measure deterministic coverage and learn new rules.
 import type { LemidaKind } from '@quire/shared';
-import { parseSessionFilename } from '@/lib/sessions';
+import { sessionFromFileName } from '@/lib/sessions';
 
 export interface ClassifyInput {
   fileName: string;
@@ -95,9 +95,9 @@ export function classifyLemidaFile(input: ClassifyInput): Classification {
   }
 
   const result: Classification = { kind, confidence, rule: rules.join('+') };
-  // Lectures and recitations carry a number and a title; reuse the session-filename parser for both.
+  // Lectures and recitations carry a number and a title; read them with the session file-name parser (v2, legacy fallback).
   if (kind === 'lecture' || kind === 'recitation') {
-    const parsed = parseSessionFilename(fileName);
+    const parsed = sessionFromFileName(fileName);
     if (parsed.number !== undefined) result.number = parsed.number;
     if (parsed.title) result.title = parsed.title;
   } else if (kind === 'exam') {

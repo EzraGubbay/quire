@@ -16,10 +16,14 @@ if (!polyfill) throw new Error('polyfill source not found');
 mkdirSync('public', { recursive: true });
 writeFileSync('public/pdf.worker.min.mjs', `${polyfill}\n${readFileSync(src, 'utf8')}`);
 // Standard fonts (Liberation/Foxit substitutes for non-embedded fonts, incl. Symbol) and CMaps for CID fonts.
-// Without them pdf.js falls back to the browser's default face and shows boxes for missing glyphs.
+// Without them pdf.js falls back to the browser's default face and shows boxes for missing glyphs. The server-side
+// renders and text extraction (core/pdf/open.ts) read these same copies from public/pdfjs.
 const root = path.dirname(require.resolve('pdfjs-dist/package.json'));
 cpSync(path.join(root, 'standard_fonts'), 'public/pdfjs/standard_fonts', { recursive: true });
 cpSync(path.join(root, 'cmaps'), 'public/pdfjs/cmaps', { recursive: true });
+// JPEG 2000 / JBIG2 decoders (and their no-wasm fallbacks) load from wasmUrl; CMYK ICC profiles from iccUrl.
+cpSync(path.join(root, 'wasm'), 'public/pdfjs/wasm', { recursive: true });
+cpSync(path.join(root, 'iccs'), 'public/pdfjs/iccs', { recursive: true });
 // MathJax, self-hosted with its fonts and the ams extension (the bundle looks these up next to itself).
 const mj = path.join(path.dirname(require.resolve('mathjax/package.json')), 'es5');
 mkdirSync('public/mathjax', { recursive: true });
