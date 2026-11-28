@@ -150,6 +150,15 @@ export async function imagesToolResult(
     handled.add(img.pageNo);
     used += img.data.length;
   }
+  if (sent.size > 0) {
+    const sentRanges = formatRanges([...sent]);
+    // First, so the "[More pages…]" line stays last. For clients that drop images (voice): the model still learns
+    // which pages were sent and where their text is.
+    content.unshift({
+      type: 'text',
+      text: `Images of "${doc.title}" page(s) ${sentRanges} follow. If your client shows no images, get_file with pages="${sentRanges}" returns the same pages as text.`,
+    });
+  }
   const lastSent = Math.max(0, ...handled);
   const rest = wanted.filter((n) => n > lastSent && (!pastEnd || imgs.some((i) => i.pageNo === n)));
   if (handled.size === 0) {

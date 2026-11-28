@@ -325,6 +325,7 @@ describe('get_page_images', () => {
     const images = res.content.filter((c) => c.type === 'image');
     expect(images).toHaveLength(2);
     expect(res.content.filter((c) => c.type === 'text').map((c) => c.text)).toEqual([
+      'Images of "Project: Simplified Waze Prototype" page(s) 9-10 follow. If your client shows no images, get_file with pages="9-10" returns the same pages as text.',
       'Page 9 of "Project: Simplified Waze Prototype":',
       'Page 10 of "Project: Simplified Waze Prototype":',
     ]);
