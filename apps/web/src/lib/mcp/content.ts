@@ -287,24 +287,31 @@ export async function loadPageContent(
   }
 }
 
-/** JPEG page images as base64, in page order (cached on disk after the first render). */
+/** JPEG page images as base64, in page order (cached on disk after the first render). A page that rendered blank
+ *  is returned as `{ pageNo, blank: true }` with no image, and is not cached. */
 export async function loadPageImages(
   doc: Document,
   pageNos: number[],
-): Promise<{ pageNo: number; data: string }[]> {
+): Promise<Array<{ pageNo: number; data: string } | { pageNo: number; blank: true }>> {
   // 1024×1568 max, q60, shrunk until ≤ IMAGE_MAX_BYTES (one image always fits the per-call budget). The file
-  // size in the cache name invalidates it when the PDF is replaced; v2 drops images cached before the cap.
+  // size in the cache name invalidates it when the PDF is replaced; v3 drops renders cached before the blank
+  // guard and the bundled-font fix.
+  const blanks: number[] = [];
   const imgs = await renderPages(doc, pageNos, {
-    cacheName: `mcp2-${doc.fileSize ?? 0}`,
+    cacheName: `mcp3-${doc.fileSize ?? 0}`,
     maxWidth: 1024,
     maxHeight: 1568,
     quality: 60,
     maxBytes: IMAGE_MAX_BYTES,
+    onBlank: (n) => blanks.push(n),
   });
-  return Promise.all(
+  const rendered = await Promise.all(
     imgs.map(async (img) => ({
       pageNo: img.pageNo,
       data: (await readStoredFile(img.path)).toString('base64'),
     })),
+  );
+  return [...rendered, ...blanks.map((pageNo) => ({ pageNo, blank: true as const }))].sort(
+    (a, b) => a.pageNo - b.pageNo,
   );
 }
