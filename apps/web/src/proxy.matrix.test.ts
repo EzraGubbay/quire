@@ -79,10 +79,15 @@ function outcome(res: Response): string {
   return `other:${res.status}`;
 }
 
-function run(method: string, path: string, headers: Record<string, string>, session: unknown): string {
+async function run(
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  session: unknown,
+): Promise<string> {
   h.session = session;
   const req = new NextRequest(`http://localhost:3000${path}`, { method, headers });
-  return outcome(proxy(req, {} as never) as Response);
+  return outcome((await proxy(req, {} as never)) as Response);
 }
 
 /** Parse a template-literal table into trimmed cell rows (blank lines dropped). */
@@ -95,27 +100,26 @@ function table(src: string): string[][] {
 }
 const lines = (rows: string[][]) => rows.map((r) => r.join(' | '));
 
-function actualTable(): string[][] {
+async function actualTable(): Promise<string[][]> {
   const out: string[][] = [['row', ...CREDS.map((c) => c.id)]];
   for (const row of ROWS) {
-    out.push([
-      row.label,
-      ...CREDS.map((c) => {
-        const headers: Record<string, string> = { ...(row.headers ?? {}) };
-        if (c.authorization) headers.authorization = c.authorization;
-        if (c.nextAction) Object.assign(headers, NA);
-        return run(row.method, row.path, headers, c.session);
-      }),
-    ]);
+    const cells: string[] = [];
+    for (const c of CREDS) {
+      const headers: Record<string, string> = { ...(row.headers ?? {}) };
+      if (c.authorization) headers.authorization = c.authorization;
+      if (c.nextAction) Object.assign(headers, NA);
+      cells.push(await run(row.method, row.path, headers, c.session));
+    }
+    out.push([row.label, ...cells]);
   }
   return out;
 }
 
-function expectMatrix(expectedSrc: string) {
+async function expectMatrix(expectedSrc: string) {
   const expected = table(expectedSrc);
   expect(expected[0]).toEqual(['row', ...CREDS.map((c) => c.id)]);
   expect(expected.slice(1).map((r) => r[0])).toEqual(ROWS.map((r) => r.label));
-  expect(lines(actualTable())).toEqual(lines(expected));
+  expect(lines(await actualTable())).toEqual(lines(expected));
 }
 
 const GITHUB = `
@@ -194,22 +198,22 @@ afterEach(() => {
 });
 
 describe('proxy decision matrix', () => {
-  it('mode github (login configured)', () => {
-    expectMatrix(GITHUB);
+  it('mode github (login configured)', async () => {
+    await expectMatrix(GITHUB);
   });
 
-  it('mode github, login not configured', () => {
+  it('mode github, login not configured', async () => {
     h.configured = false;
-    expectMatrix(GITHUB_UNCONFIGURED);
+    await expectMatrix(GITHUB_UNCONFIGURED);
   });
 
-  it('mode none', () => {
+  it('mode none', async () => {
     h.mode = 'none';
-    expectMatrix(NONE);
+    await expectMatrix(NONE);
   });
 
-  it('the research key opens only POST /research/mcp (github mode)', () => {
-    const t = actualTable();
+  it('the research key opens only POST /research/mcp (github mode)', async () => {
+    const t = await actualTable();
     const head = t[0] ?? [];
     const col = (id: string) => t.slice(1).map((r) => r[head.indexOf(id)] ?? '');
     const none = col('none');
@@ -220,16 +224,16 @@ describe('proxy decision matrix', () => {
     });
   });
 
-  it('research key combined with a next-action header never passes', () => {
-    const t = actualTable();
+  it('research key combined with a next-action header never passes', async () => {
+    const t = await actualTable();
     const idx = (t[0] ?? []).indexOf('research+na');
     expect(t.slice(1).map((r) => r[idx])).not.toContain('pass');
   });
 
-  it('FINDING F1 (issue #111): a session for a NON-allowed login passes the proxy exactly like the allowed one', () => {
+  it('FINDING F1 (issue #111): a session for a NON-allowed login passes the proxy exactly like the allowed one', async () => {
     // Characterization only. The proxy checks `req.auth?.user`, never isAllowedLogin. Issue #111 will fix
     // this deliberately; at that point the jwt-other column (and this assertion) change intentionally.
-    const t = actualTable();
+    const t = await actualTable();
     const head = t[0] ?? [];
     const ok = head.indexOf('jwt-ok');
     const other = head.indexOf('jwt-other');
@@ -319,7 +323,7 @@ POST /research/mcp research key, QUIRE_RESEARCH_API_KEY unset | 401
 `;
 
 describe('proxy edge scenarios (github mode)', () => {
-  it('matches the edge table', () => {
+  it('matches the edge table', async () => {
     const saved = { ...process.env };
     const actual: string[][] = [['scenario', 'outcome']];
     try {
@@ -328,7 +332,7 @@ describe('proxy edge scenarios (github mode)', () => {
           if (v === undefined) delete process.env[k];
           else process.env[k] = v;
         }
-        actual.push([e.label, run(e.method, e.path, e.headers ?? {}, e.session ?? null)]);
+        actual.push([e.label, await run(e.method, e.path, e.headers ?? {}, e.session ?? null)]);
         process.env.QUIRE_API_KEY = saved.QUIRE_API_KEY;
         process.env.QUIRE_RESEARCH_API_KEY = saved.QUIRE_RESEARCH_API_KEY;
       }
