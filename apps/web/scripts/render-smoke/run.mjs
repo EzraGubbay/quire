@@ -272,6 +272,13 @@ const envChecks = [];
 if (inImage) {
   for (const [dir, ok] of Object.entries(env.publicPdfjsAssets))
     envChecks.push({ ok, label: `public/pdfjs/${dir} present`, error: `public/pdfjs/${dir} missing` });
+  // The root canvas link must point at the copy the app resolves (see the runtime stage in infra/Dockerfile).
+  const wanted = `@napi-rs+canvas@${env.appCanvas.version}/`;
+  envChecks.push({
+    ok: Boolean(env.appCanvas.version) && String(env.rootCanvasSymlink).includes(wanted),
+    label: `root @napi-rs/canvas link points at ${wanted.slice(0, -1)} (${env.rootCanvasSymlink})`,
+    error: `root @napi-rs/canvas link is ${env.rootCanvasSymlink}, not the app's copy ${wanted.slice(0, -1)}`,
+  });
 }
 
 const cell = (r) => (r ? `${r.status}${r.ratio !== undefined ? ` ${r.ratio.toFixed(3)}` : ''}` : '-');
