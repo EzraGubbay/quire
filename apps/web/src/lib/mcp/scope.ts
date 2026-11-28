@@ -1,8 +1,9 @@
 // A "scope" says which side of Quire an MCP server serves: courses (/mcp) or research projects (/research/mcp).
-// Kind isolation lives here, in one place: resolveProjectIn returns a project only when its kind matches the
-// scope, so the other side's slugs answer exactly like a missing slug. Shared MCP internals take a scope as a
+// Kind isolation lives in core/projects/resolve.ts; resolveProjectIn binds it to a scope, so the other side's
+// slugs answer exactly like a missing slug. Shared MCP internals take a scope as a
 // trailing, defaulted parameter (default COURSE_SCOPE), which keeps the course server byte-identical.
 import type { ProjectKind } from '@quire/shared';
+import { type ProjectLookup, resolveProject } from '@/core/projects/resolve';
 import type { Project } from '@/db/schema';
 import { getProjectById, getProjectBySlug } from '@/lib/projects';
 
@@ -49,10 +50,13 @@ export const RESEARCH_SCOPE: McpScope = {
 
 export const scopeOf = (kind: ProjectKind): McpScope => (kind === 'research' ? RESEARCH_SCOPE : COURSE_SCOPE);
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lazy wrappers, so module-level test doubles of @/lib/projects are read at call time.
+const projectLookup: ProjectLookup = {
+  byId: (id) => getProjectById(id),
+  bySlug: (slug) => getProjectBySlug(slug),
+};
 
-/** The only project resolver MCP code may use: slug or UUID, and the project's kind must match the scope. */
+/** The only project resolver MCP code may use: binds core's resolveProject to the scope's kind. */
 export async function resolveProjectIn(scope: McpScope, ref: string): Promise<Project | undefined> {
-  const project = UUID_RE.test(ref) ? await getProjectById(ref) : await getProjectBySlug(ref);
-  return project?.kind === scope.kind ? project : undefined;
+  return resolveProject(projectLookup, scope.kind, ref);
 }

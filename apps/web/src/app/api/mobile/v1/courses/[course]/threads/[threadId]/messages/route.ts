@@ -3,10 +3,10 @@ import { aiConfigured } from '@/lib/ai/provider';
 import { getThread, listMessages } from '@/lib/chat';
 import { NDJSON_HEADERS } from '@/lib/chat-stream';
 import { startChatTurn } from '@/lib/chat-turn';
+import { resolveCourse } from '@/lib/mcp/courses';
 import { mobileStreamShape, toMessage } from '@/lib/mobile/chat';
 import { requireDevice } from '@/lib/mobile/device-auth';
 import { fail, ok } from '@/lib/mobile/respond';
-import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,7 @@ const bodySchema = z.union([
 
 async function lookup(ctx: Ctx) {
   const { course, threadId } = await ctx.params;
-  const project = await getProjectBySlug(course);
+  const project = await resolveCourse(course);
   if (project?.kind !== 'course') return { response: fail('not_found', 'Course not found') };
   const thread = await getThread(project.id, threadId);
   if (!thread) return { response: fail('not_found', 'Thread not found') };
