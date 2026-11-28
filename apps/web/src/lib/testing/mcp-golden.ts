@@ -128,7 +128,8 @@ export function goldenResult(
   const content = (res.content ?? []).map((raw) => {
     const it = raw as Record<string, unknown> & { type: string };
     if (it.type === 'text') return textItem(String(it.text), ctx);
-    if (it.type === 'image') return imageItem(it as { mimeType?: string; data: string }, imageMaxBytes);
+    if (it.type === 'image')
+      return imageItem(it as unknown as { mimeType?: string; data: string }, imageMaxBytes);
     if (it.type === 'resource') {
       return { type: 'resource', resource: resourceBody(it.resource as Record<string, unknown>, ctx) };
     }
