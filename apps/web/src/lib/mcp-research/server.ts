@@ -3,7 +3,7 @@
 // unless MCP_RESEARCH_WRITE_ENABLED=false. Nothing edits or deletes.
 import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { MAX_IMAGES_PER_CALL } from '@/lib/mcp/content';
+import { MAX_IMAGES_PER_CALL, TEXT_BUDGET } from '@/lib/mcp/content';
 import type { FileFormat } from '@/lib/mcp/courses';
 import { RESEARCH_SCOPE } from '@/lib/mcp/scope';
 import {
@@ -145,8 +145,10 @@ export function registerQuireResearchMcp(server: McpServer): void {
 
   server.tool(
     'get_file',
-    'Read a research document. By default returns its text page by page ("--- Page N ---" markers, ~30k ' +
-      'characters per call; pass `pages` to continue) and flags pages that are mostly figures, contain ' +
+    // Same constant buildTextResult enforces (MCP_TEXT_BUDGET_CHARS), so the claim cannot drift.
+    'Read a research document. By default returns its text page by page ("--- Page N ---" markers, up to ' +
+      `${TEXT_BUDGET.toLocaleString('en-US')} characters of page text per call; pass \`pages\` to continue) ` +
+      'and flags pages that are mostly figures, contain ' +
       'embedded images or are heavy on formulas. Use get_page_images to see figures, tables, formulas or ' +
       'scans. format="pdf"/"original" returns the raw file as an embedded binary resource, which only Claude ' +
       'Code can open; use it only when the user needs the file itself.',

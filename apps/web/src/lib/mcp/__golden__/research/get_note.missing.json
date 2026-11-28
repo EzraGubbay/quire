@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_note",
+    "arguments": {
+      "project": "<slug:research>",
+      "noteId": "<id:missing>"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "No note \"<id:missing>\" in project \"<slug:research>\""
+      }
+    ]
+  }
+}

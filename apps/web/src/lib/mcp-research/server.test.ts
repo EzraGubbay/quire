@@ -14,7 +14,7 @@ vi.mock('@/lib/ai/index', () => ({}));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/mcp/upload-store', () => ({}));
 vi.mock('@/lib/mcp/courses', () => ({}));
-vi.mock('@/lib/mcp/content', () => ({ MAX_IMAGES_PER_CALL: 4 }));
+vi.mock('@/lib/mcp/content', () => ({ MAX_IMAGES_PER_CALL: 4, TEXT_BUDGET: 20_000 }));
 vi.mock('@/lib/mcp/tool-results', () => ({}));
 vi.mock('@/lib/mcp/drive/tools', () => ({ registerDriveTools: vi.fn() }));
 

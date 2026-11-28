@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "project": "<slug:research>",
+      "fileId": "<id:paper>",
+      "pages": "1"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "# A Synthetic Paper",
+          "Course: Golden Research <run> · 4 pages · showing page 1",
+          "",
+          "--- Page 1 ---",
+          "תרגיל 2 – רדוקציות ו־NP-שלמות",
+          "מועד ההגשה: יום רביעי, 25.11.2026, עד השעה 23:59.",
+          "תהי T = t_1 ··· t_n מילה באורך סופי כלשהו",
+          "תחת ההנחה כי P ≠ NP, האם הבעיה קשה?",
+          "ב. צביעת גרף (Graph Coloring)",
+          "נסמן ב־Len(T) את אורך המילה T.",
+          "LEN = {T ∈ Σ^∗}.",
+          ""
+        ]
+      }
+    ]
+  }
+}

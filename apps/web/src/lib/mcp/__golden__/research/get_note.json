@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_note",
+    "arguments": {
+      "project": "<slug:research>",
+      "noteId": "<id:note>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "# Reading log",
+          "",
+          "# log",
+          "",
+          "synthetic"
+        ]
+      }
+    ]
+  }
+}
