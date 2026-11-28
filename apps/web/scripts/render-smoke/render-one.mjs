@@ -1,5 +1,5 @@
 // Child process of the render smoke: renders page 1 of one synthetic PDF with one variant, the way
-// apps/web/src/lib/slides.ts does (the `prod` variant mirrors it exactly), and prints one `RESULT {json}` line.
+// apps/web/src/lib/slides.ts does (the `prod` variant mirrors lib/slides.ts + core/pdf/open.ts + lib/pdf-canvas.ts), and prints one `RESULT {json}` line.
 // Each render runs in its own process so a native abort in @napi-rs/canvas shows up as a crash, not a dead harness.
 // Usage: node render-one.mjs --app-root <dir> --manifest <manifest.json> --case <id> --variant <name> --out <dir>
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -31,9 +31,10 @@ for (const level of ['log', 'warn', 'error']) {
 }
 const emit = (obj) => process.stdout.write(`RESULT ${JSON.stringify({ ...obj, logs })}\n`);
 
-const oneCanvas = variant.startsWith('one-canvas');
-const withAssets = variant.includes('assets');
-const noSystemFonts = variant.endsWith('-nosys');
+const prod = variant === 'prod';
+const oneCanvas = prod || variant.startsWith('one-canvas');
+const withAssets = prod || variant.includes('assets');
+const noSystemFonts = prod || variant.endsWith('-nosys');
 
 async function main() {
   const manifest = JSON.parse(readFileSync(args.manifest, 'utf8'));
@@ -67,12 +68,14 @@ async function main() {
     const fonts = dirOf('standard_fonts');
     const cmaps = dirOf('cmaps');
     const wasm = dirOf('wasm');
+    const iccs = dirOf('iccs');
     if (fonts) options.standardFontDataUrl = `${fonts}/`;
     if (cmaps) {
       options.cMapUrl = `${cmaps}/`;
       options.cMapPacked = true;
     }
     if (wasm) options.wasmUrl = `${wasm}/`;
+    if (iccs) options.iccUrl = `${iccs}/`;
   }
   if (noSystemFonts) options.useSystemFonts = false;
   if (oneCanvas) {

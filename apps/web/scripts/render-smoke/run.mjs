@@ -4,8 +4,8 @@
 // Usage: node run.mjs --app-root <dir> --out <dir> [--variants a,b] [--cases a,b] [--timeout-ms 60000]
 //
 // Variants (only `prod` counts for the exit code):
-//   prod               mirrors lib/slides.ts exactly
-//   assets             prod + standardFontDataUrl / cMapUrl / wasmUrl from the first existing directory
+//   prod               what lib/slides.ts does: one canvas, bundled assets (incl. iccs), useSystemFonts: false
+//   assets             system fonts on, plus standardFontDataUrl / cMapUrl / wasmUrl / iccUrl from the first existing directory
 //   assets-nosys       assets with useSystemFonts: false (pdf.js skips its standard font data when it is true)
 //   one-canvas         app canvas for Path2D/DOMMatrix/ImageData and for pdfjs's CanvasFactory
 //   one-canvas+assets  both of the above
@@ -151,13 +151,16 @@ function describeEnv() {
     ),
     workerNextToPdf: Boolean(pdfPath && exists(path.join(path.dirname(pdfPath), 'pdf.worker.mjs'))),
     pdfjsAssets: Object.fromEntries(
-      ['standard_fonts', 'cmaps', 'wasm'].map((d) => [
+      ['standard_fonts', 'cmaps', 'wasm', 'iccs'].map((d) => [
         d,
         Boolean(pdfPath && exists(path.join(path.dirname(pdfPath), '..', '..', d))),
       ]),
     ),
     publicPdfjsAssets: Object.fromEntries(
-      ['standard_fonts', 'cmaps', 'wasm'].map((d) => [d, exists(path.join(appRoot, 'public', 'pdfjs', d))]),
+      ['standard_fonts', 'cmaps', 'wasm', 'iccs'].map((d) => [
+        d,
+        exists(path.join(appRoot, 'public', 'pdfjs', d)),
+      ]),
     ),
     systemFontFiles: countFiles('/usr/share/fonts'),
     _pdfPath: pdfPath,
@@ -263,6 +266,21 @@ for (const spec of manifest.cases) {
 }
 writeFileSync(path.join(out, 'results.json'), `${JSON.stringify({ env, skipped, results }, null, 2)}\n`);
 
+// Checks that only make sense in the runtime image, where the app is the Next standalone output.
+const inImage = Boolean(env.resolution.startsWith('next externals'));
+const envChecks = [];
+if (inImage) {
+  for (const [dir, ok] of Object.entries(env.publicPdfjsAssets))
+    envChecks.push({ ok, label: `public/pdfjs/${dir} present`, error: `public/pdfjs/${dir} missing` });
+  // The root canvas link must point at the copy the app resolves (see the runtime stage in infra/Dockerfile).
+  const wanted = `@napi-rs+canvas@${env.appCanvas.version}/`;
+  envChecks.push({
+    ok: Boolean(env.appCanvas.version) && String(env.rootCanvasSymlink).includes(wanted),
+    label: `root @napi-rs/canvas link points at ${wanted.slice(0, -1)} (${env.rootCanvasSymlink})`,
+    error: `root @napi-rs/canvas link is ${env.rootCanvasSymlink}, not the app's copy ${wanted.slice(0, -1)}`,
+  });
+}
+
 const cell = (r) => (r ? `${r.status}${r.ratio !== undefined ? ` ${r.ratio.toFixed(3)}` : ''}` : '-');
 const lines = [
   '## Render smoke',
@@ -278,15 +296,18 @@ const lines = [
   `- root node_modules/@napi-rs/canvas -> \`${env.rootCanvasSymlink}\`; app node_modules/@napi-rs/canvas -> \`${env.appCanvasSymlink}\``,
   `- canvas pnpm dirs: ${env.canvasPnpmDirs.map((d) => `\`${d}\``).join(', ') || 'none'}`,
   `- pdf.worker.mjs next to pdf.mjs: ${env.workerNextToPdf ? 'yes' : 'no'}`,
-  `- pdfjs-dist asset dirs (standard_fonts/cmaps/wasm): ${Object.values(env.pdfjsAssets)
+  `- pdfjs-dist asset dirs (standard_fonts/cmaps/wasm/iccs): ${Object.values(env.pdfjsAssets)
     .map((v) => (v ? 'yes' : 'no'))
     .join('/')}`,
-  `- public/pdfjs asset dirs (standard_fonts/cmaps/wasm): ${Object.values(env.publicPdfjsAssets)
+  `- public/pdfjs asset dirs (standard_fonts/cmaps/wasm/iccs): ${Object.values(env.publicPdfjsAssets)
     .map((v) => (v ? 'yes' : 'no'))
     .join('/')}`,
   `- files under /usr/share/fonts: ${env.systemFontFiles}`,
   skipped.length ? `- skipped cases: ${skipped.map((s) => `${s.id} (${s.reason})`).join('; ')}` : '',
   '',
+  ...(envChecks.length
+    ? ['### Env checks', '', ...envChecks.map((c) => `- ${c.ok ? 'OK' : 'FAIL'}: ${c.label}`), '']
+    : []),
   '### Cases x variants (`STATUS non-white-ratio`)',
   '',
   `| case | ${variants.join(' | ')} |`,
@@ -321,6 +342,10 @@ writeFileSync(path.join(out, 'summary.md'), summary);
 process.stdout.write(`${summary}\n`);
 
 let failed = false;
+for (const c of envChecks.filter((x) => !x.ok)) {
+  failed = true;
+  if (process.env.GITHUB_ACTIONS) process.stdout.write(`::error title=render-smoke::${c.error}\n`);
+}
 for (const r of results.filter((x) => x.variant === 'prod' && x.status !== 'OK')) {
   failed = true;
   if (process.env.GITHUB_ACTIONS)

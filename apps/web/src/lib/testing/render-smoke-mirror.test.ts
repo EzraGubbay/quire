@@ -2,14 +2,17 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// The render smoke's `prod` variant (scripts/render-smoke/render-one.mjs) re-implements how lib/slides.ts renders a
-// page. This tripwire pins every part of slides.ts the smoke mirrors, so the two get updated together. It compares
+// The render smoke's `prod` variant (scripts/render-smoke/render-one.mjs) re-implements how lib/slides.ts,
+// core/pdf/open.ts and lib/pdf-canvas.ts render a page. This tripwire pins every part of them the smoke mirrors, so the two get updated together. It compares
 // whitespace-collapsed text, so formatting changes pass but any change to the mirrored logic fails.
-const slides = readFileSync(path.join(process.cwd(), 'src/lib/slides.ts'), 'utf8');
+const read = (rel: string) => readFileSync(path.join(process.cwd(), rel), 'utf8');
+const slides = read('src/lib/slides.ts');
+const open = read('src/core/pdf/open.ts');
+const canvasSrc = read('src/lib/pdf-canvas.ts');
 const collapse = (s: string) => s.replace(/\s+/g, ' ').trim();
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 const HINT =
-  'lib/slides.ts changed how it renders: update the prod variant in scripts/render-smoke/render-one.mjs';
+  'lib/slides.ts, core/pdf/open.ts or lib/pdf-canvas.ts changed how a page renders: update the prod variant in scripts/render-smoke/render-one.mjs';
 
 /** The body of renderPageTo, from its signature to page.cleanup(). */
 function renderPageToBody(): string {
@@ -28,22 +31,48 @@ const RENDER_PAGE_TO =
   '{process.pid}.$' +
   '{randomUUID()}.tmp`; try { await writeFile(tmp, jpeg); await rename(tmp, target); } catch (err) { await rm(tmp, { force: true }); throw err; } page.cleanup(); }';
 
-describe('render smoke mirrors lib/slides.ts', () => {
-  it('has exactly two getDocument calls, both with the mirrored options (renderPageImages and renderPages)', () => {
-    expect(count(slides, '.getDocument('), HINT).toBe(2);
-    expect(
-      count(
-        collapse(slides),
-        'pdfjs.getDocument({ data: new Uint8Array(data), useSystemFonts: true }).promise',
-      ),
-      HINT,
-    ).toBe(2);
+const OPTIONS_BODY =
+  'return { // pdf.js transfers the buffer to its worker (detaching it): always hand it a copy. data: new Uint8Array(data), // Off: with it on, pdf.js skips standardFontDataUrl and asks for system fonts, which the image has none of. useSystemFonts: false, cMapPacked: true, ...assets, ...(canvasFactory ? { CanvasFactory: canvasFactory } : {}), };';
+
+const ROOTS =
+  "const roots = [ path.join(cwd, 'public', 'pdfjs'), path.join(cwd, 'apps', 'web', 'public', 'pdfjs'), path.join(cwd, 'node_modules', 'pdfjs-dist'), path.join(cwd, 'apps', 'web', 'node_modules', 'pdfjs-dist'), ];";
+
+const ASSETS_MAP =
+  "const ASSETS = { standardFontDataUrl: 'standard_fonts', cMapUrl: 'cmaps', wasmUrl: 'wasm', iccUrl: 'iccs', } as const;";
+
+const GLOBALS =
+  'Object.assign(globalThis, { Path2D: canvas.Path2D, DOMMatrix: canvas.DOMMatrix, ImageData: canvas.ImageData, });';
+
+const CANVAS_FACTORY =
+  "class CanvasFactory { create(width: number, height: number) { const c = canvas.createCanvas(width, height); return { canvas: c, context: c.getContext('2d') }; } reset(entry: { canvas: { width: number; height: number } }, width: number, height: number) { entry.canvas.width = width; entry.canvas.height = height; } destroy(entry: { canvas: { width: number; height: number } }) { entry.canvas.width = 0; entry.canvas.height = 0; } }";
+
+describe('render smoke mirrors the server render path', () => {
+  it('slides.ts opens every PDF through openPdf and the shared canvas loader', () => {
+    const collapsed = collapse(slides);
+    expect(count(slides, '.getDocument('), HINT).toBe(0);
+    expect(count(collapsed, 'openPdf(data, { canvasFactory: canvas.CanvasFactory })'), HINT).toBe(2);
+    expect(count(collapsed, 'await loadPdfCanvas()'), HINT).toBe(2);
+    expect(slides, HINT).not.toContain("await import('@napi-rs/canvas')");
+    expect(slides, HINT).not.toContain("await import('pdfjs-dist");
   });
 
-  it('imports canvas and pdf.js dynamically in both render paths', () => {
-    const collapsed = collapse(slides);
-    expect(count(collapsed, "import('@napi-rs/canvas'),"), HINT).toBe(2);
-    expect(count(collapsed, "import('pdfjs-dist/legacy/build/pdf.mjs'),"), HINT).toBe(2);
+  it('openPdf options (system fonts off, packed CMaps, assets, canvas factory) are unchanged', () => {
+    const start = open.indexOf('export function pdfjsOptions(');
+    expect(start, HINT).toBeGreaterThan(-1);
+    const bodyStart = open.indexOf('return {', start);
+    const bodyEnd = open.indexOf('\n  };\n', bodyStart);
+    expect(collapse(open.slice(bodyStart, bodyEnd + 5)), HINT).toBe(OPTIONS_BODY);
+    expect(collapse(open), HINT).toContain(ASSETS_MAP);
+  });
+
+  it('asset roots keep public/pdfjs before the package copy', () => {
+    expect(collapse(open), HINT).toContain(ROOTS);
+  });
+
+  it('the canvas loader installs the app canvas globals and the mirrored CanvasFactory', () => {
+    const collapsed = collapse(canvasSrc);
+    expect(collapsed, HINT).toContain(GLOBALS);
+    expect(collapsed, HINT).toContain(CANVAS_FACTORY);
   });
 
   it('renderPageTo (scale, white fill, page.render, quality and scale loop, encode) is unchanged', () => {

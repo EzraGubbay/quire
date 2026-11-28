@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_page_images",
+    "arguments": {
+      "course": "<slug:course>",
+      "fileId": "<id:lecture-deck>",
+      "pages": "4"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Page 4 of \"Lecture 1 slides\":"
+      },
+      {
+        "type": "image",
+        "mimeType": "image/jpeg",
+        "jpeg": true,
+        "nonEmpty": true,
+        "withinCap": true
+      }
+    ]
+  }
+}
