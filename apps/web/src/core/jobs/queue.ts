@@ -54,30 +54,37 @@ export function jobQueue(db: JobsExecutor) {
       type,
       payload,
       dedupeKey: opts.dedupeKey,
-      ...(opts.runAfter ? { runAfter: opts.runAfter } : {}),
-      ...(opts.maxAttempts ? { maxAttempts: opts.maxAttempts } : {}),
+      ...(opts.runAfter !== undefined ? { runAfter: opts.runAfter } : {}),
+      ...(opts.maxAttempts !== undefined ? { maxAttempts: opts.maxAttempts } : {}),
     };
     const q = db.insert(jobs).values(values);
-    const rows = opts.dedupeKey
-      ? await q.onConflictDoNothing({ target: jobs.dedupeKey, where: live }).returning({ id: jobs.id })
-      : await q.returning({ id: jobs.id });
+    const rows =
+      opts.dedupeKey !== undefined
+        ? await q
+            .onConflictDoNothing({ target: [jobs.type, jobs.dedupeKey], where: live })
+            .returning({ id: jobs.id })
+        : await q.returning({ id: jobs.id });
     return rows[0]?.id;
   }
 
   return {
-    /** Insert; with a dedupeKey that a live job holds, a no-op returning that job's id (`created: false`). */
+    /** Insert; with a dedupeKey that a live job of the same type holds, a no-op returning that job's id (`created: false`). */
     async enqueue(
       type: string,
       payload: unknown,
       opts: EnqueueOptions = {},
     ): Promise<{ id: string; created: boolean }> {
+      if (opts.dedupeKey === '')
+        throw new Error('enqueue: dedupeKey must not be empty (omit it for no dedupe)');
+      if (opts.maxAttempts !== undefined && !(Number.isInteger(opts.maxAttempts) && opts.maxAttempts >= 1))
+        throw new Error('enqueue: maxAttempts must be an integer >= 1');
       for (let attempt = 0; attempt < 2; attempt++) {
         const id = await insert(type, payload, opts);
         if (id) return { id, created: true };
         const [held] = await db
           .select({ id: jobs.id })
           .from(jobs)
-          .where(and(eq(jobs.dedupeKey, opts.dedupeKey as string), live))
+          .where(and(eq(jobs.type, type), eq(jobs.dedupeKey, opts.dedupeKey as string), live))
           .limit(1);
         if (held) return { id: held.id, created: false };
         // The live holder finished between the insert and the lookup: try the insert once more.

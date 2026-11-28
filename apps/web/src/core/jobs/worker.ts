@@ -1,7 +1,9 @@
 // In-process worker for the durable jobs queue (queue.ts). Concurrency 1: one job at a time, claimed with a
 // lease that a heartbeat keeps extending while the handler runs.
 //
-// Handler contract: be idempotent and checkpoint, because a job can run more than once. Next exits on SIGTERM
+// Handler contract: honour `ctx.signal` (checkpoint and throw when it aborts). There is no per-job timeout yet,
+// so a handler that never settles stalls the queue: concurrency is 1, and the worker only moves on once the
+// handler returns or throws. Also be idempotent and checkpoint, because a job can run more than once. Next exits on SIGTERM
 // without waiting for this worker, so a job cut off by a deploy stays `running` until its lease expires
 // (at most LEASE_MS) and is then claimed again, which costs one attempt. On a clean stop the worker aborts
 // `ctx.signal` and returns the job to the queue; handlers should checkpoint and throw when it fires.

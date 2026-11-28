@@ -15,5 +15,5 @@ CREATE TABLE "jobs" (
 	"finished_at" timestamp with time zone
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX "jobs_dedupe_live_uq" ON "jobs" USING btree ("dedupe_key") WHERE "jobs"."status" in ('queued', 'running', 'failed');--> statement-breakpoint
+CREATE UNIQUE INDEX "jobs_dedupe_live_uq" ON "jobs" USING btree ("type","dedupe_key") WHERE "jobs"."status" in ('queued', 'running', 'failed');--> statement-breakpoint
 CREATE INDEX "jobs_claim_idx" ON "jobs" USING btree ("status","run_after");

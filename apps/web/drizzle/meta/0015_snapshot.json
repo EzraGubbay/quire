@@ -1,5 +1,5 @@
 {
-  "id": "f5de6e83-1965-48df-9b0d-8c65dc54c4d1",
+  "id": "610144be-5d84-458b-a093-1981568c9e8a",
   "prevId": "ccd1df4c-c068-4f0e-bbd5-65e4ab457f27",
   "version": "7",
   "dialect": "postgresql",
@@ -1770,6 +1770,12 @@
         "jobs_dedupe_live_uq": {
           "name": "jobs_dedupe_live_uq",
           "columns": [
+            {
+              "expression": "type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "dedupe_key",
               "isExpression": false,

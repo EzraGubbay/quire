@@ -105,6 +105,17 @@ describe.skipIf(!run)('jobs queue (real Postgres)', () => {
     expect(n1.id).not.toBe(n2.id);
   });
 
+  it('dedupe is per type, and bad dedupe/attempt options are rejected', async () => {
+    const [a, b] = [type('dt-a'), type('dt-b')];
+    const x = await q.enqueue(a, {}, { dedupeKey: key('same') });
+    const y = await q.enqueue(b, {}, { dedupeKey: key('same') });
+    expect(y.created).toBe(true);
+    expect(y.id).not.toBe(x.id);
+    await expect(q.enqueue(a, {}, { dedupeKey: '' })).rejects.toThrow(/dedupeKey/);
+    await expect(q.enqueue(a, {}, { maxAttempts: 0 })).rejects.toThrow(/maxAttempts/);
+    expect((await q.enqueue(a, {}, { maxAttempts: 1 })).created).toBe(true);
+  });
+
   it('a future run_after is not claimable', async () => {
     const t = type('future');
     await q.enqueue(t, {}, { runAfter: new Date(Date.now() + 3_600_000) });
