@@ -47,6 +47,13 @@ export function proxy(req: NextRequest, event: NextFetchEvent) {
       });
     case 'needs-session':
       return withSession(req as never, event as never);
+    default: {
+      // Fail closed: a kind added to the classifier without a mapping here must never fall through to the
+      // framework's default (continue) behaviour.
+      const unmapped: never = kind;
+      void unmapped;
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
   }
 }
 
