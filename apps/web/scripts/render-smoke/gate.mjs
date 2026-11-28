@@ -33,6 +33,7 @@ export const RENDER_PATHS = [
 const SHA = /^[0-9a-f]{40}$/;
 const oddPath = (p) => Array.from(p).some((ch) => ch.charCodeAt(0) <= 0x20 || ch.charCodeAt(0) === 0x7f);
 
+/** @param {{ event?: string, base?: string, head?: string, changed?: string[], error?: unknown }} input */
 export function decide({ event, base, head, changed, error }) {
   if (event !== 'pull_request') return { run: true, reason: 'not a pull_request event' };
   for (const sha of [base, head]) {
