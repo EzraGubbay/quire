@@ -1,8 +1,12 @@
 name: CI
 on:
   pull_request:
+  # Post-merge runs only when the lockfile changes: they write the main-scoped pnpm cache that PR runs restore from
+  # (setup-node has no restore-keys), and give dependency bumps a post-merge signal. Other merges are covered by the
+  # PR run: main is up-to-date-strict and the deploy builds the same tree.
   push:
     branches: [main]
+    paths: ['pnpm-lock.yaml']
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
