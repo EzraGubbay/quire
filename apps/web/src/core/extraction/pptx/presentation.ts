@@ -43,28 +43,67 @@ export interface PptxPackage {
 
 const DEFAULT_SLIDE_SIZE: SlideSize = { cx: 9144000, cy: 6858000 };
 const WANTED = /^ppt\/.+\.(xml|rels)$/;
-const isTrue = (v: string | undefined): boolean => v === '1' || v === 'true';
+/** More slides than any real deck; checked before any per-slide work. */
+const MAX_SLIDES = 2000;
+/** Enough for a prolog and the root start tag of any real slide; longer prologs fall back to the whole part. */
+const PREFIX_BYTES = 8192;
 
-const ROOT_TAG = /^[\s\S]*?<p:sld(?=[\s/>])((?:"[^"]*"|'[^']*'|[^>"'])*)>/;
-const SHOW_ATTR = /\sshow\s*=\s*(?:"([^"]*)"|'([^']*)')/;
+type RootScan = { attrs: string } | 'other' | 'incomplete';
+
+/**
+ * Finds the root start tag of an XML text, skipping a BOM, whitespace, the declaration and comments. Returns
+ * its attribute text for a p:sld root, 'other' for anything else, and 'incomplete' when the text ends first.
+ */
+function scanRoot(text: string): RootScan {
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  for (;;) {
+    while (i < text.length && /\s/.test(text.charAt(i))) i++;
+    const skip = text.startsWith('<?', i) ? ['?>', 2] : text.startsWith('<!--', i) ? ['-->', 4] : undefined;
+    if (!skip) break;
+    const end = text.indexOf(skip[0] as string, i + (skip[1] as number));
+    if (end < 0) return 'incomplete';
+    i = end + (skip[0] as string).length;
+  }
+  if (i >= text.length) return 'incomplete';
+  if (text.charAt(i) !== '<' || text.startsWith('<!', i)) return 'other';
+  const name = /^<([^\s/>]+)/.exec(text.slice(i, i + 256))?.[1];
+  if (name !== 'p:sld') return 'other';
+  let j = i + 1 + name.length;
+  const attrsFrom = j;
+  while (j < text.length) {
+    const c = text.charAt(j);
+    if (c === '>') return { attrs: text.slice(attrsFrom, j) };
+    if (c === '"' || c === "'") {
+      const close = text.indexOf(c, j + 1);
+      if (close < 0) return 'incomplete';
+      j = close;
+    }
+    j++;
+  }
+  return 'incomplete';
+}
 
 /**
  * Whether a slide is hidden, from its root start tag alone. Slides are not parsed here: parsed XML costs about
- * 70x its size in heap, so a deck's slides are parsed one at a time, on demand, through `part`. Anything that
- * does not look like a plain p:sld root is parsed in full so it fails with the right typed error.
+ * 70x its size in heap, so a deck's slides are parsed one at a time, on demand, through `part`. Only a bounded
+ * prefix is decoded unless the prolog is longer than that; a root that is not p:sld is a typed error.
  */
 function slideIsHidden(zip: Map<string, Uint8Array>, name: string): boolean {
   const data = zip.get(name);
   if (!data) throw new PptxError('missing_part', `part ${name} is not in the package`, name);
-  const text = decodePart(data, name);
-  const tag = ROOT_TAG.exec(text.slice(0, 4096));
-  if (!tag) {
-    const root = parseXml(text, name);
+  const utf16 = (data[0] === 0xff && data[1] === 0xfe) || (data[0] === 0xfe && data[1] === 0xff);
+  const label = data[0] === 0xff ? 'utf-16le' : data[0] === 0xfe ? 'utf-16be' : 'utf-8';
+  let scan = scanRoot(new TextDecoder(utf16 ? label : 'utf-8').decode(data.subarray(0, PREFIX_BYTES)));
+  if (scan === 'incomplete' && data.length > PREFIX_BYTES) scan = scanRoot(decodePart(data, name));
+  if (scan === 'other' || scan === 'incomplete') {
+    // Surface malformed XML (or a DTD) with its own error; otherwise this is a well-formed non-slide root.
+    const root = parseXml(decodePart(data, name), name);
     throw new PptxError('unsupported', `unexpected root element ${root.name} in ${name}`, name);
   }
-  const show = SHOW_ATTR.exec(tag[1] ?? '');
-  const value = show?.[1] ?? show?.[2];
-  return value === '0' || value === 'false';
+  for (const m of scan.attrs.matchAll(/\s([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    if (m[1] === 'show') return (m[2] ?? m[3]) === '0' || (m[2] ?? m[3]) === 'false';
+  }
+  return false;
 }
 
 /** Resolves a relationship target to an absolute part name; escaping the package root is missing_part. */
@@ -151,10 +190,16 @@ export function openPptx(bytes: Uint8Array, limits: ZipLimits = DEFAULT_ZIP_LIMI
   const presentationRels = rels('ppt/presentation.xml');
   const slides: SlideRef[] = [];
   let page = 0;
-  for (const id of children(
-    child(presentation, 'p:sldIdLst') ?? { name: '', attrs: {}, children: [] },
-    'p:sldId',
-  )) {
+  const ids = children(child(presentation, 'p:sldIdLst') ?? { name: '', attrs: {}, children: [] }, 'p:sldId');
+  if (ids.length > MAX_SLIDES) {
+    throw new PptxError(
+      'unsupported',
+      `${ids.length} slides, more than ${MAX_SLIDES}`,
+      'ppt/presentation.xml',
+    );
+  }
+  const listed = new Set<string>();
+  for (const id of ids) {
     const rel = presentationRels.get(id.attrs['r:id'] ?? '');
     if (!rel)
       throw new PptxError(
@@ -169,6 +214,14 @@ export function openPptx(bytes: Uint8Array, limits: ZipLimits = DEFAULT_ZIP_LIMI
         'ppt/presentation.xml',
       );
     }
+    if (listed.has(rel.target)) {
+      throw new PptxError(
+        'unsupported',
+        `slide ${rel.target} is listed more than once`,
+        'ppt/presentation.xml',
+      );
+    }
+    listed.add(rel.target);
     const hidden = slideIsHidden(zip, rel.target);
     slides.push({ index: slides.length + 1, page: hidden ? null : ++page, part: rel.target, hidden });
   }

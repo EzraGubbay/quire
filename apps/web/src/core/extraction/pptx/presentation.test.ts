@@ -137,4 +137,39 @@ describe('openPptx', () => {
     expect(pkg.slides).toHaveLength(1);
     expect(pkg.rels('ppt/presentation.xml').has('rIdBad')).toBe(false);
   });
+
+  it('N1 rejects one slide listed many times, fast', () => {
+    const t0 = performance.now();
+    const big = slideXml([]).replace('</p:spTree>', `${'x'.repeat(500_000)}</p:spTree>`);
+    const deck = tinyPptx([{ xml: big }], { order: Array.from({ length: 1000 }, () => 1) });
+    expect(codeOf(() => openPptx(deck))?.code).toBe('unsupported');
+    expect(performance.now() - t0).toBeLessThan(100);
+  });
+
+  it('N2 rejects a slide list over the cap before any slide work', () => {
+    const order = Array.from({ length: 2001 }, (_, i) => i + 1);
+    const err = codeOf(() =>
+      openPptx(
+        tinyPptx(
+          order.map(() => ({})),
+          { order },
+        ),
+      ),
+    );
+    expect(err?.code).toBe('unsupported');
+  });
+
+  it('N3 sees through a comment that mentions a hidden slide root', () => {
+    const tricky = '<?xml version="1.0"?><!-- <p:sld show="0"> --><p:sld xmlns:p="u"><p:cSld/></p:sld>';
+    expect(openPptx(tinyPptx([{ xml: tricky }])).slides[0]?.hidden).toBe(false);
+    const wrongRoot = '<x:foo xmlns:x="u"><p:sld show="0"/></x:foo>';
+    expect(codeOf(() => openPptx(tinyPptx([{ xml: wrongRoot }])))?.code).toBe('unsupported');
+    const attrTrick = '<p:sld xmlns:p="u" name=" show=\'0\'" show="1"/>';
+    expect(openPptx(tinyPptx([{ xml: attrTrick }])).slides[0]?.hidden).toBe(false);
+  });
+
+  it('N4 finds the root after a prolog longer than the prefix', () => {
+    const long = `<!--${' '.repeat(20_000)}--><p:sld xmlns:p="u" show="0"/>`;
+    expect(openPptx(tinyPptx([{ xml: long }])).slides[0]?.hidden).toBe(true);
+  });
 });
