@@ -1,0 +1,25 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "course": "<slug:course>",
+      "fileId": "<id:cheatsheet>"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "# Cheat sheet",
+          "",
+          "## סיכום",
+          "",
+          "נוסחה: $\\sum_{i=1}^{n} i = n(n+1)/2$",
+          ""
+        ]
+      }
+    ]
+  }
+}

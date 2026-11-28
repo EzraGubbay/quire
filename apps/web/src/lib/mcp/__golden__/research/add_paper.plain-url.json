@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "add_paper",
+    "arguments": {
+      "project": "<slug:research>",
+      "reference": "https://example.org/p"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "A plain URL is not accepted by add_paper. For a direct PDF link use upload_pdf."
+      }
+    ]
+  }
+}

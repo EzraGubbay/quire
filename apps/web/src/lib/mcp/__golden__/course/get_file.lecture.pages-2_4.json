@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "course": "<slug:course>",
+      "fileId": "<id:lecture-deck>",
+      "pages": "2,4"
+    }
+  },
+  "response": {
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "# Lecture 1 slides",
+          "Course: Golden Course <run> · 4 pages · showing pages 2,4",
+          "",
+          "--- Page 2 ---",
+          "הקורס משלב בין:",
+          "• first deadline - 29.11",
+          "הציון, כולל בונוס (bonus).",
+          "שלב 9: testing",
+          "עד יום שני 16 בנובמבר בשעה 10:30",
+          "",
+          "--- Page 4 ---",
+          "Fig. 1",
+          "",
+          "[Pages 4 have little or no text (figures, diagrams or scans). Call get_page_images with pages=\"4\" to see them.]",
+          "[Pages 2 contain images or figures that this text does not include. Call get_page_images with pages=\"2\" to see them.]"
+        ]
+      }
+    ]
+  }
+}

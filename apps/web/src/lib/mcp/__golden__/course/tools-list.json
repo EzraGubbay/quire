@@ -1,0 +1,282 @@
+{
+  "request": {
+    "method": "tools/list"
+  },
+  "response": [
+    {
+      "name": "list_courses",
+      "description": "List all Quire courses. Each has a stable slug (use it as the course id elsewhere), name, code, semester, and file count.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_course_files",
+      "description": "List a course's files, each labeled lecture / recitation / homework / exam / book / paper / other, with a stable fileId and a resourceUri for retrieval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id, from list_courses"
+          }
+        },
+        "required": [
+          "course"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_file",
+      "description": "Read a course file. By default returns its text page by page (\"--- Page N ---\" markers, ~30k characters per call; pass `pages` to continue) and flags pages that are mostly figures, contain embedded images or are heavy on formulas. Use get_page_images to see diagrams, slides, formulas or scans. format=\"pdf\"/\"original\" returns the raw file as an embedded binary resource, which only Claude Code can open (other clients fail or drop it); use it only when the user needs the file itself.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id"
+          },
+          "fileId": {
+            "type": "string",
+            "description": "the fileId from list_course_files"
+          },
+          "pages": {
+            "description": "pages to read, e.g. \"1-10\", \"3,7\" or \"20-\" (to the end); default: from page 1",
+            "type": "string"
+          },
+          "format": {
+            "description": "text (default) = extracted page text; pdf/original = raw binary file; markdown = note body",
+            "type": "string",
+            "enum": [
+              "text",
+              "pdf",
+              "original",
+              "markdown"
+            ]
+          }
+        },
+        "required": [
+          "course",
+          "fileId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_page_images",
+      "description": "Render pages of a course file's PDF as JPEG images (max 4 per call) to see slides, diagrams, formulas, tables or scanned pages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id"
+          },
+          "fileId": {
+            "type": "string",
+            "description": "the fileId from list_course_files"
+          },
+          "pages": {
+            "type": "string",
+            "description": "pages to render, e.g. \"4\", \"2-5\" or \"1,3,8\""
+          }
+        },
+        "required": [
+          "course",
+          "fileId",
+          "pages"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "upload_markdown",
+      "description": "WRITES to Quire: creates a new Markdown note (section=\"notes\", the default) or Markdown document (section=\"documents\") in a course, optionally inside an existing folder. Never edits or deletes. Re-sending the same title and text returns the existing item instead of a copy; note titles are unique per course. Max 512 KB. For Markdown you write yourself; to upload an existing .md file use create_upload_link.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id, from list_courses"
+          },
+          "markdown": {
+            "type": "string",
+            "description": "the Markdown text; a leading \"# Title\" line is used as the title if none is given"
+          },
+          "section": {
+            "description": "notes (default) or documents",
+            "type": "string",
+            "enum": [
+              "notes",
+              "documents"
+            ]
+          },
+          "title": {
+            "description": "1-200 characters; default: the first \"# Heading\" of the markdown",
+            "type": "string"
+          },
+          "folder": {
+            "description": "existing folder name or id in that section; default: top level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course",
+          "markdown"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "upload_pdf",
+      "description": "WRITES to Quire: downloads a PDF from a public https URL (the server fetches it, max 50 MB) into a course's Documents. Public https URL only (no logins, no private or local addresses; pass the direct PDF link, e.g. https://arxiv.org/pdf/<id>); for a local file use create_upload_link. The same PDF already in the course is returned instead of a copy. Large PDFs may return status \"processing\"; calling again is safe. Never edits or deletes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id, from list_courses"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "public https link to the PDF"
+          },
+          "title": {
+            "description": "1-200 characters; default: taken from the PDF",
+            "type": "string"
+          },
+          "folder": {
+            "description": "existing Documents folder name or id; default: top level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course",
+          "url"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "create_upload_link",
+      "description": "WRITES to Quire (via the link): creates a one-time upload URL (valid 10 minutes, single use) for an EXISTING local file, .pdf into a course's Documents or .md into its Notes or Documents. The file bytes never pass through this tool: run the returned curl (PUT) on the machine that has the file, then check get_upload_status. The same file uploaded again returns the existing item. Never edits or deletes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "course": {
+            "type": "string",
+            "description": "course slug or id, from list_courses"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "documents",
+              "notes"
+            ],
+            "description": "documents (PDF or Markdown) or notes (Markdown only)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "name of the local file, ending in .pdf, .md or .markdown"
+          },
+          "contentType": {
+            "description": "default application/pdf or text/markdown",
+            "type": "string"
+          },
+          "title": {
+            "description": "1-200 characters; default: from the file",
+            "type": "string"
+          },
+          "folder": {
+            "description": "existing folder name or id in that section; default: top level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course",
+          "section",
+          "filename"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_upload_status",
+      "description": "Report what an upload link produced: pending (not used yet), processing, created, duplicate, failed or expired, with the new file or note id once done.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uploadId": {
+            "type": "string",
+            "description": "the uploadId returned by create_upload_link"
+          }
+        },
+        "required": [
+          "uploadId"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

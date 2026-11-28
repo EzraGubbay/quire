@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "upload_markdown",
+    "arguments": {
+      "course": "golden-missing-<run>",
+      "markdown": "# T\nbody"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "No course found for \"golden-missing-<run>\". Call list_courses for the valid slugs."
+      }
+    ]
+  }
+}

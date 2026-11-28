@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "create_upload_link",
+    "arguments": {
+      "course": "golden-missing-<run>",
+      "section": "documents",
+      "filename": "x.pdf"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "No course found for \"golden-missing-<run>\". Call list_courses for the valid slugs."
+      }
+    ]
+  }
+}

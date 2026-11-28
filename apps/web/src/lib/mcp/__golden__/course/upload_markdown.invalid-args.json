@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "upload_markdown",
+    "arguments": {
+      "course": "<slug:course>"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "lines": [
+          "MCP error -32602: Input validation error: Invalid arguments for tool upload_markdown: [",
+          "  {",
+          "    \"expected\": \"string\",",
+          "    \"code\": \"invalid_type\",",
+          "    \"path\": [",
+          "      \"markdown\"",
+          "    ],",
+          "    \"message\": \"Invalid input: expected string, received undefined\"",
+          "  }",
+          "]"
+        ]
+      }
+    ]
+  }
+}

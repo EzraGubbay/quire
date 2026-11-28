@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "tools/call",
+    "name": "get_file",
+    "arguments": {
+      "project": "<slug:research>",
+      "fileId": "<id:lecture-deck>"
+    }
+  },
+  "response": {
+    "isError": true,
+    "content": [
+      {
+        "type": "text",
+        "text": "No file \"<id:lecture-deck>\" in project \"<slug:research>\""
+      }
+    ]
+  }
+}
