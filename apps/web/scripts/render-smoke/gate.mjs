@@ -58,10 +58,14 @@ export const parseNameOnlyZ = (stdout) =>
 
 /** Old and new names both appear (`--no-renames`), so a file moved out of a relevant path still counts. */
 export function changedFiles(base, head, exec = execFileSync) {
-  const out = exec('git', ['diff', '--no-renames', '--name-only', '-z', `${base}...${head}`], {
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+  const out = exec(
+    'git',
+    ['diff', '--no-renames', '--name-only', '-z', '--end-of-options', `${base}...${head}`],
+    {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
   return parseNameOnlyZ(out);
 }
 
@@ -77,6 +81,10 @@ export function main(argv, env = process.env, exec = execFileSync) {
     let changed;
     let error;
     try {
+      // Validate before it reaches git: a value like `--output=...` must never be passed as an option.
+      for (const sha of [input.base, input.head]) {
+        if (typeof sha !== 'string' || !SHA.test(sha)) throw new Error('base or head is not a 40-hex SHA');
+      }
       changed = changedFiles(input.base, input.head, exec);
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);

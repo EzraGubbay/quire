@@ -89,7 +89,14 @@ describe('render smoke gate: git plumbing', () => {
     };
     expect(changedFiles(A, B, exec as never)).toEqual(['x.ts', 'y.ts']);
     expect(calls[0]?.[0]).toBe('git');
-    expect(calls[0]?.[1]).toEqual(['diff', '--no-renames', '--name-only', '-z', `${A}...${B}`]);
+    expect(calls[0]?.[1]).toEqual([
+      'diff',
+      '--no-renames',
+      '--name-only',
+      '-z',
+      '--end-of-options',
+      `${A}...${B}`,
+    ]);
   });
 });
 
@@ -117,6 +124,17 @@ describe('render smoke gate: main', () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe('run=false');
     expect(lines[1]).toMatch(/^reason=no render-relevant path changed \(2 files\)$/);
+  });
+
+  it('never passes an option-like or malformed ref to git', () => {
+    const f = outFile();
+    let called = false;
+    main(['--event', 'pull_request', '--base', '--output=x', '--head', B], { GITHUB_OUTPUT: f }, (() => {
+      called = true;
+      return '';
+    }) as never);
+    expect(called).toBe(false);
+    expect(readFileSync(f, 'utf8')).toContain('run=true\n');
   });
 
   it('still writes run=true when the diff throws', () => {

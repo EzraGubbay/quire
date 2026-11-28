@@ -7,5 +7,5 @@ out="${2:?out dir}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$out"
 chmod 777 "$out"
-docker run --rm --network none -v "$here:/smoke:ro" -v "$out:/out" "$image" \
+docker run --rm --network none -e GITHUB_ACTIONS -v "$here:/smoke:ro" -v "$out:/out" "$image" \
   node /smoke/run.mjs --app-root /app/apps/web --out /out
