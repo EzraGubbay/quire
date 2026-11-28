@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { db, getSql } from '@/db/client';
-import { jobs } from '@/db/schema';
+import { jobs, settings } from '@/db/schema';
+import { jobsPaused, setJobsPaused } from './pause';
 import { jobQueue } from './queue';
 
 const run = process.env.QUIRE_DB_TESTS === '1' && !!process.env.DATABASE_URL;
@@ -214,5 +215,24 @@ describe.skipIf(!run)('jobs queue (real Postgres)', () => {
     expect(await q.release(id, 'w1')).toBe(true);
     expect(await row(id)).toMatchObject({ status: 'queued', attempts: 0, lockedBy: null });
     expect((await q.claimNext('w1', [t]))?.attempts).toBe(1);
+  });
+
+  it('pause flag round-trips and keeps the other settings keys', async () => {
+    const [before] = await db.select().from(settings).where(eq(settings.id, 1));
+    const snapshot = (before?.data ?? {}) as Record<string, unknown>;
+    try {
+      await setJobsPaused(db, true);
+      expect(await jobsPaused(db)).toBe(true);
+      const [mid] = await db.select().from(settings).where(eq(settings.id, 1));
+      const { jobs: midJobs, ...rest } = (mid?.data ?? {}) as Record<string, unknown>;
+      const { jobs: _prev, ...restBefore } = snapshot;
+      expect(rest).toEqual(restBefore);
+      expect(midJobs).toMatchObject({ paused: true });
+      await setJobsPaused(db, false);
+      expect(await jobsPaused(db)).toBe(false);
+    } finally {
+      if (before) await db.update(settings).set({ data: snapshot }).where(eq(settings.id, 1));
+      else await db.delete(settings).where(eq(settings.id, 1));
+    }
   });
 });
