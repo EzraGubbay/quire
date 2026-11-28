@@ -252,4 +252,11 @@ describe('deploy wiring', () => {
       }
     }
   });
+
+  it('gives the app 30 s to drain on stop', () => {
+    const compose = parse(readFileSync(path.resolve(__dirname, '../../../../infra/compose.yml'), 'utf8')) as {
+      services: { app: { stop_grace_period?: string } };
+    };
+    expect(compose.services.app.stop_grace_period).toBe('30s');
+  });
 });

@@ -20,6 +20,9 @@ services:
   app:
     image: ${QUIRE_IMAGE:-ghcr.io/ezragubbay/quire:latest}
     restart: unless-stopped
+    # On SIGTERM Next.js finishes in-flight requests and pending after() callbacks before exiting; Docker's
+    # default 10 s can cut that short on deploy. https://nextjs.org/docs/app/guides/self-hosting#after
+    stop_grace_period: 30s
     depends_on:
       db:
         condition: service_healthy
