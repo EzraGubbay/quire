@@ -43,3 +43,19 @@ describe('parseSessionFilename', () => {
     });
   });
 });
+
+// Known legacy behavior, kept until callers move to parseSessionName.
+describe('parseSessionFilename legacy behavior (callers switch to parseSessionName later)', () => {
+  it.each([
+    ['ABC Lecture3.pptx', { kind: undefined, number: undefined, title: 'ABC Lecture3' }],
+    ['שבוע 2 - הרצאה 3.pdf', { kind: undefined, number: undefined, title: 'שבוע 2 - הרצאה 3' }],
+    ['Week 2 Lecture 3.pdf', { kind: undefined, number: undefined, title: 'Week 2 Lecture 3' }],
+    ['3 הרצאה.pdf', { kind: undefined, number: 3, title: 'הרצאה' }],
+    ['Lec.3', { kind: 'lecture', number: undefined, title: '' }],
+    ['תרגיל בית 3.pdf', { kind: 'recitation', number: undefined, title: 'בית 3' }],
+    ['Lecture 1 - Intro - סמסטר א.pdf', { kind: 'lecture', number: 1, title: 'Intro - סמסטר א' }],
+    ['Lecture 3 - Data 2027.pdf', { kind: 'lecture', number: 3, title: 'Dat' }],
+  ])('%s', (input, expected) => {
+    expect(parseSessionFilename(input)).toEqual(expected);
+  });
+});
