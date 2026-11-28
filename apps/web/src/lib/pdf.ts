@@ -178,6 +178,35 @@ type PdfJs = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDoc = Awaited<ReturnType<PdfJs['getDocument']>['promise']>;
 type PdfPage = Awaited<ReturnType<PdfDoc['getPage']>>;
 
+const TEXT_OPS = ['showText', 'showSpacedText', 'nextLineShowText', 'nextLineSetSpacingShowText'];
+
+/**
+ * The operator list draws something: text, a painted path, a shading or an image. A page with no such
+ * operator is legitimately empty, so a flat render of it is not a failure. Pure: unit-tests on hand-built
+ * operator lists.
+ */
+export function hasPaintOps(
+  fnArray: ArrayLike<number>,
+  argsArray: ArrayLike<unknown>,
+  ops: Record<string, number>,
+): boolean {
+  const drawing = new Set([...TEXT_OPS, ...IMAGE_OPS, ...PAINT_OPS].map((n) => ops[n]));
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn = fnArray[i] as number;
+    if (drawing.has(fn)) return true;
+    const args = argsArray[i] as unknown[] | null | undefined;
+    if (fn === ops.constructPath && args && drawing.has(args[0] as number)) return true;
+  }
+  return false;
+}
+
+/** Whether a page draws anything (see hasPaintOps). */
+export async function pageHasPaint(page: PdfPage): Promise<boolean> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const list = await page.getOperatorList();
+  return hasPaintOps(list.fnArray, list.argsArray, pdfjs.OPS as unknown as Record<string, number>);
+}
+
 async function figureOnPage(pdfjs: PdfJs, page: PdfPage): Promise<boolean> {
   const list = await page.getOperatorList();
   const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = page.view;

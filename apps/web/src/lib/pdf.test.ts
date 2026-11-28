@@ -3,6 +3,7 @@ import {
   cleanPdfText,
   extractPdf,
   FIGURE_MIN_COVERAGE,
+  hasPaintOps,
   imageCoverage,
   layoutItems,
   openPdfAnalyzer,
@@ -215,5 +216,35 @@ describe('layoutItems', () => {
       hasEOL: false,
     });
     expect(layoutItems([upright('f(\u0000x', 72), upright(')', 92)]).text).toBe('f(x)');
+  });
+});
+
+describe('hasPaintOps', () => {
+  const OPS2 = { ...OPS, beginText: 20, setFont: 21, endText: 22, shadingFill: 23 };
+  const paints = (ops: Op[]) =>
+    hasPaintOps(
+      ops.map(([fn]) => fn),
+      ops.map(([, args]) => args ?? null),
+      OPS2,
+    );
+
+  it('is false for an empty list', () => {
+    expect(paints([])).toBe(false);
+  });
+
+  it('is true for shown text', () => {
+    expect(paints([[OPS2.beginText], [OPS2.setFont], [OPS2.showText, ['x']], [OPS2.endText]])).toBe(true);
+  });
+
+  it('is true for a filled path', () => {
+    expect(paints([[OPS2.constructPath, [OPS2.fill]]])).toBe(true);
+  });
+
+  it('is false for a clip-only path', () => {
+    expect(paints([[OPS2.save], [OPS2.constructPath, [OPS2.endPath]], [OPS2.restore]])).toBe(false);
+  });
+
+  it('is true for an image', () => {
+    expect(paints([[OPS2.paintImageXObject]])).toBe(true);
   });
 });
