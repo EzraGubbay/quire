@@ -17,19 +17,23 @@ const HINT =
 /** The body of renderPageTo, from its signature to page.cleanup(). */
 function renderPageToBody(): string {
   const start = slides.indexOf('async function renderPageTo(');
-  const endMarker = 'page.cleanup();\n}';
+  const endMarker = "page.cleanup();\n  return 'written';\n}";
   const end = slides.indexOf(endMarker, start);
   expect(start, HINT).toBeGreaterThan(-1);
   expect(end, HINT).toBeGreaterThan(start);
   return collapse(slides.slice(start, end + endMarker.length));
 }
 
+// The blank guard in renderPageTo (isFlat check, retry at scale 1, the 'blank' result) is deliberately NOT mirrored
+// in render-one.mjs: the smoke judges the first render, so a blank first render fails the smoke even when the
+// retry would rescue it. Stricter by design. The pinned text below still contains the guard, so editing it
+// trips this test and prompts a look at the harness.
 const RENDER_PAGE_TO =
-  "async function renderPageTo( pdf: PdfDoc, createCanvas: CreateCanvas, pageNo: number, target: string, maxWidth: number, quality: number, maxHeight?: number, maxBytes?: number, ): Promise<void> { const { writeFile } = await import('node:fs/promises'); const page = await pdf.getPage(pageNo); const base = page.getViewport({ scale: 1 }); let scale = Math.min( 2, maxWidth / base.width, maxHeight ? maxHeight / base.height : Number.POSITIVE_INFINITY, ); let jpeg: Buffer | undefined; // Without maxBytes this runs once, exactly as before. With it: up to 4 scales \u00d7 3 qualities. for (let attempt = 0; attempt < (maxBytes ? 4 : 1); attempt++, scale *= 0.8) { const viewport = page.getViewport({ scale }); const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)); const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport, canvas: canvas as unknown as HTMLCanvasElement, }).promise; for (const q of maxBytes ? [quality, quality - 10, quality - 20] : [quality]) { jpeg = await canvas.encode('jpeg', Math.max(20, q)); if (!maxBytes || jpeg.length <= maxBytes) break; } if (!maxBytes || (jpeg && jpeg.length <= maxBytes)) break; } if (!jpeg) throw new Error(`page $" +
-  '{pageNo} did not render`); const tmp = `$' +
+  "async function renderPageTo( pdf: PdfDoc, createCanvas: CreateCanvas, pageNo: number, target: string, maxWidth: number, quality: number, maxHeight?: number, maxBytes?: number, ): Promise<'written' | 'blank'> { const { writeFile } = await import('node:fs/promises'); const page = await pdf.getPage(pageNo); const base = page.getViewport({ scale: 1 }); let scale = Math.min( 2, maxWidth / base.width, maxHeight ? maxHeight / base.height : Number.POSITIVE_INFINITY, ); let jpeg: Buffer | undefined; let last: import('@napi-rs/canvas').Canvas | undefined; // Without maxBytes this runs once, exactly as before. With it: up to 4 scales \u00d7 3 qualities. for (let attempt = 0; attempt < (maxBytes ? 4 : 1); attempt++, scale *= 0.8) { const viewport = page.getViewport({ scale }); const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)); last = canvas; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport, canvas: canvas as unknown as HTMLCanvasElement, }).promise; for (const q of maxBytes ? [quality, quality - 10, quality - 20] : [quality]) { jpeg = await canvas.encode('jpeg', Math.max(20, q)); if (!maxBytes || jpeg.length <= maxBytes) break; } if (!maxBytes || (jpeg && jpeg.length <= maxBytes)) break; } if (!jpeg) throw new Error(`page $" +
+  "{pageNo} did not render`); if (last && flatCanvas(last) && (await pageHasPaint(page))) { const retryScale = Math.min( 1, maxWidth / base.width, maxHeight ? maxHeight / base.height : Number.POSITIVE_INFINITY, ); const viewport = page.getViewport({ scale: retryScale }); const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)); const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport, canvas: canvas as unknown as HTMLCanvasElement, }).promise; if (flatCanvas(canvas)) { page.cleanup(); return 'blank'; } for (const q of maxBytes ? [quality, quality - 10, quality - 20] : [quality]) { jpeg = await canvas.encode('jpeg', Math.max(20, q)); if (!maxBytes || jpeg.length <= maxBytes) break; } } const tmp = `$" +
   '{target}.$' +
   '{process.pid}.$' +
-  '{randomUUID()}.tmp`; try { await writeFile(tmp, jpeg); await rename(tmp, target); } catch (err) { await rm(tmp, { force: true }); throw err; } page.cleanup(); }';
+  "{randomUUID()}.tmp`; try { await writeFile(tmp, jpeg); await rename(tmp, target); } catch (err) { await rm(tmp, { force: true }); throw err; } page.cleanup(); return 'written'; }";
 
 const OPTIONS_BODY =
   'return { // pdf.js transfers the buffer to its worker (detaching it): always hand it a copy. data: new Uint8Array(data), // Off: with it on, pdf.js skips standardFontDataUrl and asks for system fonts, which the image has none of. useSystemFonts: false, cMapPacked: true, ...assets, ...(canvasFactory ? { CanvasFactory: canvasFactory } : {}), };';

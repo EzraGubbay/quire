@@ -12,6 +12,10 @@
     "content": [
       {
         "type": "text",
+        "text": "Images of \"A Synthetic Paper\" page(s) 1 follow. If your client shows no images, get_file with pages=\"1\" returns the same pages as text."
+      },
+      {
+        "type": "text",
         "text": "Page 1 of \"A Synthetic Paper\":"
       },
       {
