@@ -5,11 +5,12 @@
 // claimers only ever ask for this run's types, so no other row is touched.
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { db, getSql } from '@/db/client';
 import { jobs, settings } from '@/db/schema';
 import { jobsPaused, setJobsPaused } from './pause';
 import { jobQueue } from './queue';
+import { createJobWorker } from './worker';
 
 const run = process.env.QUIRE_DB_TESTS === '1' && !!process.env.DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
@@ -230,6 +231,34 @@ describe.skipIf(!run)('jobs queue (real Postgres)', () => {
       expect(midJobs).toMatchObject({ paused: true });
       await setJobsPaused(db, false);
       expect(await jobsPaused(db)).toBe(false);
+    } finally {
+      if (before) await db.update(settings).set({ data: snapshot }).where(eq(settings.id, 1));
+      else await db.delete(settings).where(eq(settings.id, 1));
+    }
+  });
+
+  it('worker: runs a due job to done, and leaves it queued while paused', async () => {
+    const t = type('worker');
+    const handler = vi.fn(async () => {});
+    const { id } = await q.enqueue(t, { hello: 'world' });
+    const worker = createJobWorker({
+      queue: q,
+      paused: () => jobsPaused(db),
+      handlers: new Map([[t, handler]]),
+    });
+    const [before] = await db.select().from(settings).where(eq(settings.id, 1));
+    const snapshot = (before?.data ?? {}) as Record<string, unknown>;
+    try {
+      await setJobsPaused(db, true);
+      expect(await worker.tick()).toBe('paused');
+      expect((await row(id)).status).toBe('queued');
+      await setJobsPaused(db, false);
+      expect(await worker.tick()).toBe('ran');
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ id, payload: { hello: 'world' } }),
+        expect.anything(),
+      );
+      expect((await row(id)).status).toBe('done');
     } finally {
       if (before) await db.update(settings).set({ data: snapshot }).where(eq(settings.id, 1));
       else await db.delete(settings).where(eq(settings.id, 1));
