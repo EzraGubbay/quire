@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { z } from 'zod';
-import type { Note } from '@/db/schema';
+import type { Note, Session } from '@/db/schema';
 import { indexOwner, removeOwner } from '@/lib/ai/index';
 import { builtinFolder, createDeckDocument, deleteDocument, getDocument } from '@/lib/documents';
 import { clearSessionNote, createNote, getNote, listNotes, sessionNote, updateNote } from '@/lib/notes';
@@ -13,6 +13,7 @@ import { getProjectBySlug, projectBase } from '@/lib/projects';
 import { requireSession } from '@/lib/require-session';
 import {
   attachDocumentToSession,
+  attachWarning,
   createSession,
   deleteSession,
   getSession,
@@ -26,6 +27,8 @@ export interface ActionState {
   error?: string;
   ok?: boolean;
   created?: number;
+  /** A non-blocking note, e.g. a file name that points at a different session than the one it landed in. */
+  warning?: string;
 }
 
 // Keep this at/under the server-side ceilings (next.config `serverActions.bodySizeLimit` and
@@ -98,12 +101,15 @@ export async function dropSessionFilesAction(_prev: ActionState, formData: FormD
   const base = projectBase(project);
   let created = 0;
   let firstId: string | null = null;
+  const existing = sessionId ? await getSession(project.id, sessionId) : null;
+  const warnings: string[] = [];
   // Larger numbers first so "Lecture 10" and "Lecture 2" dropped together land in order either way.
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   for (const file of sorted) {
     const data = new Uint8Array(await file.arrayBuffer());
     let target = sessionId;
     let title: string | undefined;
+    let attached: Pick<Session, 'kind' | 'number'> | null | undefined = existing;
     if (!target) {
       const parsed = sessionFromFileName(file.name);
       const s = await createSession(project.id, {
@@ -113,6 +119,7 @@ export async function dropSessionFilesAction(_prev: ActionState, formData: FormD
         date: todayIso(),
       });
       target = s.id;
+      attached = s;
       title = sessionTitle(s);
       created++;
       firstId ??= s.id;
@@ -124,13 +131,17 @@ export async function dropSessionFilesAction(_prev: ActionState, formData: FormD
       return { error: `${file.name}: ${(err as Error).message}`, created };
     }
     if (doc.filePath) after(() => indexOwner(project.id, 'document', doc.id).catch(() => {}));
+    const w = attached ? attachWarning(attached, file.name) : undefined;
+    if (w) warnings.push(w);
   }
   const tab = kind.data === 'lecture' ? 'lectures' : 'recitations';
   revalidatePath(`${base}/${tab}`);
   revalidatePath(`${base}/documents`);
   if (sessionId) revalidatePath(`${base}/${tab}/${sessionId}`);
-  if (created === 1 && firstId && files.length === 1) redirect(`${base}/${tab}/${firstId}`);
-  return { ok: true, created };
+  // A warning would be lost on redirect, so a flagged single drop stays on the list.
+  if (created === 1 && firstId && files.length === 1 && warnings.length === 0)
+    redirect(`${base}/${tab}/${firstId}`);
+  return { ok: true, created, ...(warnings.length ? { warning: warnings.join(' ') } : {}) };
 }
 
 const patchSchema = z.object({
@@ -190,6 +201,7 @@ export async function moveDeckToSessionAction(
   const source = doc.sessionId ? await getSession(project.id, doc.sessionId) : null;
 
   await attachDocumentToSession(project.id, documentId, sessionId);
+  const warning = target ? attachWarning(target, doc.originalName ?? doc.title) : undefined;
 
   const base = projectBase(project);
   revalidatePath(`${base}/lectures`);
@@ -198,7 +210,7 @@ export async function moveDeckToSessionAction(
   for (const sess of [source, target]) {
     if (sess) revalidatePath(`${base}/${sess.kind === 'lecture' ? 'lectures' : 'recitations'}/${sess.id}`);
   }
-  return { ok: true };
+  return { ok: true, ...(warning ? { warning } : {}) };
 }
 
 /** Deletes a deck (the PDF/pptx document and its pages); the lecture and its note are untouched. */
