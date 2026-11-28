@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { checkMigrations, findContractOperations, parseAllowlist } from './migration-policy';
 
 // Expand-only migration policy (docs/adr/0001-unified-backend.md, decision 8).
@@ -209,5 +210,46 @@ describe('repository migration policy', () => {
         grandfatheredThroughIdx: GRANDFATHERED_THROUGH.idx,
       }),
     ).toEqual([]);
+  });
+});
+
+type Step = { name?: string; uses?: string; with?: Record<string, unknown>; run?: string };
+const deployYml = parse(
+  readFileSync(path.resolve(__dirname, '../../../../.github/workflows/deploy.yml'), 'utf8'),
+) as {
+  on: { workflow_dispatch: { inputs: Record<string, { type: string }> } };
+  jobs: { deploy: { steps: Step[] } };
+};
+
+describe('deploy wiring', () => {
+  const steps = deployYml.jobs.deploy.steps;
+  const dumpIdx = steps.findIndex((s) => /^Pre-deploy database dump/.test(s.name ?? ''));
+
+  it('takes the pre-deploy dump before any .env edit, pull or migration', () => {
+    expect(dumpIdx).toBeGreaterThan(-1);
+    const firstEnvSync = steps.findIndex((s) => /^Sync .* into \.env/.test(s.name ?? ''));
+    const pull = steps.findIndex((s) => s.name === 'Pull, migrate, restart');
+    expect(firstEnvSync).toBeGreaterThan(dumpIdx);
+    expect(pull).toBeGreaterThan(dumpIdx);
+  });
+  it('checks out full history for the dump range', () => {
+    const checkout = steps.find((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
+  });
+  it('exposes force_predeploy_dump as a boolean input', () => {
+    expect(deployYml.on.workflow_dispatch.inputs.force_predeploy_dump?.type).toBe('boolean');
+  });
+  it('runs the script and reads the image with --format only', () => {
+    const run = steps[dumpIdx]?.run ?? '';
+    expect(run).toContain('predeploy-dump.sh');
+    expect(run).toContain("--format '{{.Config.Image}}'");
+  });
+  it('never runs a bare docker inspect (it prints the container environment, which holds secrets)', () => {
+    for (const s of steps) {
+      for (const line of (s.run ?? '').split('\n')) {
+        if (/docker inspect /.test(line))
+          expect(line, `${s.name}: ${line}`).toMatch(/docker inspect --format /);
+      }
+    }
   });
 });

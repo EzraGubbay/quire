@@ -8,6 +8,10 @@ on:
         description: 'Build under QEMU on ubuntu-latest (use only if ubuntu-24.04-arm runners are unavailable)'
         type: boolean
         default: false
+      force_predeploy_dump:
+        description: 'Take the pre-deploy pg_dump even if this deploy changes no migrations (proves the dump path)'
+        type: boolean
+        default: false
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -82,6 +86,10 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the pre-deploy dump step can diff the running image's commit against this one
+          # (the repo is small).
+          fetch-depth: 0
       - name: Sync compose file
         run: cp infra/compose.yml /srv/quire/compose.yml
       - name: Free disk before pull
@@ -103,6 +111,44 @@ jobs:
             docker image prune -af || true
           fi
           echo "Disk after prune:"; df -h / | tail -1
+      - name: Pre-deploy database dump (when migrations change)
+        working-directory: /srv/quire
+        timeout-minutes: 15
+        # The image rollback in the health check never rolls the schema back (ADR 0001, decision 8), so dump the
+        # DB before any deploy whose range touches apps/web/drizzle/. The range starts at the RUNNING app
+        # container's image tag (<image>:<sha12>), not HEAD~1 (superseded runs skip commits) and not .env
+        # (a deploy that failed after editing .env never ran its migrations). Unknown start = dump. A failed
+        # dump stops the job here, before .env, pull or migrate. Only ever read the container's image with
+        # --format: a plain `docker inspect` prints its environment, which holds secrets.
+        shell: bash
+        env:
+          FORCE_DUMP: ${{ inputs.force_predeploy_dump && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          new=${GITHUB_SHA::12}
+          running=$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q app)" 2>/dev/null || true)
+          prev=${running##*:}
+          reason=""
+          if [[ "$FORCE_DUMP" == true ]]; then
+            reason="forced by the force_predeploy_dump input"
+          elif [[ ! "$prev" =~ ^[0-9a-f]{12}$ ]]; then
+            reason="running app image '${running:-none}' carries no commit tag"; prev=unknown
+          elif ! git -C "$GITHUB_WORKSPACE" rev-parse --verify --quiet "${prev}^{commit}" >/dev/null; then
+            reason="deployed commit $prev is not in this repository's history"
+          elif ! git -C "$GITHUB_WORKSPACE" diff --quiet --no-renames "$prev" "$GITHUB_SHA" -- apps/web/drizzle/; then
+            reason="apps/web/drizzle/ changed between $prev and $new"
+            git -C "$GITHUB_WORKSPACE" diff --name-status --no-renames "$prev" "$GITHUB_SHA" -- apps/web/drizzle/
+          fi
+          if [[ -z "$reason" ]]; then
+            echo "predeploy-dump: SKIPPED (no change under apps/web/drizzle/ between $prev and $new)"
+            exit 0
+          fi
+          echo "predeploy-dump: RUNNING ($reason)"
+          if ! docker compose exec -T backup bash -s -- "$prev" "$new" < "$GITHUB_WORKSPACE/infra/backup/predeploy-dump.sh"; then
+            echo "::error title=Pre-deploy dump failed::DEPLOY ABORTED before .env, pull and migrations; the running app and the schema are unchanged. Check 'docker compose ps backup' and 'docker compose logs --tail 50 backup' on the Pi, then re-run this workflow."
+            exit 1
+          fi
+          echo "predeploy-dump: OK"
       - name: Sync FCM credential into .env
         working-directory: /srv/quire
         # Upserts (or removes, when the secret is empty) the single FCM_SERVICE_ACCOUNT_JSON_BASE64 line in .env.
