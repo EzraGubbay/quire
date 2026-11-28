@@ -34,7 +34,8 @@ jobs:
         if: steps.gate.outputs.run == 'false'
         env:
           REASON: ${{ steps.gate.outputs.reason }}
-        run: echo "Render smoke skipped: $REASON" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Render smoke skipped - $REASON" >> "$GITHUB_STEP_SUMMARY"
       - uses: docker/setup-buildx-action@v3
         if: steps.gate.outputs.run != 'false'
       - name: Build the runtime image (arm64, loaded, not pushed)
