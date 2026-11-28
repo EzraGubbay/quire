@@ -37,8 +37,9 @@ const RUN = randomUUID().slice(0, 8);
 const projectIds: string[] = [];
 const meta = { fileName: 'x.pdf' };
 
-// The shared connection closes once, after every describe in this file has finished.
+// Cleanup runs once, after every describe in this file has finished: delete every project created, then close.
 afterAll(async () => {
+  if (projectIds.length) await db.delete(projects).where(inArray(projects.id, projectIds));
   await getSql().end();
 });
 
@@ -91,10 +92,6 @@ describe.skipIf(!run)('importLemidaFile retry (integration)', () => {
       return { ...d, filePath: null };
     }) as never);
   });
-  afterAll(async () => {
-    if (projectIds.length) await db.delete(projects).where(inArray(projects.id, projectIds));
-  });
-
   it('first import ok', async () => {
     const p = await newProject();
     const data = newBytes();

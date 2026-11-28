@@ -86,6 +86,12 @@ describe('sessionFromFileName', () => {
     ],
     ['Week 2 Lecture 3.pdf', { kind: 'lecture', number: 3, title: 'Week 2' }],
     ['Lec.3', { kind: 'lecture', number: 3, title: '' }],
+    ['\u05D4\u05E8\u05E6\u05D0\u05D4 \u05DE\u05E1 3.pdf', { kind: 'lecture', number: 3, title: '' }],
+    ['\u05D4\u05E8\u05E6\u05D0\u05D4 \u05DE\u05E1\u05F3 3.pdf', { kind: 'lecture', number: 3, title: '' }],
+    ['\u05D4\u05E8\u05E6\u05D0\u05D4 \u05DE\u05E1\u0027 3.pdf', { kind: 'lecture', number: 3, title: '' }],
+    ['2026-11-03 Lecture 3.pdf', { kind: 'lecture', number: 3, title: '2026-11-03' }],
+    ['03.11.2026 \u05D4\u05E8\u05E6\u05D0\u05D4 3.pdf', { kind: 'lecture', number: 3, title: '03.11.2026' }],
+    ['\u200F\u05D4\u05E8\u05E6\u05D0\u05D4 3.pdf', { kind: 'lecture', number: 3, title: '' }],
     [
       'Lecture 1 - Intro - \u05E1\u05DE\u05E1\u05D8\u05E8 \u05D0.pdf',
       { kind: 'lecture', number: 1, title: 'Intro' },

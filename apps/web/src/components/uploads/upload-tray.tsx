@@ -52,11 +52,7 @@ export function UploadTray() {
           ) : (
             <progress className={s.bar} value={u.progress} max={1} aria-label={`Uploading ${u.name}`} />
           )}
-          {u.warning && (
-            <p className={s.warning} role="status">
-              {u.warning}
-            </p>
-          )}
+          {u.warning && <p className={s.warning}>{u.warning}</p>}
         </div>
       ))}
     </section>
