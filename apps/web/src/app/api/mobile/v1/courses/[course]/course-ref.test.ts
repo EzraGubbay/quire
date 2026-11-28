@@ -78,13 +78,13 @@ interface Case {
   okStatus: number;
   /** Message of the not_found body when the course does not resolve. */
   notFound: string;
-  run: (ref: string, headers?: Record<string, string>) => Promise<Response>;
+  run: (ref: string, headers?: Record<string, string>) => Promise<Response | undefined>;
   /** The downstream call that must receive the course id. */
   downstream: () => { mock: { calls: unknown[][] } };
 }
 
 const params = (ref: string, extra: Record<string, string> = {}) => ({
-  params: Promise.resolve({ course: ref, ...extra }),
+  params: Promise.resolve({ course: ref, noteId: NOTE_ID, threadId: THREAD_ID, ...extra }),
 });
 const req = (method: string, headers: Record<string, string>, body?: unknown) =>
   new Request('http://localhost/x', {
@@ -149,6 +149,12 @@ const cases: Case[] = [
 
 beforeEach(() => vi.clearAllMocks());
 
+async function go(c: Case, ref: string, headers?: Record<string, string>): Promise<Response> {
+  const res = await c.run(ref, headers);
+  if (!res) throw new Error(`${c.name}: handler returned no response`);
+  return res;
+}
+
 it('threads answer with the course slug when called by UUID', async () => {
   const res = await threadsRoute.GET(req('GET', AUTH), params(course.id));
   const body = await res.json();
@@ -157,13 +163,13 @@ it('threads answer with the course slug when called by UUID', async () => {
 
 describe.each(cases)('$name', (c) => {
   it('course slug resolves and reaches the data layer with the course id', async () => {
-    const res = await c.run(course.slug);
+    const res = await go(c, course.slug);
     expect(res.status).toBe(c.okStatus);
     expect(c.downstream().mock.calls[0]?.[0]).toBe(course.id);
   });
 
   it('unknown slug is 404 not_found', async () => {
-    const res = await c.run('no-such-course');
+    const res = await go(c, 'no-such-course');
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error.code).toBe('not_found');
@@ -171,36 +177,36 @@ describe.each(cases)('$name', (c) => {
   });
 
   it('research slug answers exactly like an unknown slug', async () => {
-    const unknown = await (await c.run('no-such-course')).text();
-    const res = await c.run(research.slug);
+    const unknown = await (await go(c, 'no-such-course')).text();
+    const res = await go(c, research.slug);
     expect(res.status).toBe(404);
     expect(await res.text()).toBe(unknown);
     expect(c.downstream()).not.toHaveBeenCalled();
   });
 
   it('research UUID answers exactly like an unknown slug', async () => {
-    const unknown = await (await c.run('no-such-course')).text();
+    const unknown = await (await go(c, 'no-such-course')).text();
     vi.clearAllMocks();
-    const res = await c.run(research.id);
+    const res = await go(c, research.id);
     expect(res.status).toBe(404);
     expect(await res.text()).toBe(unknown);
     expect(c.downstream()).not.toHaveBeenCalled();
   });
 
   it('course UUID resolves like the slug', async () => {
-    const res = await c.run(course.id);
+    const res = await go(c, course.id);
     expect(res.status).toBe(c.okStatus);
     expect(c.downstream().mock.calls[0]?.[0]).toBe(course.id);
   });
 
   it('upper-case course UUID resolves like the slug', async () => {
-    const res = await c.run(course.id.toUpperCase());
+    const res = await go(c, course.id.toUpperCase());
     expect(res.status).toBe(c.okStatus);
     expect(c.downstream().mock.calls[0]?.[0]).toBe(course.id);
   });
 
   it('without a device token: 401 and no project lookup', async () => {
-    const res = await c.run(course.slug, {});
+    const res = await go(c, course.slug, {});
     expect(res.status).toBe(401);
     expect(getProjectBySlug).not.toHaveBeenCalled();
     expect(getProjectById).not.toHaveBeenCalled();
