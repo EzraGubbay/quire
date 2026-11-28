@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { createThread, listThreads } from '@/lib/chat';
+import { resolveCourse } from '@/lib/mcp/courses';
 import { toThread } from '@/lib/mobile/chat';
 import { requireDevice } from '@/lib/mobile/device-auth';
 import { fail, ok } from '@/lib/mobile/respond';
 import { CreateThreadRequest } from '@/lib/mobile/schema';
-import { getProjectBySlug } from '@/lib/projects';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ const createSchema = CreateThreadRequest.extend({
 });
 
 async function courseOf(slug: string) {
-  const p = await getProjectBySlug(slug);
+  const p = await resolveCourse(slug);
   return p && p.kind === 'course' ? p : null;
 }
 

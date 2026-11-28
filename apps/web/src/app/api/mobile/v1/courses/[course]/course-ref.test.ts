@@ -149,6 +149,12 @@ const cases: Case[] = [
 
 beforeEach(() => vi.clearAllMocks());
 
+it('threads answer with the course slug when called by UUID', async () => {
+  const res = await threadsRoute.GET(req('GET', AUTH), params(course.id));
+  const body = await res.json();
+  expect(body[0].courseSlug).toBe(course.slug);
+});
+
 describe.each(cases)('$name', (c) => {
   it('course slug resolves and reaches the data layer with the course id', async () => {
     const res = await c.run(course.slug);
@@ -181,11 +187,16 @@ describe.each(cases)('$name', (c) => {
     expect(c.downstream()).not.toHaveBeenCalled();
   });
 
-  // flips in the resolver switch
-  it('course UUID is not resolved yet', async () => {
+  it('course UUID resolves like the slug', async () => {
     const res = await c.run(course.id);
-    expect(res.status).toBe(404);
-    expect(c.downstream()).not.toHaveBeenCalled();
+    expect(res.status).toBe(c.okStatus);
+    expect(c.downstream().mock.calls[0]?.[0]).toBe(course.id);
+  });
+
+  it('upper-case course UUID resolves like the slug', async () => {
+    const res = await c.run(course.id.toUpperCase());
+    expect(res.status).toBe(c.okStatus);
+    expect(c.downstream().mock.calls[0]?.[0]).toBe(course.id);
   });
 
   it('without a device token: 401 and no project lookup', async () => {
