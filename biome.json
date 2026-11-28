@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/.next", "!**/dist", "!**/node_modules", "!**/drizzle/meta", "!docs/api/fixtures"]
+    "includes": [
+      "**",
+      "!**/.next",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/drizzle/meta",
+      "!docs/api/fixtures",
+      "!apps/web/src/lib/mcp/__golden__"
+    ]
   },
   "formatter": {
     "enabled": true,
