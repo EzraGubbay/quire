@@ -60,7 +60,7 @@
             "type": "string"
           },
           "format": {
-            "description": "text (default) = extracted page text; pdf/original = raw binary file; markdown = note body",
+            "description": "text (default) = extracted page text; pdf/original = raw binary file; markdown = Markdown document body",
             "type": "string",
             "enum": [
               "text",

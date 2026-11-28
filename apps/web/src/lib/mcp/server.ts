@@ -141,7 +141,7 @@ export function registerQuireMcp(server: McpServer): void {
         .enum(['text', 'pdf', 'original', 'markdown'])
         .optional()
         .describe(
-          'text (default) = extracted page text; pdf/original = raw binary file; markdown = note body',
+          'text (default) = extracted page text; pdf/original = raw binary file; markdown = Markdown document body',
         ),
     },
     READ_ONLY,
