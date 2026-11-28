@@ -138,6 +138,9 @@ const CREATE_UNIQUE_INDEX = new RegExp(
  * same file: its own unique indexes, constraints and foreign keys are expand, because nothing old can write
  * to it. A unique index added in a later file to a table created earlier is contract, even if the table is
  * young; allowlist it when the table is known to be empty.
+ *
+ * Known false negatives (owner review of migration PRs is the backstop): dynamic SQL, `ALTER ... SET SCHEMA`,
+ * `ALTER TABLE ... SET LOGGED`, `CREATE TABLE ... AS SELECT`, and column-level CHECK on an added column.
  */
 export function findContractOperations(sql: string): ContractOperation[] {
   const statements = splitStatements(sql);
@@ -187,7 +190,11 @@ export function findContractOperations(sql: string): ContractOperation[] {
     }
 
     const ui = CREATE_UNIQUE_INDEX.exec(stmt);
-    if (ui && !newTables.has(normIdent(ui[1] ?? ''))) hit.add('unique-index-on-existing-table');
+    if (ui ? !newTables.has(normIdent(ui[1] ?? '')) : /^CREATE\s+UNIQUE\s+INDEX\b/i.test(stmt)) {
+      // Fail closed: a unique index whose table the regex could not capture (for example a quoted index name
+      // holding a space or a semicolon) is flagged for review.
+      hit.add('unique-index-on-existing-table');
+    }
 
     const at = ALTER_TABLE.exec(stmt);
     if (at) {

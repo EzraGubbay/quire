@@ -128,11 +128,13 @@ jobs:
           new=${GITHUB_SHA::12}
           running=$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q app)" 2>/dev/null || true)
           prev=${running##*:}
+          # No commit tag (app down, or an untagged image): the range start is unknown, even when forced.
+          if [[ ! "$prev" =~ ^[0-9a-f]{12}$ ]]; then prev=unknown; fi
           reason=""
           if [[ "$FORCE_DUMP" == true ]]; then
             reason="forced by the force_predeploy_dump input"
           elif [[ ! "$prev" =~ ^[0-9a-f]{12}$ ]]; then
-            reason="running app image '${running:-none}' carries no commit tag"; prev=unknown
+            reason="running app image '${running:-none}' carries no commit tag"
           elif ! git -C "$GITHUB_WORKSPACE" rev-parse --verify --quiet "${prev}^{commit}" >/dev/null; then
             reason="deployed commit $prev is not in this repository's history"
           elif ! git -C "$GITHUB_WORKSPACE" diff --quiet --no-renames "$prev" "$GITHUB_SHA" -- apps/web/drizzle/; then

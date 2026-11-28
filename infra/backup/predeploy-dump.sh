@@ -31,7 +31,7 @@ final="$dir/quire-predeploy-${ts}-${from}-to-${to}.dump"
 part="$final.partial"
 trap 'rm -f "$part"' EXIT
 start=$(date +%s)
-pg_dump --format=custom --compress=6 --file="$part"
+pg_dump --no-password --format=custom --compress=6 --file="$part"
 pg_restore --list "$part" >/dev/null # the archive's table of contents reads back
 [[ -s "$part" ]]
 mv "$part" "$final"

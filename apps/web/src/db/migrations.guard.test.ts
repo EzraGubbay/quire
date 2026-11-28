@@ -72,6 +72,16 @@ describe('findContractOperations: flagged', () => {
       'CREATE OR REPLACE FUNCTION f() RETURNS int AS $f$ SELECT 1 $f$ LANGUAGE sql;',
       ['procedural-block'],
     ],
+    [
+      'unique index, quoted name with a space',
+      'CREATE UNIQUE INDEX "my idx" ON "sessions" ("a");',
+      ['unique-index-on-existing-table'],
+    ],
+    [
+      'unique index, quoted name with a semicolon',
+      'CREATE UNIQUE INDEX "a;b" ON "sessions" ("x");',
+      ['unique-index-on-existing-table'],
+    ],
     ['lowercase drop', 'alter table "documents" drop column "abstract";', ['drop']],
     [
       'lowercase unique index',
@@ -131,7 +141,9 @@ describe('calibration on grandfathered history', () => {
     const old = journal.entries.filter((e) => e.idx <= GRANDFATHERED_THROUGH.idx);
     expect(old.length).toBe(GRANDFATHERED_THROUGH.idx + 1);
     for (const e of old) {
-      expect({ tag: e.tag, ops: findContractOperations(readSql(e.tag) ?? '') }).toEqual({
+      const sql = readSql(e.tag);
+      expect(sql, `${e.tag}.sql exists`).toBeDefined();
+      expect({ tag: e.tag, ops: findContractOperations(sql as string) }).toEqual({
         tag: e.tag,
         ops: [],
       });
